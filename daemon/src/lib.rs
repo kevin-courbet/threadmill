@@ -407,11 +407,12 @@ async fn terminal_attach(
         .map_err(|err| format!("failed to open pty: {err}"))?;
 
     let mut command = CommandBuilder::new("tmux");
-    command.args(["attach", "-t", &target]);
+    command.env("TERM", "xterm-256color");
+    command.args(["attach-session", "-t", &target]);
     let child = pair
         .slave
         .spawn_command(command)
-        .map_err(|err| format!("failed to spawn tmux attach: {err}"))?;
+        .map_err(|err| format!("failed to spawn tmux attach-session: {err}"))?;
     drop(pair.slave);
 
     let mut reader = pair
