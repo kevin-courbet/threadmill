@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fs::OpenOptions,
     io::{Read, Write},
     net::SocketAddr,
     sync::{
@@ -9,7 +10,6 @@ use std::{
 };
 
 use futures_util::{SinkExt, StreamExt};
-use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::{
@@ -24,8 +24,6 @@ use uuid::Uuid;
 
 pub const DEFAULT_ADDR: &str = "127.0.0.1:19990";
 const MAX_IN_FLIGHT_REQUESTS: usize = 32;
-const DEFAULT_COLS: u16 = 120;
-const DEFAULT_ROWS: u16 = 40;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -167,8 +165,8 @@ struct ConnectionState {
 
 struct Attachment {
     target: String,
-    master: Box<dyn MasterPty + Send>,
-    child: Box<dyn Child + Send + Sync>,
+    pane_target: String,
+    fifo_path: String,
     input_tx: Option<mpsc::UnboundedSender<Vec<u8>>>,
     input_task: JoinHandle<()>,
     output_task: JoinHandle<()>,
@@ -263,15 +261,22 @@ async fn handle_connection(
                 let state = Arc::clone(&state);
                 tokio::spawn(async move {
                     let _permit = permit;
-                    if let Some(response) =
-                        handle_text_message(text.to_string(), state, connection_state, outbound_tx.clone()).await
+                    if let Some(response) = handle_text_message(
+                        text.to_string(),
+                        state,
+                        connection_state,
+                        outbound_tx.clone(),
+                    )
+                    .await
                     {
                         let _ = outbound_tx.send(response);
                     }
                 });
             }
             Ok(Message::Binary(data)) => {
-                if let Err(err) = handle_binary_message(data.to_vec(), Arc::clone(&connection_state)).await {
+                if let Err(err) =
+                    handle_binary_message(data.to_vec(), Arc::clone(&connection_state)).await
+                {
                     warn!(%connection_id, error = %err, "failed to route binary frame");
                 }
             }
@@ -396,48 +401,100 @@ async fn terminal_attach(
     }
 
     let channel_id = state.alloc_channel_id();
-    let pty_system = native_pty_system();
-    let pair = pty_system
-        .openpty(PtySize {
-            rows: DEFAULT_ROWS,
-            cols: DEFAULT_COLS,
-            pixel_width: 0,
-            pixel_height: 0,
-        })
-        .map_err(|err| format!("failed to open pty: {err}"))?;
+    let pane_target = resolve_pane_target(&params.session, params.window, params.pane).await?;
+    let pane_tty = pane_tty(&pane_target).await?;
+    let fifo_path = format!("/tmp/threadmill-pipe-{channel_id}-{}", Uuid::new_v4());
 
-    let mut command = CommandBuilder::new("tmux");
-    command.env("TERM", "xterm-256color");
-    command.args(["attach-session", "-t", &target]);
-    let child = pair
-        .slave
-        .spawn_command(command)
-        .map_err(|err| format!("failed to spawn tmux attach-session: {err}"))?;
-    drop(pair.slave);
+    match std::fs::remove_file(&fifo_path) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(format!("failed to clear stale fifo {fifo_path}: {err}")),
+    }
 
-    let mut reader = pair
-        .master
-        .try_clone_reader()
-        .map_err(|err| format!("failed to clone pty reader: {err}"))?;
-    let mut writer = pair
-        .master
-        .take_writer()
-        .map_err(|err| format!("failed to take pty writer: {err}"))?;
+    let mkfifo_output = Command::new("mkfifo")
+        .arg(&fifo_path)
+        .output()
+        .await
+        .map_err(|err| format!("failed to run mkfifo for {fifo_path}: {err}"))?;
+    if !mkfifo_output.status.success() {
+        return Err(format!(
+            "mkfifo failed for {fifo_path}: {}",
+            String::from_utf8_lossy(&mkfifo_output.stderr).trim()
+        ));
+    }
 
-    let (input_tx, mut input_rx) = mpsc::unbounded_channel::<Vec<u8>>();
-    let input_task = tokio::task::spawn_blocking(move || {
-        while let Some(chunk) = input_rx.blocking_recv() {
-            if writer.write_all(&chunk).is_err() {
-                break;
-            }
-            if writer.flush().is_err() {
-                break;
-            }
+    let pipe_command = format!("cat > {fifo_path}");
+    let pipe_output = match Command::new("tmux")
+        .args(["pipe-pane", "-t", &pane_target, "-O", &pipe_command])
+        .output()
+        .await
+    {
+        Ok(output) => output,
+        Err(err) => {
+            let _ = std::fs::remove_file(&fifo_path);
+            return Err(format!("failed to run tmux pipe-pane: {err}"));
         }
-    });
+    };
+    if !pipe_output.status.success() {
+        let _ = std::fs::remove_file(&fifo_path);
+        return Err(format!(
+            "tmux pipe-pane failed for {target}: {}",
+            String::from_utf8_lossy(&pipe_output.stderr).trim()
+        ));
+    }
+
+    let capture_output = match Command::new("tmux")
+        .args(["capture-pane", "-t", &pane_target, "-p", "-S", "-"])
+        .output()
+        .await
+    {
+        Ok(output) => output,
+        Err(err) => {
+            let _ = Command::new("tmux")
+                .args(["pipe-pane", "-t", &pane_target])
+                .output()
+                .await;
+            let _ = std::fs::remove_file(&fifo_path);
+            return Err(format!("failed to run tmux capture-pane: {err}"));
+        }
+    };
+    if !capture_output.status.success() {
+        let _ = Command::new("tmux")
+            .args(["pipe-pane", "-t", &pane_target])
+            .output()
+            .await;
+        let _ = std::fs::remove_file(&fifo_path);
+        return Err(format!(
+            "tmux capture-pane failed for {target}: {}",
+            String::from_utf8_lossy(&capture_output.stderr).trim()
+        ));
+    }
+
+    if !capture_output.stdout.is_empty() {
+        let mut payload = Vec::with_capacity(capture_output.stdout.len() + 2);
+        payload.extend_from_slice(&channel_id.to_be_bytes());
+        payload.extend_from_slice(&capture_output.stdout);
+        if outbound_tx.send(Message::Binary(payload)).is_err() {
+            let _ = Command::new("tmux")
+                .args(["pipe-pane", "-t", &pane_target])
+                .output()
+                .await;
+            let _ = std::fs::remove_file(&fifo_path);
+            return Err("failed to emit initial terminal output".to_string());
+        }
+    }
 
     let output_tx = outbound_tx.clone();
+    let fifo_path_for_task = fifo_path.clone();
     let output_task = tokio::task::spawn_blocking(move || {
+        let mut reader = match OpenOptions::new().read(true).open(&fifo_path_for_task) {
+            Ok(reader) => reader,
+            Err(err) => {
+                warn!(fifo = %fifo_path_for_task, error = %err, "failed to open tmux fifo");
+                return;
+            }
+        };
+
         let mut buf = [0_u8; 8192];
         loop {
             match reader.read(&mut buf) {
@@ -451,15 +508,43 @@ async fn terminal_attach(
                     }
                 }
                 Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(_) => break,
+                Err(err) => {
+                    warn!(fifo = %fifo_path_for_task, error = %err, "failed to read tmux fifo");
+                    break;
+                }
+            }
+        }
+    });
+
+    let mut tty_writer = match OpenOptions::new().write(true).open(&pane_tty) {
+        Ok(writer) => writer,
+        Err(err) => {
+            let _ = Command::new("tmux")
+                .args(["pipe-pane", "-t", &pane_target])
+                .output()
+                .await;
+            output_task.abort();
+            let _ = std::fs::remove_file(&fifo_path);
+            return Err(format!("failed to open pane tty {pane_tty}: {err}"));
+        }
+    };
+
+    let (input_tx, mut input_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+    let input_task = tokio::task::spawn_blocking(move || {
+        while let Some(chunk) = input_rx.blocking_recv() {
+            if tty_writer.write_all(&chunk).is_err() {
+                break;
+            }
+            if tty_writer.flush().is_err() {
+                break;
             }
         }
     });
 
     let attachment = Attachment {
         target: target.clone(),
-        master: pair.master,
-        child,
+        pane_target,
+        fifo_path,
         input_tx: Some(input_tx),
         input_task,
         output_task,
@@ -509,36 +594,25 @@ async fn terminal_resize(
     connection_state: Arc<Mutex<ConnectionState>>,
 ) -> Result<Value, String> {
     let target = tmux_target(&params.session, params.window, params.pane);
-    let channel_id = {
+    let pane_target = {
         let guard = connection_state.lock().await;
-        *guard
+        let channel_id = *guard
             .by_target
             .get(&target)
-            .ok_or_else(|| format!("target {target} is not attached"))?
-    };
-
-    {
-        let guard = connection_state.lock().await;
-        let attachment = guard
+            .ok_or_else(|| format!("target {target} is not attached"))?;
+        guard
             .by_channel
             .get(&channel_id)
-            .ok_or_else(|| format!("channel {channel_id} not found"))?;
-        attachment
-            .master
-            .resize(PtySize {
-                rows: params.rows,
-                cols: params.cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|err| format!("failed to resize pty: {err}"))?;
-    }
+            .ok_or_else(|| format!("channel {channel_id} not found"))?
+            .pane_target
+            .clone()
+    };
 
     let output = Command::new("tmux")
         .args([
             "resize-pane",
             "-t",
-            &target,
+            &pane_target,
             "-x",
             &params.cols.to_string(),
             "-y",
@@ -594,14 +668,159 @@ async fn cleanup_attachment(attachment: &mut Attachment) {
     if let Some(input_tx) = attachment.input_tx.take() {
         drop(input_tx);
     }
-    let _ = attachment.child.kill();
-    let _ = attachment.child.wait();
+
+    let stop_pipe_output = Command::new("tmux")
+        .args(["pipe-pane", "-t", &attachment.pane_target])
+        .output()
+        .await;
+    match stop_pipe_output {
+        Ok(output) if !output.status.success() => {
+            warn!(
+                target = %attachment.pane_target,
+                error = %String::from_utf8_lossy(&output.stderr).trim(),
+                "tmux pipe-pane stop failed"
+            );
+        }
+        Err(err) => {
+            warn!(target = %attachment.pane_target, error = %err, "failed to stop tmux pipe-pane");
+        }
+        Ok(_) => {}
+    }
+
+    if let Err(err) = std::fs::remove_file(&attachment.fifo_path) {
+        if err.kind() != std::io::ErrorKind::NotFound {
+            warn!(fifo = %attachment.fifo_path, error = %err, "failed to remove tmux fifo");
+        }
+    }
+
     attachment.input_task.abort();
     attachment.output_task.abort();
 }
 
 fn tmux_target(session: &str, window: u32, pane: u32) -> String {
     format!("{session}:{window}.{pane}")
+}
+
+async fn resolve_pane_target(session: &str, window: u32, pane: u32) -> Result<String, String> {
+    let window_indexes = list_window_indexes(session).await?;
+    let actual_window = if window_indexes.contains(&window) {
+        window
+    } else {
+        *window_indexes.get(window as usize).ok_or_else(|| {
+            format!(
+                "window {window} is neither an existing tmux index nor a valid zero-based ordinal in session {session}"
+            )
+        })?
+    };
+
+    let window_target = format!("{session}:{actual_window}");
+    let panes = list_panes(&window_target).await?;
+
+    if let Some((_, pane_id)) = panes.iter().find(|(pane_index, _)| *pane_index == pane) {
+        return Ok(pane_id.clone());
+    }
+
+    if let Some((_, pane_id)) = panes.get(pane as usize) {
+        return Ok(pane_id.clone());
+    }
+
+    Err(format!(
+        "pane {pane} is neither an existing tmux index nor a valid zero-based ordinal in {window_target}"
+    ))
+}
+
+async fn list_window_indexes(session: &str) -> Result<Vec<u32>, String> {
+    let output = Command::new("tmux")
+        .args(["list-windows", "-t", session, "-F", "#{window_index}"])
+        .output()
+        .await
+        .map_err(|err| format!("failed to run tmux list-windows: {err}"))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "tmux list-windows failed for {session}: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    parse_u32_lines(&output.stdout, "window")
+}
+
+async fn list_panes(window_target: &str) -> Result<Vec<(u32, String)>, String> {
+    let output = Command::new("tmux")
+        .args([
+            "list-panes",
+            "-t",
+            window_target,
+            "-F",
+            "#{pane_index} #{pane_id}",
+        ])
+        .output()
+        .await
+        .map_err(|err| format!("failed to run tmux list-panes: {err}"))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "tmux list-panes failed for {window_target}: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    parse_pane_lines(&output.stdout)
+}
+
+fn parse_u32_lines(raw: &[u8], label: &str) -> Result<Vec<u32>, String> {
+    String::from_utf8_lossy(raw)
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.trim()
+                .parse::<u32>()
+                .map_err(|err| format!("invalid tmux {label} index '{line}': {err}"))
+        })
+        .collect()
+}
+
+fn parse_pane_lines(raw: &[u8]) -> Result<Vec<(u32, String)>, String> {
+    String::from_utf8_lossy(raw)
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            let mut parts = line.split_whitespace();
+            let pane_index = parts
+                .next()
+                .ok_or_else(|| format!("invalid tmux pane output '{line}'"))?
+                .parse::<u32>()
+                .map_err(|err| format!("invalid tmux pane index '{line}': {err}"))?;
+            let pane_id = parts
+                .next()
+                .ok_or_else(|| format!("invalid tmux pane output '{line}'"))?
+                .to_string();
+            Ok((pane_index, pane_id))
+        })
+        .collect()
+}
+
+async fn pane_tty(target: &str) -> Result<String, String> {
+    let output = Command::new("tmux")
+        .args(["display-message", "-t", target, "-p", "#{pane_tty}"])
+        .output()
+        .await
+        .map_err(|err| format!("failed to run tmux display-message: {err}"))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "tmux display-message failed for {target}: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    let pane_tty = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if pane_tty.is_empty() {
+        return Err(format!("tmux returned empty pane_tty for {target}"));
+    }
+
+    Ok(pane_tty)
 }
 
 fn success_response(id: Value, result: Value) -> Message {
