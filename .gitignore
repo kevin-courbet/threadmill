@@ -1,5 +1,5 @@
-target/
 .build/
 .DS_Store
 *.xcuserdata
+.swiftpm/
 .sisyphus/
