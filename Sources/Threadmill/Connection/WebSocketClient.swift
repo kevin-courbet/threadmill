@@ -187,24 +187,28 @@ final class WebSocketClient: NSObject {
             return
         }
 
-        if let id = parseResponseID(json["id"]) {
-            if let error = json["error"] as? [String: Any] {
-                let code = error["code"] as? Int ?? -1
-                let message = error["message"] as? String ?? "Unknown error"
-                finishPendingRequest(id: id, result: .failure(JSONRPCErrorResponse(code: code, message: message)))
+        if json["id"] == nil {
+            guard let method = json["method"] as? String else {
                 return
             }
 
-            let result = json["result"] ?? NSNull()
-            finishPendingRequest(id: id, result: .success(result))
+            onEvent?(method, json["params"] as? [String: Any])
             return
         }
 
-        guard let method = json["method"] as? String else {
+        guard let id = parseResponseID(json["id"]) else {
             return
         }
 
-        onEvent?(method, json["params"] as? [String: Any])
+        if let error = json["error"] as? [String: Any] {
+            let code = error["code"] as? Int ?? -1
+            let message = error["message"] as? String ?? "Unknown error"
+            finishPendingRequest(id: id, result: .failure(JSONRPCErrorResponse(code: code, message: message)))
+            return
+        }
+
+        let result = json["result"] ?? NSNull()
+        finishPendingRequest(id: id, result: .success(result))
     }
 
     private func parseResponseID(_ value: Any?) -> Int? {

@@ -48,6 +48,7 @@ final class ConnectionManager {
 
     var onStateChange: ((ConnectionStatus) -> Void)?
     var onConnected: (() -> Void)?
+    var onEvent: ((String, [String: Any]?) -> Void)?
 
     let tunnelManager: SSHTunnelManager
     let webSocketClient: WebSocketClient
@@ -77,6 +78,10 @@ final class ConnectionManager {
 
         webSocketClient.onBinaryMessage = { [weak self] data in
             self?.binaryFrameHandler?(data)
+        }
+
+        webSocketClient.onEvent = { [weak self] method, params in
+            self?.onEvent?(method, params)
         }
 
         webSocketClient.onDisconnect = { [weak self] _ in

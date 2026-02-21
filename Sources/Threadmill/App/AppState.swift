@@ -71,6 +71,17 @@ final class AppState {
         await syncService?.syncFromDaemon()
     }
 
+    func handleDaemonEvent(method: String, params: [String: Any]?) {
+        switch method {
+        case "thread.status_changed":
+            handleThreadStatusChanged(params)
+        case "thread.progress":
+            logThreadProgress(params)
+        default:
+            break
+        }
+    }
+
     func attachSelectedPreset() async {
         guard let selectedThread else {
             await detachCurrentTerminal()
@@ -86,11 +97,19 @@ final class AppState {
 
         await detachCurrentTerminal()
 
-        guard let multiplexer else {
+        guard let connectionManager, let multiplexer else {
             return
         }
 
         do {
+            _ = try await connectionManager.request(
+                method: "preset.start",
+                params: [
+                    "thread_id": selectedThread.id,
+                    "preset": preset,
+                ],
+                timeout: 20
+            )
             selectedEndpoint = try await multiplexer.attach(threadID: selectedThread.id, preset: preset)
         } catch {
             NSLog("threadmill-state: attach failed: %@", "\(error)")
@@ -178,5 +197,45 @@ final class AppState {
 
         _ = try await connectionManager.request(method: "thread.create", params: params, timeout: 30)
         await syncService?.syncFromDaemon()
+    }
+
+    private func handleThreadStatusChanged(_ params: [String: Any]?) {
+        guard
+            let params,
+            let threadID = params["thread_id"] as? String,
+            let statusRaw = params["new"] as? String,
+            let status = ThreadStatus(rawValue: statusRaw)
+        else {
+            NSLog("threadmill-state: invalid thread.status_changed payload: %@", "\(params ?? [:])")
+            return
+        }
+
+        if let index = threads.firstIndex(where: { $0.id == threadID }) {
+            threads[index].status = status
+        }
+
+        do {
+            try databaseManager?.updateThreadStatus(threadID: threadID, status: status)
+        } catch {
+            NSLog("threadmill-state: failed to persist thread status (%@): %@", threadID, "\(error)")
+        }
+    }
+
+    private func logThreadProgress(_ params: [String: Any]?) {
+        guard let params else {
+            NSLog("threadmill-state: thread.progress payload missing")
+            return
+        }
+
+        let threadID = params["thread_id"] as? String ?? "unknown"
+        let step = params["step"] as? String ?? "unknown"
+        let message = params["message"] as? String ?? ""
+        let errorText = params["error"] as? String
+
+        if let errorText, !errorText.isEmpty {
+            NSLog("threadmill-state: thread.progress thread=%@ step=%@ message=%@ error=%@", threadID, step, message, errorText)
+        } else {
+            NSLog("threadmill-state: thread.progress thread=%@ step=%@ message=%@", threadID, step, message)
+        }
     }
 }

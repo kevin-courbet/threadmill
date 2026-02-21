@@ -70,6 +70,14 @@ final class DatabaseManager {
         }
     }
 
+    func updateThreadStatus(threadID: String, status: ThreadStatus) throws {
+        try dbQueue.write { db in
+            _ = try ThreadModel
+                .filter(ThreadModel.Columns.id == threadID)
+                .updateAll(db, ThreadModel.Columns.status.set(to: status.rawValue))
+        }
+    }
+
     private func migrate() throws {
         var migrator = DatabaseMigrator()
 

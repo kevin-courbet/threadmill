@@ -52,6 +52,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
 
+            connectionManager.onEvent = { [weak appState] method, params in
+                appState?.handleDaemonEvent(method: method, params: params)
+            }
+
             connectionManager.setBinaryFrameHandler { [weak self] data in
                 Task { @MainActor [weak self] in
                     self?.multiplexer?.handleBinaryFrame(data)
