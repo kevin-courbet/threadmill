@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 enum SSHTunnelError: LocalizedError {
@@ -58,12 +59,41 @@ final class SSHTunnelManager: ObservableObject {
         self.process = process
         self.isRunning = true
 
-        try await Task.sleep(nanoseconds: 300_000_000)
-        if !process.isRunning {
-            self.isRunning = false
-            self.process = nil
-            throw SSHTunnelError.failedToStart(host: host)
+        // Wait for the tunnel to be ready (port accepting connections).
+        // With SSH ControlMaster, the process may exit immediately with
+        // code 0 after the master sets up forwarding — that's success.
+        for _ in 0..<50 {
+            try await Task.sleep(nanoseconds: 200_000_000) // 200ms
+            if isPortOpen(localPort) { return }
+            if !process.isRunning {
+                // Process exited — check if port is open (ControlMaster case)
+                if isPortOpen(localPort) { return }
+                self.isRunning = false
+                self.process = nil
+                throw SSHTunnelError.failedToStart(host: host)
+            }
         }
+        // 10s timeout — tunnel never came up
+        process.terminate()
+        self.isRunning = false
+        self.process = nil
+        throw SSHTunnelError.failedToStart(host: host)
+    }
+
+    private func isPortOpen(_ port: Int) -> Bool {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { Darwin.close(fd) }
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = in_port_t(port).bigEndian
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let result = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
+                Darwin.connect(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        return result == 0
     }
 
     func stop() {

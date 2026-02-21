@@ -33,7 +33,7 @@ Presets are defined in `.threadmill.yml` in the project repo.
 │  Threadmill.app (SwiftUI)       │ ◄──────────────────► │  threadmill-daemon (Rust)    │
 │  ├── GRDB (projects, threads,   │                     │  ├── WebSocket server         │
 │  │    UI state — cache only)    │                     │  ├── Terminal I/O relay        │
-│  ├── SwiftTerm (terminal views) │                     │  ├── Git operations (local)   │
+│  ├── libghostty (GPU terminal)  │                     │  ├── Git operations (local)   │
 │  └── WebSocket client           │                     │  ├── tmux control             │
 │                                 │                     │  ├── Process management       │
 │                                 │                     │  └── Hook execution           │
@@ -131,7 +131,7 @@ enum SourceType: String, Codable {
 ```
 
 - **Sidebar**: Projects as sections, threads as items. Status indicators (● running, ○ stopped, ✕ failed).
-- **Main area**: Selected thread's terminal view (SwiftTerm). Tab bar for preset terminals.
+- **Main area**: Selected thread's terminal view (libghostty). Tab bar for preset terminals.
 - **Connection indicator**: top-right shows daemon connection state.
 
 ### Add Project Flow
@@ -172,12 +172,74 @@ Per-project mutex prevents concurrent git operations on the same repo.
 2. **Close**: daemon kills tmux session, runs teardown hooks, `git worktree remove`, deletes branch if merged
 3. **Hide**: daemon kills tmux session only, worktree stays on disk. Thread shows as "hidden" in sidebar. Can be reopened later.
 
-### Terminal Integration (SwiftTerm)
+### Terminal Rendering (libghostty)
+
+Terminal rendering uses **libghostty** (from the Ghostty terminal emulator) — GPU-accelerated via Metal, same renderer as the standalone Ghostty app. This replaces the initial SwiftTerm prototype.
+
+#### Why libghostty over SwiftTerm
+
+SwiftTerm is a pure-Swift terminal emulator. It works, but libghostty provides:
+- Metal-based GPU rendering (faster, lower CPU usage for scrolling/output)
+- Ghostty's mature VT parser and rendering pipeline
+- Consistent look with the user's Ghostty config (fonts, themes, keybindings)
+- Active upstream development with regular releases
+
+#### cmux analysis (informed this decision)
+
+We analyzed [cmux](https://github.com/manaflow-ai/cmux), a native macOS terminal multiplexer that also uses libghostty. Key findings:
+- cmux has good workspace/pane management (Bonsplit library) and AppKit+SwiftUI hybrid patterns
+- cmux does NOT have: remote daemon support, project/thread model, worktree management
+- cmux assumes local processes — its architecture fights a remote-terminal model
+- **Decision**: port libghostty integration code into threadmill, don't fork cmux
+- We took: Ghostty submodule + zig build pipeline, the `ghostty_surface_*` API patterns
+- Bonsplit is available as a separate dependency for future split/pane management
+
+#### PTY shim for remote terminal
+
+libghostty's `ghostty_surface_new` expects to own a local process — it spawns a command and manages the PTY internally. There is no direct byte-feed API. For remote terminal rendering, we use a **PTY shim**:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  macOS                                                           │
+│                                                                  │
+│  ghostty surface ←→ PTY ←→ relay process ←→ Unix socket          │
+│                                                     ↕             │
+│  Threadmill app (bridges Unix socket ↔ WebSocket)                │
+│                                    ↕                             │
+│                               SSH tunnel                         │
+└──────────────────────────────────────────────────────────────────┘
+                                    ↕
+┌──────────────────────────────────────────────────────────────────┐
+│  beast                                                           │
+│  Spindle daemon ←→ tmux pipe-pane + pane TTY write               │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+1. Ghostty surface is configured with `command = "/path/to/threadmill-relay"`
+2. Ghostty spawns the relay inside a PTY it owns (GPU rendering works normally)
+3. Relay connects back to the app via a Unix domain socket (path passed via env var)
+4. App bridges Unix socket ↔ WebSocket ↔ Spindle ↔ tmux pane
+5. Relay is ~30 lines: stdin→socket, socket→stdout
+
+This is the same pattern iTerm2 uses for SSH integration — proven and reliable.
+
+#### Build pipeline
+
+libghostty is built from the official [ghostty-org/ghostty](https://github.com/ghostty-org/ghostty) repo (pinned to `main`, 1.3.0-dev) as a git submodule:
+
+```bash
+# One-time build (requires zig 0.15.2, Xcode with Metal toolchain)
+cd ghostty && zig build -Demit-xcframework=true -Doptimize=ReleaseFast -Dxcframework-target=native
+```
+
+Produces `ghostty/macos/GhosttyKit.xcframework` (~135MB static lib), symlinked into the project root and consumed as an SPM `.binaryTarget`.
+
+#### Terminal I/O flow
 
 Terminal I/O is **multiplexed through the WebSocket** — no separate SSH connections per tab.
 
 ```
-SwiftTerm ←→ WebSocket ←→ Daemon ←→ tmux pipe-pane / send-keys
+ghostty surface ←→ PTY shim ←→ Unix socket ←→ WebSocket ←→ Daemon ←→ tmux
 ```
 
 1. Mac sends `terminal.attach { thread_id, preset_name }` over WebSocket
@@ -186,11 +248,12 @@ SwiftTerm ←→ WebSocket ←→ Daemon ←→ tmux pipe-pane / send-keys
    - `terminal.output { thread_id, preset, data }` (daemon → mac)
    - `terminal.input  { thread_id, preset, data }` (mac → daemon)
    - `terminal.resize { thread_id, preset, cols, rows }` (mac → daemon)
-4. SwiftTerm renders the byte stream via a custom `TerminalViewDelegate`
+4. Ghostty renders the byte stream via its Metal renderer
 5. On disconnect/reconnect, daemon replays recent scrollback from tmux capture-pane
 
 Benefits:
 - Single connection — atomic reconnect, no partial failures
+- GPU-accelerated terminal rendering identical to standalone Ghostty
 - Terminals are persistent (tmux survives everything)
 - Multiple clients can view the same session (agents, phone via SSH, another Mac)
 - No per-tab PTY management
@@ -474,9 +537,9 @@ AI agents (OpenCode, Claude Code) running on beast can interact with threads:
 
 | Component | Choice | Rationale |
 |---|---|---|
-| Mac UI | SwiftUI | Modern Apple framework, declarative, sidebar+detail layout |
+| Mac UI | AppKit + SwiftUI | AppKit for window/surface hosting, SwiftUI for sidebar/chrome |
 | Mac persistence | GRDB | Mature SQLite wrapper, predictable concurrency model, cache of daemon state |
-| Mac terminal | SwiftTerm | Mature Swift terminal emulator, custom `TerminalViewDelegate` for WebSocket I/O |
+| Mac terminal | libghostty (GhosttyKit) | GPU-accelerated Metal renderer from Ghostty. Built from upstream ghostty-org/ghostty (1.3.0-dev) via zig. PTY shim bridges to remote via Unix socket. |
 | Mac ↔ beast | SSH tunnel + WebSocket | Single multiplexed connection for RPC, events, and terminal I/O |
 | Protocol | JSON-RPC 2.0 + binary frames | Request IDs, error codes, batching. Binary frames for terminal data. |
 | Beast daemon | Rust + tokio | Fast, reliable, `tokio-tungstenite` for WebSocket, systemd-managed |
@@ -499,19 +562,21 @@ From the current Superset + WSL setup, Threadmill removes:
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| SwiftTerm ↔ WebSocket adapter is uncharted territory | High | Prototype in M1 before building anything else. Go/no-go gate. |
+| libghostty PTY shim relay latency | Medium | PTY shim adds one hop (Unix socket). Proven pattern (iTerm2 SSH). Validated: local shell renders correctly. |
 | tmux resize with multiple viewers at different sizes | Medium | `set -g window-size latest` — tmux uses most recent client's size |
 | `.threadmill.yml` in malicious PR runs arbitrary commands | Medium | Trust-on-first-use: warn on new/changed hooks, require confirmation |
 | Hidden threads accumulate disk usage | Low | Show disk usage in sidebar, optional auto-cleanup TTL in config |
 
 ## MVP Milestones
 
-### M0: Connection (go/no-go gate)
-- [ ] SSH tunnel establishment from Swift (shell out to `ssh`, process management)
-- [ ] WebSocket client over tunnel with JSON-RPC 2.0
-- [ ] Connection state machine (connect/reconnect/disconnect)
-- [ ] Daemon scaffolding: WebSocket server, `ping`, systemd unit
-- [ ] **SwiftTerm proof-of-concept**: one terminal view rendering tmux pane output via WebSocket relay. If this doesn't work well, reconsider the approach before investing further.
+### M0: Connection + Terminal Feasibility ✅
+- [x] SSH tunnel establishment from Swift (shell out to `ssh`, process management)
+- [x] WebSocket client over tunnel with JSON-RPC 2.0
+- [x] Connection state machine (connect/reconnect/disconnect)
+- [x] Daemon scaffolding: WebSocket server, `ping`, terminal attach/detach/resize via tmux pipe-pane
+- [x] End-to-end terminal relay: Mac → SSH tunnel → beast:19990 → Spindle → tmux pane → output back
+- [x] **libghostty integration**: GhosttyKit.xcframework built from upstream ghostty (1.3.0-dev), linked via SPM `.binaryTarget`, renders a local shell with Metal GPU acceleration
+- [ ] **PTY shim relay**: swap local shell for relay process that bridges ghostty surface ↔ Unix socket ↔ WebSocket ↔ Spindle ↔ tmux (in progress)
 
 ### M1: Projects & Threads
 - [ ] `project.add` / `project.clone` / `project.list` / `project.remove`

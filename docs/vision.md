@@ -85,6 +85,14 @@ macOS is just a visor. Everything runs on beast (WSL2). A native macOS app (Thre
 - Generic SSH abstraction — uses beast SSH config directly
 
 ## Architecture Split
-- **Threadmill** (macOS, Swift/SwiftUI) — the visor, UI, connection management
+- **Threadmill** (macOS, Swift/AppKit) — the visor, UI, connection management, terminal rendering via libghostty (GPU-accelerated Metal)
 - **Spindle** (beast, Rust) — the daemon, git/tmux/process orchestration
 - **Protocol** — JSON-RPC 2.0 schema owned by Threadmill, consumed by Spindle via git submodule
+
+## Terminal Rendering
+
+Uses **libghostty** from the official [Ghostty](https://github.com/ghostty-org/ghostty) terminal emulator. Built as an xcframework via zig, linked as a static library. Renders via Metal — same quality as standalone Ghostty.
+
+Remote terminal I/O uses a PTY shim: ghostty owns a local PTY running a relay process, which connects back to the app via Unix socket. The app bridges that socket to the WebSocket connection to Spindle. This avoids any libghostty API limitations (it expects to own a local process) while preserving full GPU rendering.
+
+We evaluated [cmux](https://github.com/manaflow-ai/cmux) (also uses libghostty) but decided to port the integration code rather than fork — cmux assumes local processes and doesn't have our remote daemon model.

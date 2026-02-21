@@ -49,8 +49,8 @@ enum ConnectionState: Equatable {
 final class ConnectionManager: ObservableObject {
     @Published private(set) var state: ConnectionState = .disconnected
 
-    private let tunnelManager: SSHTunnelManager
-    private let webSocketClient: WebSocketClient
+    let tunnelManager: SSHTunnelManager
+    let webSocketClient: WebSocketClient
 
     private let maxReconnectAttempts = 8
     private var reconnectAttempt = 0
@@ -110,6 +110,12 @@ final class ConnectionManager: ObservableObject {
         state = .disconnected
     }
 
+    func markConnected() {
+        reconnectAttempt = 0
+        state = .connected
+        shouldRun = true
+    }
+
     func setBinaryFrameHandler(_ handler: ((Data) -> Void)?) {
         binaryFrameHandler = handler
     }
@@ -132,22 +138,29 @@ final class ConnectionManager: ObservableObject {
         }
 
         state = initial ? .connecting : .reconnecting(attempt: reconnectAttempt)
+        NSLog("threadmill-conn: connecting (initial=%d)", initial ? 1 : 0)
 
         do {
+            NSLog("threadmill-conn: starting SSH tunnel")
             try await tunnelManager.start()
+            NSLog("threadmill-conn: SSH tunnel up")
 
             guard let url = URL(string: "ws://127.0.0.1:\(ThreadmillConfig.daemonPort)") else {
                 state = .disconnected
                 return
             }
 
+            NSLog("threadmill-conn: connecting WebSocket to %@", url.absoluteString)
             webSocketClient.connect(to: url)
 
+            NSLog("threadmill-conn: sending ping")
             _ = try await request(method: "ping", timeout: 10)
             reconnectAttempt = 0
             state = .connected
+            NSLog("threadmill-conn: CONNECTED")
             startPingLoop()
         } catch {
+            NSLog("threadmill-conn: connect failed: %@", "\(error)")
             stopPingLoop()
             webSocketClient.disconnect()
             tunnelManager.stop()
