@@ -173,7 +173,7 @@ final class AppState {
             "source_type": sourceType,
         ]
         if let sourceRef, !sourceRef.isEmpty {
-            params["source_ref"] = sourceRef
+            params["branch"] = sourceRef
         }
 
         _ = try await connectionManager.request(method: "thread.create", params: params, timeout: 30)

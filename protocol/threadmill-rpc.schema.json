@@ -59,7 +59,7 @@
 
     "Thread": {
       "type": "object",
-      "required": ["id", "project_id", "name", "branch", "worktree_path", "status", "source_type", "created_at"],
+      "required": ["id", "project_id", "name", "branch", "worktree_path", "status", "source_type", "created_at", "tmux_session"],
       "properties": {
         "id": { "type": "string", "format": "uuid" },
         "project_id": { "type": "string", "format": "uuid" },
@@ -68,7 +68,8 @@
         "worktree_path": { "type": "string" },
         "status": { "$ref": "#/$defs/ThreadStatus" },
         "source_type": { "$ref": "#/$defs/SourceType" },
-        "created_at": { "type": "string", "format": "date-time" }
+        "created_at": { "type": "string", "format": "date-time" },
+        "tmux_session": { "type": "string" }
       }
     },
 
@@ -126,19 +127,6 @@
       "result": { "$ref": "#/$defs/Project" }
     },
 
-    "project.clone": {
-      "description": "Clone a repo and register it as a project",
-      "params": {
-        "type": "object",
-        "required": ["url"],
-        "properties": {
-          "url": { "type": "string", "description": "Git clone URL" },
-          "path": { "type": "string", "description": "Optional target directory. Defaults to projects_root/<repo-name>" }
-        }
-      },
-      "result": { "$ref": "#/$defs/Project" }
-    },
-
     "project.remove": {
       "description": "Unregister a project (does not delete files)",
       "params": {
@@ -190,7 +178,7 @@
           "project_id": { "type": "string", "format": "uuid" },
           "name": { "type": "string", "description": "Thread/branch name" },
           "source_type": { "$ref": "#/$defs/SourceType" },
-          "source_ref": { "type": "string", "description": "Branch name or PR URL for existing_branch/pull_request source types" }
+          "branch": { "type": "string", "description": "Branch name for existing_branch/pull_request source types" }
         }
       },
       "result": { "$ref": "#/$defs/Thread" }
@@ -235,44 +223,14 @@
       }
     },
 
-    "thread.cancel": {
-      "description": "Cancel a thread that is currently being created",
-      "params": {
-        "type": "object",
-        "required": ["thread_id"],
-        "properties": {
-          "thread_id": { "type": "string", "format": "uuid" }
-        }
-      },
-      "result": { "type": "object", "properties": { "cancelled": { "type": "boolean" } } }
-    },
-
-    "thread.open_editor": {
-      "description": "Get editor URI for a thread's worktree",
-      "params": {
-        "type": "object",
-        "required": ["thread_id"],
-        "properties": {
-          "thread_id": { "type": "string", "format": "uuid" }
-        }
-      },
-      "result": {
-        "type": "object",
-        "properties": {
-          "uri": { "type": "string", "description": "vscode:// or cursor:// remote SSH URI" }
-        }
-      }
-    },
-
     "terminal.attach": {
       "description": "Attach to a tmux pane and start relaying I/O as binary frames",
       "params": {
         "type": "object",
-        "required": ["session", "window", "pane"],
+        "required": ["thread_id", "preset"],
         "properties": {
-          "session": { "type": "string" },
-          "window": { "type": "integer", "minimum": 0 },
-          "pane": { "type": "integer", "minimum": 0 }
+          "thread_id": { "type": "string", "format": "uuid" },
+          "preset": { "type": "string" }
         }
       },
       "result": {
@@ -288,11 +246,10 @@
       "description": "Stop relaying a tmux pane",
       "params": {
         "type": "object",
-        "required": ["session", "window", "pane"],
+        "required": ["thread_id", "preset"],
         "properties": {
-          "session": { "type": "string" },
-          "window": { "type": "integer", "minimum": 0 },
-          "pane": { "type": "integer", "minimum": 0 }
+          "thread_id": { "type": "string", "format": "uuid" },
+          "preset": { "type": "string" }
         }
       },
       "result": { "type": "object", "properties": { "detached": { "type": "boolean" } } }
@@ -302,11 +259,10 @@
       "description": "Resize an attached tmux pane",
       "params": {
         "type": "object",
-        "required": ["session", "window", "pane", "cols", "rows"],
+        "required": ["thread_id", "preset", "cols", "rows"],
         "properties": {
-          "session": { "type": "string" },
-          "window": { "type": "integer", "minimum": 0 },
-          "pane": { "type": "integer", "minimum": 0 },
+          "thread_id": { "type": "string", "format": "uuid" },
+          "preset": { "type": "string" },
           "cols": { "type": "integer", "minimum": 1 },
           "rows": { "type": "integer", "minimum": 1 }
         }
