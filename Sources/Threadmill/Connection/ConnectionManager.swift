@@ -1,19 +1,17 @@
 import Foundation
-import SwiftUI
 
 struct ThreadmillConfig {
     static let host = "beast"
     static let daemonPort = 19990
-    static let testSession = "threadmill-test:0.0"
 }
 
-enum ConnectionState: Equatable {
+enum ConnectionStatus: Equatable {
     case disconnected
     case connecting
     case connected
     case reconnecting(attempt: Int)
 
-    var displayText: String {
+    var label: String {
         switch self {
         case .disconnected:
             "disconnected"
@@ -26,17 +24,6 @@ enum ConnectionState: Equatable {
         }
     }
 
-    var indicatorColor: Color {
-        switch self {
-        case .connected:
-            .green
-        case .connecting, .reconnecting:
-            .orange
-        case .disconnected:
-            .secondary
-        }
-    }
-
     var isConnected: Bool {
         if case .connected = self {
             return true
@@ -46,8 +33,21 @@ enum ConnectionState: Equatable {
 }
 
 @MainActor
-final class ConnectionManager: ObservableObject {
-    @Published private(set) var state: ConnectionState = .disconnected
+final class ConnectionManager {
+    private(set) var state: ConnectionStatus = .disconnected {
+        didSet {
+            guard oldValue != state else {
+                return
+            }
+            onStateChange?(state)
+            if case .connected = state {
+                onConnected?()
+            }
+        }
+    }
+
+    var onStateChange: ((ConnectionStatus) -> Void)?
+    var onConnected: (() -> Void)?
 
     let tunnelManager: SSHTunnelManager
     let webSocketClient: WebSocketClient
@@ -108,12 +108,6 @@ final class ConnectionManager: ObservableObject {
         webSocketClient.disconnect()
         tunnelManager.stop()
         state = .disconnected
-    }
-
-    func markConnected() {
-        reconnectAttempt = 0
-        state = .connected
-        shouldRun = true
     }
 
     func setBinaryFrameHandler(_ handler: ((Data) -> Void)?) {
