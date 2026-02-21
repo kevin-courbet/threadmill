@@ -16,6 +16,9 @@ let package = Package(
             targets: ["threadmill-relay"]
         )
     ],
+    dependencies: [
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0")
+    ],
     targets: [
         .binaryTarget(
             name: "GhosttyKit",
@@ -27,7 +30,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "Threadmill",
-            dependencies: ["GhosttyKit"],
+            dependencies: [
+                "GhosttyKit",
+                .product(name: "GRDB", package: "GRDB.swift")
+            ],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Carbon"),
