@@ -53,19 +53,15 @@ final class DatabaseManager {
 
     func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel]) throws {
         try dbQueue.write { db in
-            try db.inTransaction {
-                try Project.deleteAll(db)
-                try ThreadModel.deleteAll(db)
+            try Project.deleteAll(db)
+            try ThreadModel.deleteAll(db)
 
-                for project in projects {
-                    try project.insert(db)
-                }
+            for project in projects {
+                try project.insert(db)
+            }
 
-                for thread in threads {
-                    try thread.insert(db)
-                }
-
-                return .commit
+            for thread in threads {
+                try thread.insert(db)
             }
         }
     }

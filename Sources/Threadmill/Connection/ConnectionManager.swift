@@ -56,6 +56,7 @@ final class ConnectionManager {
     private let maxReconnectAttempts = 8
     private var reconnectAttempt = 0
     private var shouldRun = false
+    private var isConnecting = false
 
     private var reconnectTask: Task<Void, Never>?
     private var pingTask: Task<Void, Never>?
@@ -136,6 +137,15 @@ final class ConnectionManager {
             return
         }
 
+        guard !isConnecting else {
+            return
+        }
+
+        isConnecting = true
+        defer {
+            isConnecting = false
+        }
+
         state = initial ? .connecting : .reconnecting(attempt: reconnectAttempt)
         NSLog("threadmill-conn: connecting (initial=%d)", initial ? 1 : 0)
 
@@ -172,6 +182,19 @@ final class ConnectionManager {
             return
         }
 
+        guard !isConnecting else {
+            return
+        }
+
+        guard state != .disconnected else {
+            return
+        }
+
+        if case .reconnecting = state {
+            return
+        }
+
+        state = .disconnected
         stopPingLoop()
         webSocketClient.disconnect()
         tunnelManager.stop()
