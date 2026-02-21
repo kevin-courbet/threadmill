@@ -98,8 +98,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 params: ["session": "threadmill-test", "window": 0, "pane": 0],
                 timeout: 10
             )
-            let channelID = parseChannelID(from: result) ?? 0
-            relayBridge.channelID = channelID
+            guard let channelID = parseChannelID(from: result), channelID > 0 else {
+                NSLog("threadmill: terminal.attach returned invalid channel_id: %@", "\(result)")
+                return
+            }
+            relayBridge.setAttachedChannelID(channelID)
             NSLog("threadmill: attached to remote terminal, channel=%d", channelID)
 
             // Sync tmux pane size to match ghostty surface
@@ -329,8 +332,10 @@ class RelayBridge {
     private var listenFD: Int32 = -1
     private var clientFD: Int32 = -1
     var channelID: UInt16 = 0
+    private var isAttached = false
     private var readSource: DispatchSourceRead?
     private var listenSource: DispatchSourceRead?
+    private let maxPendingFrames = 500
     private var pendingFrames: [Data] = []
 
     init(socketPath: String, connectionManager: ConnectionManager) {
@@ -341,6 +346,7 @@ class RelayBridge {
 
     func start(channelID: UInt16) {
         self.channelID = channelID
+        isAttached = channelID > 0
 
         // Register handler for binary frames from Spindle → relay socket
         connectionManager.setBinaryFrameHandler { [weak self] data in
@@ -348,13 +354,28 @@ class RelayBridge {
         }
     }
 
+    func setAttachedChannelID(_ channelID: UInt16) {
+        guard channelID > 0 else { return }
+        self.channelID = channelID
+        isAttached = true
+    }
+
     func stop() {
-        readSource?.cancel()
-        readSource = nil
-        listenSource?.cancel()
-        listenSource = nil
-        if clientFD >= 0 { close(clientFD); clientFD = -1 }
-        if listenFD >= 0 { close(listenFD); listenFD = -1 }
+        if let source = readSource {
+            readSource = nil
+            source.cancel()
+        } else if clientFD >= 0 {
+            close(clientFD)
+            clientFD = -1
+        }
+
+        if let source = listenSource {
+            listenSource = nil
+            source.cancel()
+        } else if listenFD >= 0 {
+            close(listenFD)
+            listenFD = -1
+        }
         unlink(socketPath)
     }
 
@@ -407,11 +428,17 @@ class RelayBridge {
     }
 
     private func acceptClient() {
+        if let source = readSource {
+            readSource = nil
+            source.cancel()
+        } else if clientFD >= 0 {
+            Darwin.close(clientFD)
+            clientFD = -1
+        }
+
         let fd = accept(listenFD, nil, nil)
         guard fd >= 0 else { return }
 
-        // Only one client (the relay process)
-        if clientFD >= 0 { Darwin.close(clientFD) }
         clientFD = fd
 
         NSLog("threadmill: relay connected")
@@ -421,9 +448,12 @@ class RelayBridge {
         source.setEventHandler { [weak self] in
             self?.readFromRelay()
         }
+        let capturedFD = fd
         source.setCancelHandler { [weak self] in
-            if let cfd = self?.clientFD, cfd >= 0 { Darwin.close(cfd) }
-            self?.clientFD = -1
+            Darwin.close(capturedFD)
+            if self?.clientFD == capturedFD {
+                self?.clientFD = -1
+            }
         }
         source.resume()
         readSource = source
@@ -445,6 +475,7 @@ class RelayBridge {
         }
 
         guard connectionManager.state.isConnected else { return }
+        guard isAttached, channelID != 0 else { return }
 
         // Frame: 2-byte channel ID (big-endian) + payload
         var frame = Data(count: 2 + n)
@@ -470,6 +501,10 @@ class RelayBridge {
 
         // Buffer frames until the relay process connects
         guard clientFD >= 0 else {
+            if pendingFrames.count >= maxPendingFrames {
+                pendingFrames.removeFirst()
+                NSLog("threadmill: pending frame buffer full (%d), dropping oldest frame", maxPendingFrames)
+            }
             pendingFrames.append(frame)
             return
         }
