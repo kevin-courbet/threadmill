@@ -11,6 +11,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var multiplexer: TerminalMultiplexer?
     private weak var appState: AppState?
 
+    func applicationWillFinishLaunching(_: Notification) {
+        // SPM executables don't get activation policy from an app bundle automatically
+        NSApp.setActivationPolicy(.regular)
+    }
+
     func applicationDidFinishLaunching(_: Notification) {
         NSApp.activate(ignoringOtherApps: true)
     }
