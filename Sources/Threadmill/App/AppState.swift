@@ -18,7 +18,7 @@ final class AppState {
             refreshSelectedEndpoint()
         }
     }
-    var selectedPreset: String? = Preset.defaults.first?.name {
+    var selectedPreset: String? {
         didSet {
             refreshSelectedEndpoint()
         }
@@ -56,8 +56,8 @@ final class AppState {
     }
 
     var presets: [Preset] {
-        guard let selectedProject, !selectedProject.presets.isEmpty else {
-            return Preset.defaults
+        guard let selectedProject else {
+            return []
         }
         return selectedProject.presets.map { Preset(name: $0.name) }
     }
@@ -122,6 +122,8 @@ final class AppState {
             handleThreadStatusChanged(params)
         case "thread.progress":
             handleThreadProgress(params)
+        case "project.clone_progress":
+            handleProjectCloneProgress(params)
         case "thread.created",
              "thread.removed",
              "project.added",
@@ -147,7 +149,10 @@ final class AppState {
             return
         }
 
-        let preset = selectedPreset ?? presets.first?.name ?? "shell"
+        guard let preset = selectedPreset ?? presets.first?.name else {
+            selectedEndpoint = nil
+            return
+        }
         let requestedThreadID = selectedThread.id
         let key = AttachmentKey(threadID: requestedThreadID, preset: preset)
 
@@ -462,6 +467,24 @@ final class AppState {
             NSLog("threadmill-state: thread.progress thread=%@ step=%@ message=%@ error=%@", threadID, step, message, errorText)
         } else {
             NSLog("threadmill-state: thread.progress thread=%@ step=%@ message=%@", threadID, step, message)
+        }
+    }
+
+    private func handleProjectCloneProgress(_ params: [String: Any]?) {
+        guard let params else {
+            NSLog("threadmill-state: project.clone_progress payload missing")
+            return
+        }
+
+        let cloneID = params["thread_id"] as? String ?? "unknown"
+        let step = params["step"] as? String ?? "unknown"
+        let message = params["message"] as? String ?? ""
+        let errorText = params["error"] as? String
+
+        if let errorText, !errorText.isEmpty {
+            NSLog("threadmill-state: project.clone_progress clone=%@ step=%@ message=%@ error=%@", cloneID, step, message, errorText)
+        } else {
+            NSLog("threadmill-state: project.clone_progress clone=%@ step=%@ message=%@", cloneID, step, message)
         }
     }
 

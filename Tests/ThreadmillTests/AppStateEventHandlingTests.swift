@@ -52,6 +52,22 @@ final class AppStateEventHandlingTests: XCTestCase {
         XCTAssertEqual(syncService.syncCount, 0)
     }
 
+    func testHandleDaemonEventCloneProgressDoesNotTriggerSync() async {
+        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+
+        appState.handleDaemonEvent(
+            method: "project.clone_progress",
+            params: [
+                "thread_id": "clone-1",
+                "step": "fetching",
+                "message": "Receiving objects",
+            ]
+        )
+        try? await Task.sleep(nanoseconds: 20_000_000)
+
+        XCTAssertEqual(syncService.syncCount, 0)
+    }
+
     func testAttachSkipsCreatingAndFailedThreads() async {
         let (connection, _, _, multiplexer, appState) = makeConfiguredAppStateWithDoubles()
         connection.requestHandler = { _, _, _ in NSNull() }
