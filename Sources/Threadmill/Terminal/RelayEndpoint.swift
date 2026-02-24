@@ -15,6 +15,7 @@ final class RelayEndpoint {
     private var clientFD: Int32 = -1
     private var readSource: DispatchSourceRead?
     private var listenSource: DispatchSourceRead?
+    private var relayInputEnabled = false
     private var pendingFrames: [Data] = []
     private var pendingFrameBytes = 0
     private let maxPendingFrames = 1000
@@ -39,6 +40,11 @@ final class RelayEndpoint {
     }
 
     func start() {
+        guard channelID > 0 else {
+            NSLog("threadmill-relay: refusing to start endpoint with invalid channel 0")
+            return
+        }
+        relayInputEnabled = true
         startListening()
     }
 
@@ -76,6 +82,7 @@ final class RelayEndpoint {
     }
 
     func stop() {
+        relayInputEnabled = false
         if let source = readSource {
             readSource = nil
             source.cancel()
@@ -168,8 +175,7 @@ final class RelayEndpoint {
         if let source = readSource {
             readSource = nil
             source.cancel()
-        }
-        if clientFD >= 0 {
+        } else if clientFD >= 0 {
             Darwin.close(clientFD)
             clientFD = -1
         }
@@ -207,7 +213,7 @@ final class RelayEndpoint {
         }
 
         guard connectionManager.state.isConnected else { return }
-        guard channelID != 0 else { return }
+        guard relayInputEnabled else { return }
 
         var frame = Data(count: 2 + n)
         frame[0] = UInt8(channelID >> 8)
@@ -220,6 +226,11 @@ final class RelayEndpoint {
     }
 
     private func enqueuePendingFrame(_ frame: Data) {
+        if frame.count > maxPendingBytes {
+            NSLog("threadmill-relay: dropping oversized frame (%d bytes) for channel %d", frame.count, channelID)
+            return
+        }
+
         while pendingFrames.count >= maxPendingFrames || (pendingFrameBytes + frame.count) > maxPendingBytes {
             guard !pendingFrames.isEmpty else {
                 break

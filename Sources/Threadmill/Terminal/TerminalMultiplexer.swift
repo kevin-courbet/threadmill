@@ -78,14 +78,21 @@ final class TerminalMultiplexer {
 
     private func parseChannelID(from result: Any) -> UInt16? {
         if let intValue = result as? Int {
-            return UInt16(clamping: intValue)
+            guard intValue > 0, intValue <= Int(UInt16.max) else {
+                return nil
+            }
+            return UInt16(intValue)
         }
         if let dict = result as? [String: Any] {
             if let value = dict["channel_id"] as? Int {
-                return UInt16(clamping: value)
+                guard value > 0, value <= Int(UInt16.max) else {
+                    return nil
+                }
+                return UInt16(value)
             }
             if let value = dict["channel_id"] as? String,
-               let parsed = UInt16(value) {
+               let parsed = UInt16(value),
+               parsed > 0 {
                 return parsed
             }
         }
