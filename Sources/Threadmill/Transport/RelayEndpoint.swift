@@ -3,19 +3,18 @@ import GhosttyKit
 
 @MainActor
 final class RelayEndpoint {
-    let channelID: UInt16
+    private(set) var channelID: UInt16
     let threadID: String
     let preset: String
     let socketPath: String
 
     private let connectionManager: ConnectionManager
-    private let ghosttyManager: GhosttyManager
+    private let surfaceHost: GhosttySurfaceHost
 
     private var listenFD: Int32 = -1
     private var clientFD: Int32 = -1
     private var readSource: DispatchSourceRead?
     private var listenSource: DispatchSourceRead?
-    private var relayInputEnabled = false
     private var pendingFrames: [Data] = []
     private var pendingFrameBytes = 0
     private let maxPendingFrames = 1000
@@ -23,29 +22,30 @@ final class RelayEndpoint {
 
     private weak var mountedView: GhosttyNSView?
     private var surface: ghostty_surface_t?
+    private var desiredColumns: Int?
+    private var desiredRows: Int?
 
     init(
         channelID: UInt16,
         threadID: String,
         preset: String,
         connectionManager: ConnectionManager,
-        ghosttyManager: GhosttyManager
+        surfaceHost: GhosttySurfaceHost
     ) {
         self.channelID = channelID
         self.threadID = threadID
         self.preset = preset
         self.connectionManager = connectionManager
-        self.ghosttyManager = ghosttyManager
-        socketPath = "/tmp/threadmill-\(ProcessInfo.processInfo.processIdentifier)-\(channelID)-\(UUID().uuidString).sock"
+        self.surfaceHost = surfaceHost
+        socketPath = "/tmp/threadmill-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString).sock"
     }
 
     func start() {
-        guard channelID > 0 else {
-            NSLog("threadmill-relay: refusing to start endpoint with invalid channel 0")
-            return
-        }
-        relayInputEnabled = true
         startListening()
+    }
+
+    func setChannelID(_ channelID: UInt16) {
+        self.channelID = channelID
     }
 
     func mount(on view: GhosttyNSView) {
@@ -64,8 +64,8 @@ final class RelayEndpoint {
             return
         }
 
-        guard let createdSurface = ghosttyManager.createSurface(in: view, socketPath: socketPath) else {
-            NSLog("threadmill-relay: failed to create ghostty surface for channel %d", channelID)
+        guard let createdSurface = surfaceHost.createSurface(in: view, socketPath: socketPath) else {
+            NSLog("threadmill-relay: failed to create ghostty surface for endpoint %@/%@", threadID, preset)
             return
         }
         surface = createdSurface
@@ -82,7 +82,6 @@ final class RelayEndpoint {
     }
 
     func stop() {
-        relayInputEnabled = false
         if let source = readSource {
             readSource = nil
             source.cancel()
@@ -100,18 +99,24 @@ final class RelayEndpoint {
         }
 
         unlink(socketPath)
-        ghosttyManager.freeSurface(surface)
+        surfaceHost.freeSurface(surface)
         surface = nil
         mountedView?.surface = nil
         mountedView = nil
         pendingFrames.removeAll(keepingCapacity: false)
         pendingFrameBytes = 0
+        channelID = 0
     }
 
     func handleBinaryFrame(_ frame: Data) {
-        guard frame.count >= 2 else { return }
+        guard frame.count >= 2 else {
+            return
+        }
+
         let channel = (UInt16(frame[0]) << 8) | UInt16(frame[1])
-        guard channel == channelID else { return }
+        guard channel == channelID else {
+            return
+        }
 
         guard clientFD >= 0 else {
             enqueuePendingFrame(frame)
@@ -119,6 +124,43 @@ final class RelayEndpoint {
         }
 
         writeFrameToRelay(frame)
+    }
+
+    func desiredTerminalSize() -> (columns: Int, rows: Int)? {
+        guard
+            let desiredColumns,
+            let desiredRows,
+            desiredColumns > 0,
+            desiredRows > 0
+        else {
+            return nil
+        }
+        return (desiredColumns, desiredRows)
+    }
+
+    func replayResizeIfAvailable() async {
+        guard
+            connectionManager.state.isConnected,
+            channelID > 0,
+            let size = desiredTerminalSize()
+        else {
+            return
+        }
+
+        do {
+            _ = try await connectionManager.request(
+                method: "terminal.resize",
+                params: [
+                    "thread_id": threadID,
+                    "preset": preset,
+                    "cols": size.columns,
+                    "rows": size.rows,
+                ],
+                timeout: 5
+            )
+        } catch {
+            NSLog("threadmill-relay: resize replay failed for %@/%@: %@", threadID, preset, "\(error)")
+        }
     }
 
     private func startListening() {
@@ -203,7 +245,9 @@ final class RelayEndpoint {
     }
 
     private func readFromRelay(fd: Int32) {
-        guard fd >= 0 else { return }
+        guard fd >= 0 else {
+            return
+        }
 
         var buf = [UInt8](repeating: 0, count: 16384)
         let n = read(fd, &buf, buf.count)
@@ -212,13 +256,17 @@ final class RelayEndpoint {
             return
         }
 
-        guard connectionManager.state.isConnected else { return }
-        guard relayInputEnabled else { return }
+        guard connectionManager.state.isConnected else {
+            return
+        }
+        guard channelID > 0 else {
+            return
+        }
 
         var frame = Data(count: 2 + n)
         frame[0] = UInt8(channelID >> 8)
         frame[1] = UInt8(channelID & 0xFF)
-        frame.replaceSubrange(2..<(2 + n), with: buf[0..<n])
+        frame.replaceSubrange(2 ..< (2 + n), with: buf[0 ..< n])
 
         Task {
             try? await connectionManager.sendBinaryFrame(frame)
@@ -227,7 +275,7 @@ final class RelayEndpoint {
 
     private func enqueuePendingFrame(_ frame: Data) {
         if frame.count > maxPendingBytes {
-            NSLog("threadmill-relay: dropping oversized frame (%d bytes) for channel %d", frame.count, channelID)
+            NSLog("threadmill-relay: dropping oversized frame (%d bytes) for %@/%@", frame.count, threadID, preset)
             return
         }
 
@@ -243,7 +291,9 @@ final class RelayEndpoint {
     }
 
     private func flushPendingFrames() {
-        guard clientFD >= 0, !pendingFrames.isEmpty else { return }
+        guard clientFD >= 0, !pendingFrames.isEmpty else {
+            return
+        }
         let frames = pendingFrames
         pendingFrames.removeAll(keepingCapacity: false)
         pendingFrameBytes = 0
@@ -254,10 +304,14 @@ final class RelayEndpoint {
 
     private func writeFrameToRelay(_ frame: Data) {
         let payload = frame.dropFirst(2)
-        guard !payload.isEmpty else { return }
+        guard !payload.isEmpty else {
+            return
+        }
 
         payload.withUnsafeBytes { rawBuf in
-            guard let ptr = rawBuf.baseAddress else { return }
+            guard let ptr = rawBuf.baseAddress else {
+                return
+            }
             var remaining = payload.count
             var offset = 0
             while remaining > 0 {
@@ -275,8 +329,16 @@ final class RelayEndpoint {
         guard let surface else {
             return
         }
+
         let size = ghostty_surface_size(surface)
         guard size.columns > 0, size.rows > 0 else {
+            return
+        }
+
+        desiredColumns = Int(size.columns)
+        desiredRows = Int(size.rows)
+
+        guard connectionManager.state.isConnected, channelID > 0 else {
             return
         }
 
@@ -286,13 +348,13 @@ final class RelayEndpoint {
                 params: [
                     "thread_id": threadID,
                     "preset": preset,
-                    "cols": Int(size.columns),
-                    "rows": Int(size.rows),
+                    "cols": desiredColumns ?? Int(size.columns),
+                    "rows": desiredRows ?? Int(size.rows),
                 ],
                 timeout: 5
             )
         } catch {
-            NSLog("threadmill-relay: resize failed for channel=%d: %@", channelID, "\(error)")
+            NSLog("threadmill-relay: resize failed for %@/%@: %@", threadID, preset, "\(error)")
         }
     }
 }

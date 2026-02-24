@@ -4,7 +4,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isBootstrapped = false
     private let connectionManager = ConnectionManager()
-    private let ghosttyManager = GhosttyManager()
+    private let surfaceHost = GhosttySurfaceHost()
 
     private var databaseManager: DatabaseManager?
     private var syncService: SyncService?
@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         do {
             let databaseManager = try DatabaseManager()
-            let multiplexer = TerminalMultiplexer(connectionManager: connectionManager, ghosttyManager: ghosttyManager)
+            let multiplexer = TerminalMultiplexer(connectionManager: connectionManager, surfaceHost: surfaceHost)
             let syncService = SyncService(
                 connectionManager: connectionManager,
                 databaseManager: databaseManager,
@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             connectionManager.onConnected = { [weak self] in
                 Task { @MainActor [weak self] in
+                    await self?.multiplexer?.reattachAll()
                     await self?.syncService?.syncFromDaemon()
                 }
             }
@@ -80,7 +81,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.appState?.selectedEndpoint = nil
             self?.multiplexer?.detachAll()
             self?.connectionManager.stop()
-            self?.ghosttyManager.shutdown()
+            self?.surfaceHost.shutdown()
         }
     }
 }

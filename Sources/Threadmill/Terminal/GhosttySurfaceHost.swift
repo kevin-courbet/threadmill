@@ -2,14 +2,14 @@ import AppKit
 import GhosttyKit
 
 @MainActor
-final class GhosttyManager {
-    private static weak var active: GhosttyManager?
+final class GhosttySurfaceHost {
+    private static weak var active: GhosttySurfaceHost?
 
     private var ghosttyApp: ghostty_app_t?
     private var ghosttyConfig: ghostty_config_t?
 
     init() {
-        GhosttyManager.active = self
+        GhosttySurfaceHost.active = self
         initializeGhostty()
     }
 
@@ -128,7 +128,7 @@ final class GhosttyManager {
 
         runtimeConfig.wakeup_cb = { _ in
             DispatchQueue.main.async {
-                GhosttyManager.active?.tick()
+                GhosttySurfaceHost.active?.tick()
             }
         }
 
