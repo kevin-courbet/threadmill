@@ -14,7 +14,22 @@ struct SidebarView: View {
                     ProjectSection(
                         project: project,
                         threads: threads,
-                        selectedThreadID: $bindableState.selectedThreadID
+                        selectedThreadID: $bindableState.selectedThreadID,
+                        onHideThread: { thread in
+                            Task {
+                                await appState.hideThread(threadID: thread.id)
+                            }
+                        },
+                        onCloseThread: { thread in
+                            Task {
+                                await appState.closeThread(threadID: thread.id)
+                            }
+                        },
+                        onReopenThread: { thread in
+                            Task {
+                                await appState.reopenThread(threadID: thread.id)
+                            }
+                        }
                     )
                 }
             }

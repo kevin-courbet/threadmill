@@ -4,11 +4,24 @@ import Observation
 @MainActor
 @Observable
 final class AppState {
+    private struct AttachmentKey: Hashable {
+        let threadID: String
+        let preset: String
+    }
+
     var connectionStatus: ConnectionStatus = .disconnected
     var projects: [Project] = []
     var threads: [ThreadModel] = []
-    var selectedThreadID: String?
-    var selectedPreset: String? = Preset.defaults.first?.name
+    var selectedThreadID: String? {
+        didSet {
+            refreshSelectedEndpoint()
+        }
+    }
+    var selectedPreset: String? = Preset.defaults.first?.name {
+        didSet {
+            refreshSelectedEndpoint()
+        }
+    }
     var selectedEndpoint: RelayEndpoint?
 
     private var databaseManager: DatabaseManager?
@@ -16,6 +29,7 @@ final class AppState {
     private var multiplexer: TerminalMultiplexer?
     private var connectionManager: ConnectionManager?
     private var eventSyncScheduled = false
+    private var attachedEndpoints: [AttachmentKey: RelayEndpoint] = [:]
 
     var selectedThread: ThreadModel? {
         threads.first { $0.id == selectedThreadID }
@@ -33,6 +47,19 @@ final class AppState {
 
     var presets: [Preset] {
         Preset.defaults
+    }
+
+    var terminalTabs: [TerminalTabModel] {
+        guard let thread = selectedThread else {
+            return []
+        }
+        return presets.map { preset in
+            TerminalTabModel(
+                threadID: thread.id,
+                preset: preset,
+                endpoint: attachedEndpoints[AttachmentKey(threadID: thread.id, preset: preset.name)]
+            )
+        }
     }
 
     func configure(
@@ -59,10 +86,13 @@ final class AppState {
         guard let databaseManager else {
             return
         }
+
         do {
             projects = try databaseManager.allProjects()
             threads = try databaseManager.allThreads()
+            pruneDetachedThreadEndpoints()
             ensureValidSelection()
+            refreshSelectedEndpoint()
         } catch {
             NSLog("threadmill-state: failed to load cache: %@", "\(error)")
         }
@@ -85,20 +115,34 @@ final class AppState {
 
     func attachSelectedPreset() async {
         guard let selectedThread else {
-            await detachCurrentTerminal()
-            return
-        }
-        let preset = selectedPreset ?? Preset.defaults.first?.name ?? "terminal"
-
-        if let endpoint = selectedEndpoint,
-           endpoint.threadID == selectedThread.id,
-           endpoint.preset == preset {
+            selectedEndpoint = nil
             return
         }
 
-        await detachCurrentTerminal()
+        let preset = selectedPreset ?? presets.first?.name ?? "terminal"
+        let key = AttachmentKey(threadID: selectedThread.id, preset: preset)
 
         guard let connectionManager, let multiplexer else {
+            return
+        }
+
+        if let endpoint = attachedEndpoints[key] {
+            selectedEndpoint = endpoint
+            if endpoint.channelID == 0, connectionManager.state.isConnected {
+                do {
+                    _ = try await connectionManager.request(
+                        method: "preset.start",
+                        params: [
+                            "thread_id": selectedThread.id,
+                            "preset": preset,
+                        ],
+                        timeout: 20
+                    )
+                    _ = try await multiplexer.attach(threadID: selectedThread.id, preset: preset)
+                } catch {
+                    NSLog("threadmill-state: reattach failed: %@", "\(error)")
+                }
+            }
             return
         }
 
@@ -111,18 +155,80 @@ final class AppState {
                 ],
                 timeout: 20
             )
-            selectedEndpoint = try await multiplexer.attach(threadID: selectedThread.id, preset: preset)
+
+            let endpoint = try await multiplexer.attach(threadID: selectedThread.id, preset: preset)
+            attachedEndpoints[key] = endpoint
+            selectedEndpoint = endpoint
         } catch {
             NSLog("threadmill-state: attach failed: %@", "\(error)")
         }
     }
 
     func detachCurrentTerminal() async {
-        guard let endpoint = selectedEndpoint else {
+        guard
+            let thread = selectedThread,
+            let preset = selectedPreset
+        else {
+            selectedEndpoint = nil
             return
         }
-        multiplexer?.detach(channelID: endpoint.channelID)
-        selectedEndpoint = nil
+
+        detachEndpoint(threadID: thread.id, preset: preset)
+    }
+
+    func hideThread(threadID: String) async {
+        guard let connectionManager else {
+            return
+        }
+        detachEndpoints(threadID: threadID)
+
+        do {
+            _ = try await connectionManager.request(
+                method: "thread.hide",
+                params: ["thread_id": threadID],
+                timeout: 15
+            )
+            await syncService?.syncFromDaemon()
+        } catch {
+            NSLog("threadmill-state: thread.hide failed (%@): %@", threadID, "\(error)")
+        }
+    }
+
+    func closeThread(threadID: String) async {
+        guard let connectionManager else {
+            return
+        }
+        detachEndpoints(threadID: threadID)
+
+        do {
+            _ = try await connectionManager.request(
+                method: "thread.close",
+                params: [
+                    "thread_id": threadID,
+                    "mode": "close",
+                ],
+                timeout: 15
+            )
+            await syncService?.syncFromDaemon()
+        } catch {
+            NSLog("threadmill-state: thread.close failed (%@): %@", threadID, "\(error)")
+        }
+    }
+
+    func reopenThread(threadID: String) async {
+        guard let connectionManager else {
+            return
+        }
+        do {
+            _ = try await connectionManager.request(
+                method: "thread.reopen",
+                params: ["thread_id": threadID],
+                timeout: 15
+            )
+            await syncService?.syncFromDaemon()
+        } catch {
+            NSLog("threadmill-state: thread.reopen failed (%@): %@", threadID, "\(error)")
+        }
     }
 
     func browseDirectories(path: String) async throws -> [String] {
@@ -148,6 +254,7 @@ final class AppState {
             else {
                 return nil
             }
+
             return URL(fileURLWithPath: path).appendingPathComponent(name).path
         }
         .sorted()
@@ -157,6 +264,7 @@ final class AppState {
         guard let connectionManager else {
             return
         }
+
         _ = try await connectionManager.request(
             method: "project.add",
             params: ["path": path],
@@ -169,6 +277,7 @@ final class AppState {
         guard let connectionManager else {
             return []
         }
+
         let result = try await connectionManager.request(
             method: "project.branches",
             params: ["project_id": projectID],
@@ -192,6 +301,7 @@ final class AppState {
             "name": name,
             "source_type": sourceType,
         ]
+
         if let branch, !branch.isEmpty {
             params["branch"] = branch
         }
@@ -212,6 +322,10 @@ final class AppState {
         }
 
         _ = updateThreadStatus(threadID: threadID, status: status)
+
+        if status == .closed || status == .hidden {
+            detachEndpoints(threadID: threadID)
+        }
     }
 
     private func handleThreadProgress(_ params: [String: Any]?) {
@@ -270,5 +384,46 @@ final class AppState {
             defer { self?.eventSyncScheduled = false }
             await self?.syncService?.syncFromDaemon()
         }
+    }
+
+    private func refreshSelectedEndpoint() {
+        guard
+            let threadID = selectedThreadID,
+            let preset = selectedPreset
+        else {
+            selectedEndpoint = nil
+            return
+        }
+
+        selectedEndpoint = attachedEndpoints[AttachmentKey(threadID: threadID, preset: preset)]
+    }
+
+    private func pruneDetachedThreadEndpoints() {
+        let validThreadIDs = Set(threads.map(\.id))
+        let staleKeys = attachedEndpoints.keys.filter { !validThreadIDs.contains($0.threadID) }
+        for key in staleKeys {
+            multiplexer?.detach(threadID: key.threadID, preset: key.preset)
+            attachedEndpoints.removeValue(forKey: key)
+        }
+    }
+
+    private func detachEndpoints(threadID: String) {
+        let keys = attachedEndpoints.keys.filter { $0.threadID == threadID }
+        for key in keys {
+            multiplexer?.detach(threadID: key.threadID, preset: key.preset)
+            attachedEndpoints.removeValue(forKey: key)
+        }
+        refreshSelectedEndpoint()
+    }
+
+    private func detachEndpoint(threadID: String, preset: String) {
+        let key = AttachmentKey(threadID: threadID, preset: preset)
+        guard attachedEndpoints.removeValue(forKey: key) != nil else {
+            refreshSelectedEndpoint()
+            return
+        }
+
+        multiplexer?.detach(threadID: threadID, preset: preset)
+        refreshSelectedEndpoint()
     }
 }

@@ -4,6 +4,9 @@ struct ProjectSection: View {
     let project: Project
     let threads: [ThreadModel]
     @Binding var selectedThreadID: String?
+    let onHideThread: (ThreadModel) -> Void
+    let onCloseThread: (ThreadModel) -> Void
+    let onReopenThread: (ThreadModel) -> Void
 
     @State private var isExpanded = true
 
@@ -28,6 +31,20 @@ struct ProjectSection: View {
                         .buttonStyle(.plain)
                         .background(selectedThreadID == thread.id ? Color.accentColor.opacity(0.15) : .clear)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .contextMenu {
+                            if thread.status == .hidden {
+                                Button("Reopen") {
+                                    onReopenThread(thread)
+                                }
+                            } else {
+                                Button("Hide") {
+                                    onHideThread(thread)
+                                }
+                                Button("Close", role: .destructive) {
+                                    onCloseThread(thread)
+                                }
+                            }
+                        }
                     }
                 }
             } label: {

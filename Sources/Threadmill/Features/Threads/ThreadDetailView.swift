@@ -23,8 +23,26 @@ struct ThreadDetailView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                HStack(spacing: 10) {
+                    Button("Hide") {
+                        Task {
+                            await appState.hideThread(threadID: thread.id)
+                        }
+                    }
+                    .disabled(thread.status == .hidden || thread.status == .closed)
+
+                    Button("Close", role: .destructive) {
+                        Task {
+                            await appState.closeThread(threadID: thread.id)
+                        }
+                    }
+                    .disabled(thread.status == .closed)
+
+                    Spacer()
+                }
+
                 TerminalTabBar(
-                    presets: appState.presets,
+                    tabs: appState.terminalTabs,
                     threadStatus: thread.status,
                     selectedPreset: $bindableState.selectedPreset
                 )
