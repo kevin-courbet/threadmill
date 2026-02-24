@@ -452,7 +452,7 @@ final class AppState {
             scheduleEventSync()
         }
 
-        if threadID != "unknown", let errorText, !errorText.isEmpty {
+        if threadID != "unknown", threadProgressIndicatesFailure(step: step, errorText: errorText) {
             _ = updateThreadStatus(threadID: threadID, status: .failed)
             cancelPendingAttachTasks(threadID: threadID)
             detachEndpoints(threadID: threadID)
@@ -463,6 +463,18 @@ final class AppState {
         } else {
             NSLog("threadmill-state: thread.progress thread=%@ step=%@ message=%@", threadID, step, message)
         }
+    }
+
+    private func threadProgressIndicatesFailure(step: String, errorText: String?) -> Bool {
+        if let errorText {
+            let trimmedError = errorText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedError.isEmpty {
+                return true
+            }
+        }
+
+        let normalizedStep = step.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalizedStep.contains("fail")
     }
 
     @discardableResult
