@@ -88,6 +88,121 @@
       "enum": ["running", "stopped", "crashed"]
     },
 
+    "StateVersion": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonic daemon state version"
+    },
+
+    "ThreadProgress": {
+      "type": "object",
+      "required": ["thread_id", "step"],
+      "properties": {
+        "thread_id": { "type": "string", "format": "uuid" },
+        "step": {
+          "type": "string",
+          "enum": ["fetching", "creating_worktree", "copying_files", "running_hooks", "starting_presets", "ready"]
+        },
+        "message": { "type": "string" },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+
+    "ThreadStatusChanged": {
+      "type": "object",
+      "required": ["thread_id", "old", "new"],
+      "properties": {
+        "thread_id": { "type": "string", "format": "uuid" },
+        "old": { "$ref": "#/$defs/ThreadStatus" },
+        "new": { "$ref": "#/$defs/ThreadStatus" }
+      }
+    },
+
+    "PresetProcessEvent": {
+      "type": "object",
+      "required": ["thread_id", "preset", "event"],
+      "properties": {
+        "thread_id": { "type": "string", "format": "uuid" },
+        "preset": { "type": "string" },
+        "event": { "type": "string", "enum": ["started", "exited", "crashed"] },
+        "exit_code": { "type": ["integer", "null"] }
+      }
+    },
+
+    "StateSnapshot": {
+      "type": "object",
+      "required": ["state_version", "projects", "threads"],
+      "properties": {
+        "state_version": { "$ref": "#/$defs/StateVersion" },
+        "projects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Project" }
+        },
+        "threads": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Thread" }
+        }
+      }
+    },
+
+    "StateDeltaChange": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "project"],
+          "properties": {
+            "type": { "const": "project.added" },
+            "project": { "$ref": "#/$defs/Project" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "project_id"],
+          "properties": {
+            "type": { "const": "project.removed" },
+            "project_id": { "type": "string", "format": "uuid" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "thread"],
+          "properties": {
+            "type": { "const": "thread.created" },
+            "thread": { "$ref": "#/$defs/Thread" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "thread_id"],
+          "properties": {
+            "type": { "const": "thread.removed" },
+            "thread_id": { "type": "string", "format": "uuid" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "thread_id", "old", "new"],
+          "properties": {
+            "type": { "const": "thread.status_changed" },
+            "thread_id": { "type": "string", "format": "uuid" },
+            "old": { "$ref": "#/$defs/ThreadStatus" },
+            "new": { "$ref": "#/$defs/ThreadStatus" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "thread_id", "preset", "event"],
+          "properties": {
+            "type": { "const": "preset.process_event" },
+            "thread_id": { "type": "string", "format": "uuid" },
+            "preset": { "type": "string" },
+            "event": { "type": "string", "enum": ["started", "exited", "crashed"] },
+            "exit_code": { "type": ["integer", "null"] }
+          }
+        }
+      ]
+    },
+
     "DirectoryEntry": {
       "type": "object",
       "required": ["name", "is_dir"],
@@ -104,6 +219,12 @@
       "description": "Health check",
       "params": null,
       "result": { "const": "pong" }
+    },
+
+    "state.snapshot": {
+      "description": "Fetch full authoritative daemon state with a monotonic version",
+      "params": null,
+      "result": { "$ref": "#/$defs/StateSnapshot" }
     },
 
     "project.list": {
@@ -209,6 +330,18 @@
       "result": { "$ref": "#/$defs/Thread" }
     },
 
+    "thread.hide": {
+      "description": "Hide a thread without deleting its worktree",
+      "params": {
+        "type": "object",
+        "required": ["thread_id"],
+        "properties": {
+          "thread_id": { "type": "string", "format": "uuid" }
+        }
+      },
+      "result": { "type": "object", "required": ["status"], "properties": { "status": { "$ref": "#/$defs/ThreadStatus" } } }
+    },
+
     "thread.list": {
       "description": "List threads, optionally filtered by project",
       "params": {
@@ -280,7 +413,7 @@
           "preset": { "type": "string" }
         }
       },
-      "result": { "type": "object", "properties": { "started": { "type": "boolean" } } }
+      "result": { "type": "object", "required": ["ok"], "properties": { "ok": { "type": "boolean" } } }
     },
 
     "preset.stop": {
@@ -293,7 +426,7 @@
           "preset": { "type": "string" }
         }
       },
-      "result": { "type": "object", "properties": { "stopped": { "type": "boolean" } } }
+      "result": { "type": "object", "required": ["ok"], "properties": { "ok": { "type": "boolean" } } }
     },
 
     "preset.restart": {
@@ -306,50 +439,83 @@
           "preset": { "type": "string" }
         }
       },
-      "result": { "type": "object", "properties": { "restarted": { "type": "boolean" } } }
+      "result": { "type": "object", "required": ["ok"], "properties": { "ok": { "type": "boolean" } } }
     }
   },
 
   "events": {
     "thread.progress": {
       "description": "Streamed during thread.create",
-      "params": {
-        "type": "object",
-        "required": ["thread_id", "step"],
-        "properties": {
-          "thread_id": { "type": "string", "format": "uuid" },
-          "step": { "type": "string", "enum": ["fetching", "creating_worktree", "copying_files", "running_hooks", "starting_presets", "ready"] },
-          "message": { "type": "string" },
-          "error": { "type": ["string", "null"] }
-        }
-      }
+      "params": { "$ref": "#/$defs/ThreadProgress" }
     },
 
     "thread.status_changed": {
       "description": "Thread status transition",
-      "params": {
-        "type": "object",
-        "required": ["thread_id", "old", "new"],
-        "properties": {
-          "thread_id": { "type": "string", "format": "uuid" },
-          "old": { "$ref": "#/$defs/ThreadStatus" },
-          "new": { "$ref": "#/$defs/ThreadStatus" }
-        }
-      }
+      "params": { "$ref": "#/$defs/ThreadStatusChanged" }
     },
 
     "preset.process_event": {
       "description": "Preset process lifecycle event",
+      "params": { "$ref": "#/$defs/PresetProcessEvent" }
+    },
+
+    "project.added": {
+      "description": "A project was added",
       "params": {
         "type": "object",
-        "required": ["thread_id", "preset", "event"],
+        "required": ["project"],
         "properties": {
-          "thread_id": { "type": "string", "format": "uuid" },
-          "preset": { "type": "string" },
-          "event": { "type": "string", "enum": ["started", "exited", "crashed"] },
-          "exit_code": { "type": ["integer", "null"] }
+          "project": { "$ref": "#/$defs/Project" }
         }
       }
-    }
+    },
+
+    "project.removed": {
+      "description": "A project was removed",
+      "params": {
+        "type": "object",
+        "required": ["project_id"],
+        "properties": {
+          "project_id": { "type": "string", "format": "uuid" }
+        }
+      }
+    },
+
+    "thread.created": {
+      "description": "A thread was created",
+      "params": {
+        "type": "object",
+        "required": ["thread"],
+        "properties": {
+          "thread": { "$ref": "#/$defs/Thread" }
+        }
+      }
+    },
+
+    "thread.removed": {
+      "description": "A thread was removed",
+      "params": {
+        "type": "object",
+        "required": ["thread_id"],
+        "properties": {
+          "thread_id": { "type": "string", "format": "uuid" }
+        }
+      }
+    },
+
+    "state.delta": {
+      "description": "Ordered state delta; clients re-fetch snapshot if a version gap is detected",
+      "params": {
+        "type": "object",
+        "required": ["state_version", "changes"],
+        "properties": {
+          "state_version": { "$ref": "#/$defs/StateVersion" },
+          "changes": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/StateDeltaChange" }
+          }
+        }
+      }
   }
+}
 }
