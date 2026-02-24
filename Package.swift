@@ -34,6 +34,10 @@ let package = Package(
                 "GhosttyKit",
                 .product(name: "GRDB", package: "GRDB.swift")
             ],
+            path: "Sources/Threadmill",
+            resources: [
+                .process("../../Resources/Assets.xcassets")
+            ],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Carbon"),
