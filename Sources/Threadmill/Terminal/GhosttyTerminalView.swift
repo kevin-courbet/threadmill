@@ -1,17 +1,25 @@
 import SwiftUI
 
+@MainActor
+protocol TerminalViewEndpoint: AnyObject {
+    func mount(on view: GhosttyNSView)
+    func unmount(from view: GhosttyNSView)
+}
+
+extension RelayEndpoint: TerminalViewEndpoint {}
+
 struct GhosttyTerminalView: NSViewRepresentable {
     let endpoint: RelayEndpoint
 
     func makeNSView(context: Context) -> GhosttyNSView {
         let view = GhosttyNSView(frame: .zero)
         endpoint.mount(on: view)
-        context.coordinator.view = view
+        context.coordinator.endpoint = endpoint
         return view
     }
 
-    func updateNSView(_ nsView: GhosttyNSView, context _: Context) {
-        endpoint.mount(on: nsView)
+    func updateNSView(_ nsView: GhosttyNSView, context: Context) {
+        context.coordinator.mount(endpoint: endpoint, on: nsView)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -19,15 +27,25 @@ struct GhosttyTerminalView: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ nsView: GhosttyNSView, coordinator: Coordinator) {
-        coordinator.endpoint.unmount(view: nsView)
+        coordinator.endpoint.unmount(from: nsView)
     }
 
+    @MainActor
     final class Coordinator {
-        let endpoint: RelayEndpoint
-        weak var view: GhosttyNSView?
+        var endpoint: any TerminalViewEndpoint
 
-        init(endpoint: RelayEndpoint) {
+        init(endpoint: any TerminalViewEndpoint) {
             self.endpoint = endpoint
+        }
+
+        func mount(endpoint nextEndpoint: any TerminalViewEndpoint, on view: GhosttyNSView) {
+            if ObjectIdentifier(endpoint as AnyObject) != ObjectIdentifier(nextEndpoint as AnyObject) {
+                endpoint.unmount(from: view)
+                nextEndpoint.mount(on: view)
+                endpoint = nextEndpoint
+                return
+            }
+            nextEndpoint.mount(on: view)
         }
     }
 }

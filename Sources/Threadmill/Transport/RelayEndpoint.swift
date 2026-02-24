@@ -8,8 +8,8 @@ final class RelayEndpoint {
     let preset: String
     let socketPath: String
 
-    private let connectionManager: ConnectionManager
-    private let surfaceHost: GhosttySurfaceHost
+    private let connectionManager: any ConnectionManaging
+    private let surfaceHost: any SurfaceHosting
 
     private var listenFD: Int32 = -1
     private var clientFD: Int32 = -1
@@ -29,8 +29,8 @@ final class RelayEndpoint {
         channelID: UInt16,
         threadID: String,
         preset: String,
-        connectionManager: ConnectionManager,
-        surfaceHost: GhosttySurfaceHost
+        connectionManager: any ConnectionManaging,
+        surfaceHost: any SurfaceHosting
     ) {
         self.channelID = channelID
         self.threadID = threadID
@@ -49,8 +49,14 @@ final class RelayEndpoint {
     }
 
     func mount(on view: GhosttyNSView) {
+        if mountedView === view, surface != nil {
+            return
+        }
+
         if mountedView !== view {
-            mountedView?.surface = nil
+            if let previousView = mountedView {
+                unmount(from: previousView)
+            }
             mountedView = view
             view.onSizeChanged = { [weak self] in
                 Task { @MainActor [weak self] in
@@ -59,26 +65,48 @@ final class RelayEndpoint {
             }
         }
 
-        if let existingSurface = surface {
-            view.surface = existingSurface
-            return
-        }
+        guard surface == nil else { return }
 
         guard let createdSurface = surfaceHost.createSurface(in: view, socketPath: socketPath) else {
             NSLog("threadmill-relay: failed to create ghostty surface for endpoint %@/%@", threadID, preset)
             return
         }
         surface = createdSurface
+        if let ghosttySurfaceHost = surfaceHost as? GhosttySurfaceHost {
+            ghosttySurfaceHost.register(surface: createdSurface, for: self)
+        }
 
         Task {
             await syncTerminalSize()
         }
     }
 
-    func unmount(view: GhosttyNSView) {
-        if mountedView === view {
-            mountedView = nil
-        }
+    func unmount(from view: GhosttyNSView) {
+        guard mountedView === view else { return }
+        mountedView = nil
+        view.onSizeChanged = nil
+        view.surface = nil
+        surfaceHost.freeSurface(surface)
+        surface = nil
+    }
+
+    func relayChildExited(surface exitedSurface: ghostty_surface_t) {
+        guard surface == exitedSurface else { return }
+        channelID = 0
+        NSLog("threadmill-relay: relay exited for endpoint %@/%@", threadID, preset)
+    }
+
+    func surfaceClosed(_ closedSurface: ghostty_surface_t, processAlive: Bool) {
+        guard surface == closedSurface else { return }
+        channelID = 0
+        surface = nil
+        mountedView?.surface = nil
+        NSLog(
+            "threadmill-relay: surface closed for endpoint %@/%@ process_alive=%d",
+            threadID,
+            preset,
+            processAlive
+        )
     }
 
     func stop() {
@@ -101,6 +129,7 @@ final class RelayEndpoint {
         unlink(socketPath)
         surfaceHost.freeSurface(surface)
         surface = nil
+        mountedView?.onSizeChanged = nil
         mountedView?.surface = nil
         mountedView = nil
         pendingFrames.removeAll(keepingCapacity: false)
@@ -256,6 +285,10 @@ final class RelayEndpoint {
             return
         }
 
+        forwardRelayPayload(Data(buf[0 ..< n]))
+    }
+
+    private func forwardRelayPayload(_ payload: Data) {
         guard connectionManager.state.isConnected else {
             return
         }
@@ -263,10 +296,10 @@ final class RelayEndpoint {
             return
         }
 
-        var frame = Data(count: 2 + n)
+        var frame = Data(count: 2 + payload.count)
         frame[0] = UInt8(channelID >> 8)
         frame[1] = UInt8(channelID & 0xFF)
-        frame.replaceSubrange(2 ..< (2 + n), with: buf[0 ..< n])
+        frame.replaceSubrange(2 ..< (2 + payload.count), with: payload)
 
         let activeChannelID = channelID
         Task {
@@ -290,6 +323,21 @@ final class RelayEndpoint {
                 connectionManager.start()
             }
         }
+    }
+
+    func forwardRelayPayloadForTesting(_ payload: Data) {
+        forwardRelayPayload(payload)
+    }
+
+    var bufferedFrameCount: Int {
+        pendingFrames.count
+    }
+
+    func bufferedFrame(at index: Int) -> Data? {
+        guard pendingFrames.indices.contains(index) else {
+            return nil
+        }
+        return pendingFrames[index]
     }
 
     private func enqueuePendingFrame(_ frame: Data) {

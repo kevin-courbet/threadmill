@@ -2,11 +2,23 @@ import AppKit
 import GhosttyKit
 
 @MainActor
-final class GhosttySurfaceHost {
+final class GhosttySurfaceHost: SurfaceHosting {
+    private final class WeakEndpoint {
+        weak var value: RelayEndpoint?
+
+        init(_ value: RelayEndpoint) {
+            self.value = value
+        }
+    }
+
     private static weak var active: GhosttySurfaceHost?
 
     private var ghosttyApp: ghostty_app_t?
     private var ghosttyConfig: ghostty_config_t?
+    private var endpointBySurface: [ghostty_surface_t: WeakEndpoint] = [:]
+    private var surfaceByUserdata: [UnsafeMutableRawPointer: ghostty_surface_t] = [:]
+    private var userdataBySurface: [ghostty_surface_t: UnsafeMutableRawPointer] = [:]
+    private var activeSurfaces: Set<ghostty_surface_t> = []
 
     init() {
         GhosttySurfaceHost.active = self
@@ -59,6 +71,12 @@ final class GhosttySurfaceHost {
             return nil
         }
 
+        activeSurfaces.insert(surface)
+        if let userdata = surfaceConfig.userdata {
+            surfaceByUserdata[userdata] = surface
+            userdataBySurface[surface] = userdata
+        }
+
         view.surface = surface
         let scale = view.window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
         let bounds = view.bounds
@@ -78,7 +96,20 @@ final class GhosttySurfaceHost {
         guard let surface else {
             return
         }
+        unregister(surface: surface)
         ghostty_surface_free(surface)
+    }
+
+    func register(surface: ghostty_surface_t, for endpoint: RelayEndpoint) {
+        endpointBySurface[surface] = WeakEndpoint(endpoint)
+    }
+
+    func unregister(surface: ghostty_surface_t) {
+        endpointBySurface.removeValue(forKey: surface)
+        activeSurfaces.remove(surface)
+        if let userdata = userdataBySurface.removeValue(forKey: surface) {
+            surfaceByUserdata.removeValue(forKey: userdata)
+        }
     }
 
     func tick() {
@@ -89,6 +120,14 @@ final class GhosttySurfaceHost {
     }
 
     func shutdown() {
+        if !activeSurfaces.isEmpty {
+            NSLog("threadmill: freeing %d active ghostty surfaces before shutdown", activeSurfaces.count)
+            let surfaces = Array(activeSurfaces)
+            for surface in surfaces {
+                freeSurface(surface)
+            }
+        }
+
         if let ghosttyApp {
             ghostty_app_free(ghosttyApp)
             self.ghosttyApp = nil
@@ -132,10 +171,11 @@ final class GhosttySurfaceHost {
             }
         }
 
-        runtimeConfig.action_cb = { _, _, action in
+        runtimeConfig.action_cb = { _, target, action in
             if action.tag == GHOSTTY_ACTION_SHOW_CHILD_EXITED {
-                NSLog("threadmill: child exited, terminating")
-                DispatchQueue.main.async { NSApp.terminate(nil) }
+                DispatchQueue.main.async {
+                    GhosttySurfaceHost.active?.handleChildExited(target: target)
+                }
                 return true
             }
             return false
@@ -170,13 +210,52 @@ final class GhosttySurfaceHost {
             }
         }
 
-        runtimeConfig.close_surface_cb = { _, _ in
-            DispatchQueue.main.async { NSApp.terminate(nil) }
+        runtimeConfig.close_surface_cb = { userdata, processAlive in
+            DispatchQueue.main.async {
+                GhosttySurfaceHost.active?.handleCloseSurface(userdata: userdata, processAlive: processAlive)
+            }
         }
 
         guard let app = ghostty_app_new(&runtimeConfig, config) else {
             fatalError("ghostty_app_new failed")
         }
         ghosttyApp = app
+    }
+
+    private func handleChildExited(target: ghostty_target_s) {
+        guard target.tag == GHOSTTY_TARGET_SURFACE,
+              let surface = target.target.surface else {
+            NSLog("threadmill: child exited for unknown surface")
+            return
+        }
+        guard let endpoint = endpointBySurface[surface]?.value else {
+            NSLog("threadmill: child exited for unregistered surface")
+            return
+        }
+        NSLog("threadmill: child exited for endpoint %@/%@", endpoint.threadID, endpoint.preset)
+        endpoint.relayChildExited(surface: surface)
+    }
+
+    private func handleCloseSurface(userdata: UnsafeMutableRawPointer?, processAlive: Bool) {
+        guard let userdata,
+              let surface = surfaceByUserdata[userdata] else {
+            NSLog("threadmill: close_surface callback without registered userdata")
+            return
+        }
+
+        let endpoint = endpointBySurface[surface]?.value
+        if let endpoint {
+            NSLog(
+                "threadmill: closing surface for endpoint %@/%@ process_alive=%d",
+                endpoint.threadID,
+                endpoint.preset,
+                processAlive
+            )
+        } else {
+            NSLog("threadmill: closing unregistered surface process_alive=%d", processAlive)
+        }
+
+        freeSurface(surface)
+        endpoint?.surfaceClosed(surface, processAlive: processAlive)
     }
 }
