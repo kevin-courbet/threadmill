@@ -12,8 +12,18 @@ tasks:
     desc: Rebuild and restart Spindle daemon on beast
     cmds:
       - task: build:spindle
-      - ssh beast "pkill spindle; sleep 0.5; cd /home/wsl/dev/spindle && nohup ./target/debug/spindle > /tmp/spindle.log 2>&1 &"
+      - ssh beast "systemctl --user restart spindle"
       - echo "Spindle restarted"
+
+  spindle:logs:
+    desc: Tail Spindle service logs on beast
+    cmds:
+      - ssh beast "journalctl --user -u spindle -f --no-pager -n 50"
+
+  spindle:status:
+    desc: Show Spindle service status on beast
+    cmds:
+      - ssh beast "systemctl --user status spindle"
 
   test:
     desc: Run all tests (Swift + Spindle)
