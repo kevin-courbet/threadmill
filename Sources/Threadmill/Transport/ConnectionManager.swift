@@ -219,7 +219,15 @@ final class ConnectionManager {
 
         let delaySeconds = min(pow(2.0, Double(reconnectAttempt - 1)), 30.0)
         reconnectTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+            do {
+                try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled else {
+                return
+            }
             await self?.connect(initial: false)
         }
     }
