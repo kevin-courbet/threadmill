@@ -23,10 +23,7 @@ final class SyncService {
             let projects = parseProjects(projectsResult)
             let threads = parseThreads(threadsResult)
             try databaseManager.replaceAllFromDaemon(projects: projects, threads: threads)
-
-            appState.projects = try databaseManager.allProjects()
-            appState.threads = try databaseManager.allThreads()
-            appState.ensureValidSelection()
+            appState.reloadFromDatabase()
         } catch {
             NSLog("threadmill-sync: sync failed: %@", "\(error)")
         }
