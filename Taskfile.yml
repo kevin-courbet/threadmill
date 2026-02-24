@@ -1,0 +1,47 @@
+version: '3'
+
+tasks:
+  test:
+    desc: Run all tests (Swift + Spindle)
+    cmds:
+      - task: test:swift
+      - task: test:spindle
+
+  test:swift:
+    desc: Run Threadmill Swift unit tests
+    cmds:
+      - swift test
+
+  test:spindle:
+    desc: Run Spindle integration tests on beast
+    cmds:
+      - ssh beast "cd /home/wsl/dev/spindle && ~/.cargo/bin/cargo test"
+
+  test:ui:
+    desc: Run UI e2e tests (requires Accessibility permission)
+    env:
+      THREADMILL_RUN_UI_E2E: "1"
+    cmds:
+      - swift test --filter ThreadmillUITests
+
+  build:
+    desc: Build Threadmill
+    cmds:
+      - swift build
+
+  build:spindle:
+    desc: Build Spindle on beast
+    cmds:
+      - ssh beast "cd /home/wsl/dev/spindle && ~/.cargo/bin/cargo build"
+
+  build:all:
+    desc: Build both Threadmill and Spindle
+    cmds:
+      - task: build
+      - task: build:spindle
+
+  validate:
+    desc: Full validation gate (build all + test all)
+    cmds:
+      - task: build:all
+      - task: test
