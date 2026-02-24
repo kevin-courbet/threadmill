@@ -24,12 +24,14 @@ final class AppState {
     }
     var selectedEndpoint: RelayEndpoint?
 
-    private var databaseManager: DatabaseManager?
-    private var syncService: SyncService?
-    private var multiplexer: TerminalMultiplexer?
-    private var connectionManager: ConnectionManager?
+    private var databaseManager: (any DatabaseManaging)?
+    private var syncService: (any SyncServicing)?
+    private var multiplexer: (any TerminalMultiplexing)?
+    private var connectionManager: (any ConnectionManaging)?
     private var eventSyncScheduled = false
     private var attachedEndpoints: [AttachmentKey: RelayEndpoint] = [:]
+    private var pendingAttachTasks: [AttachmentKey: Task<Void, Never>] = [:]
+    private var permanentAttachFailures: Set<AttachmentKey> = []
 
     var selectedThread: ThreadModel? {
         threads.first { $0.id == selectedThreadID }
@@ -63,10 +65,10 @@ final class AppState {
     }
 
     func configure(
-        connectionManager: ConnectionManager,
-        databaseManager: DatabaseManager,
-        syncService: SyncService,
-        multiplexer: TerminalMultiplexer
+        connectionManager: any ConnectionManaging,
+        databaseManager: any DatabaseManaging,
+        syncService: any SyncServicing,
+        multiplexer: any TerminalMultiplexing
     ) {
         self.connectionManager = connectionManager
         self.databaseManager = databaseManager
@@ -120,16 +122,53 @@ final class AppState {
         }
     }
 
+    func scheduleAttachSelectedPreset() {
+        Task { @MainActor [weak self] in
+            await self?.attachSelectedPreset()
+        }
+    }
+
     func attachSelectedPreset() async {
         guard let selectedThread else {
+            cancelPendingAttachTasks()
             selectedEndpoint = nil
             return
         }
 
         let preset = selectedPreset ?? presets.first?.name ?? "terminal"
         let requestedThreadID = selectedThread.id
-        let requestedPreset = preset
-        let key = AttachmentKey(threadID: requestedThreadID, preset: requestedPreset)
+        let key = AttachmentKey(threadID: requestedThreadID, preset: preset)
+
+        cancelPendingAttachTasks(except: key)
+        guard canAttemptAttach(threadID: requestedThreadID, key: key) else {
+            cancelPendingAttachTasks(threadID: requestedThreadID)
+            selectedEndpoint = attachedEndpoints[key]
+            return
+        }
+
+        if let existingTask = pendingAttachTasks[key] {
+            await existingTask.value
+            return
+        }
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+            defer { self.pendingAttachTasks.removeValue(forKey: key) }
+            await self.attachPreset(threadID: requestedThreadID, preset: preset, key: key)
+        }
+        pendingAttachTasks[key] = task
+        await task.value
+    }
+
+    private func attachPreset(threadID requestedThreadID: String, preset requestedPreset: String, key: AttachmentKey) async {
+        guard canAttemptAttach(threadID: requestedThreadID, key: key) else {
+            if selectedThreadID == requestedThreadID && selectedPreset == requestedPreset {
+                selectedEndpoint = attachedEndpoints[key]
+            }
+            return
+        }
 
         func selectionMatchesRequest() -> Bool {
             selectedThreadID == requestedThreadID && selectedPreset == requestedPreset
@@ -151,15 +190,16 @@ final class AppState {
                         ],
                         timeout: 20
                     )
-                    guard selectionMatchesRequest() else {
+                    guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
                         return
                     }
 
                     _ = try await multiplexer.attach(threadID: requestedThreadID, preset: requestedPreset)
-                    guard selectionMatchesRequest() else {
+                    guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
                         return
                     }
                 } catch {
+                    handleAttachError(error, key: key, threadID: requestedThreadID)
                     NSLog("threadmill-state: reattach failed: %@", "\(error)")
                 }
             }
@@ -175,18 +215,19 @@ final class AppState {
                 ],
                 timeout: 20
             )
-            guard selectionMatchesRequest() else {
+            guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
                 return
             }
 
             let endpoint = try await multiplexer.attach(threadID: requestedThreadID, preset: requestedPreset)
-            guard selectionMatchesRequest() else {
+            guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
                 return
             }
 
             attachedEndpoints[key] = endpoint
             selectedEndpoint = endpoint
         } catch {
+            handleAttachError(error, key: key, threadID: requestedThreadID)
             NSLog("threadmill-state: attach failed: %@", "\(error)")
         }
     }
@@ -350,7 +391,18 @@ final class AppState {
 
         _ = updateThreadStatus(threadID: threadID, status: status)
 
-        if status == .closed || status == .hidden {
+        if status == .creating || status == .failed {
+            cancelPendingAttachTasks(threadID: threadID)
+        }
+
+        if status == .active {
+            clearPermanentAttachFailures(threadID: threadID)
+            if selectedThreadID == threadID {
+                scheduleAttachSelectedPreset()
+            }
+        }
+
+        if status == .closed || status == .hidden || status == .failed {
             detachEndpoints(threadID: threadID)
         }
     }
@@ -372,6 +424,8 @@ final class AppState {
 
         if threadID != "unknown", let errorText, !errorText.isEmpty {
             _ = updateThreadStatus(threadID: threadID, status: .failed)
+            cancelPendingAttachTasks(threadID: threadID)
+            detachEndpoints(threadID: threadID)
         }
 
         if let errorText, !errorText.isEmpty {
@@ -410,6 +464,55 @@ final class AppState {
         Task { @MainActor [weak self] in
             defer { self?.eventSyncScheduled = false }
             await self?.syncService?.syncFromDaemon()
+        }
+    }
+
+    private func canAttemptAttach(threadID: String, key: AttachmentKey) -> Bool {
+        guard !permanentAttachFailures.contains(key) else {
+            return false
+        }
+        guard let status = threads.first(where: { $0.id == threadID })?.status else {
+            return false
+        }
+        return status != .creating && status != .failed
+    }
+
+    private func handleAttachError(_ error: Error, key: AttachmentKey, threadID: String) {
+        guard isPermanentTerminalAttachError(error) else {
+            return
+        }
+        permanentAttachFailures.insert(key)
+        cancelPendingAttachTasks(threadID: threadID)
+        detachEndpoint(threadID: threadID, preset: key.preset)
+    }
+
+    private func isPermanentTerminalAttachError(_ error: Error) -> Bool {
+        if let rpcError = error as? JSONRPCErrorResponse {
+            return rpcError.message.localizedCaseInsensitiveContains("tmux session not running")
+        }
+        return String(describing: error).localizedCaseInsensitiveContains("tmux session not running")
+    }
+
+    private func clearPermanentAttachFailures(threadID: String) {
+        let staleKeys = permanentAttachFailures.filter { $0.threadID == threadID }
+        for key in staleKeys {
+            permanentAttachFailures.remove(key)
+        }
+    }
+
+    private func cancelPendingAttachTasks(threadID: String? = nil, except keepKey: AttachmentKey? = nil) {
+        let keys = pendingAttachTasks.keys.filter { key in
+            if let keepKey, keepKey == key {
+                return false
+            }
+            if let threadID, key.threadID != threadID {
+                return false
+            }
+            return true
+        }
+        for key in keys {
+            pendingAttachTasks[key]?.cancel()
+            pendingAttachTasks.removeValue(forKey: key)
         }
     }
 

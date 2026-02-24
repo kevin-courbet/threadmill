@@ -4,7 +4,7 @@ struct AddProjectSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
-    @State private var path = "/home/wsl/dev"
+    @State private var path = ""
     @State private var browseResults: [String] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -15,13 +15,21 @@ struct AddProjectSheet: View {
                 .font(.title3.weight(.semibold))
 
             Form {
-                TextField("Path on beast", text: $path)
+                Text("Remote path on your development machine (beast).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                TextField("Path on beast", text: $path, prompt: Text("/home/wsl/dev/myproject"))
+                    .accessibilityIdentifier("sheet.add-project.path-input")
+                    .accessibilityLabel("Sheet Add Project Path")
 
                 Button("Browse") {
                     Task {
                         await browse()
                     }
                 }
+                .accessibilityIdentifier("sheet.add-project.browse-button")
+                .accessibilityLabel("Sheet Add Project Browse")
 
                 if !browseResults.isEmpty {
                     Picker("Directories", selection: $path) {
@@ -29,6 +37,7 @@ struct AddProjectSheet: View {
                             Text(candidate).tag(candidate)
                         }
                     }
+                    .accessibilityIdentifier("sheet.add-project.directories-picker")
                 }
 
                 if let errorMessage {
@@ -44,6 +53,8 @@ struct AddProjectSheet: View {
                 Button("Cancel") {
                     dismiss()
                 }
+                .accessibilityIdentifier("sheet.add-project.cancel-button")
+                .accessibilityLabel("Sheet Add Project Cancel")
                 Button("Add") {
                     Task {
                         await addProject()
@@ -51,10 +62,13 @@ struct AddProjectSheet: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLoading)
+                .accessibilityIdentifier("sheet.add-project.submit-button")
+                .accessibilityLabel("Sheet Add Project Submit")
             }
         }
         .padding(16)
         .frame(width: 520)
+        .accessibilityIdentifier("sheet.add-project")
     }
 
     private func browse() async {
@@ -63,7 +77,12 @@ struct AddProjectSheet: View {
 
         do {
             errorMessage = nil
-            browseResults = try await appState.browseDirectories(path: path)
+            let trimmedPath = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            let browsePath = trimmedPath.isEmpty ? "/home/wsl/dev" : trimmedPath
+            browseResults = try await appState.browseDirectories(path: browsePath)
+            if trimmedPath.isEmpty {
+                path = browsePath
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
