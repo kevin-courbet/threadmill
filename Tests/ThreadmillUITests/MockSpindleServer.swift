@@ -422,18 +422,20 @@ final class MockSpindleServer {
     }
 
     private func projectPayload(_ project: MockProject) -> [String: Any] {
-        [
+        let presets = project.presets.map { preset in
+            [
+                "name": preset.name,
+                "command": preset.command,
+                "cwd": preset.cwd ?? NSNull(),
+            ] as [String: Any]
+        }
+
+        return [
             "id": project.id,
             "name": project.name,
             "path": project.path,
             "default_branch": project.defaultBranch,
-            "presets": project.presets.map { preset in
-                [
-                    "name": preset.name,
-                    "command": preset.command,
-                    "cwd": preset.cwd as Any,
-                ]
-            },
+            "presets": presets,
         ]
     }
 
