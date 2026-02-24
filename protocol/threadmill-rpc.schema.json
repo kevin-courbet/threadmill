@@ -255,16 +255,10 @@
         "required": ["url"],
         "properties": {
           "url": { "type": "string" },
-          "path": { "type": "string", "description": "Optional absolute directory on beast where the repository will be cloned" }
+          "path": { "type": "string", "description": "Optional absolute destination path (or parent directory) on beast. If omitted, clone goes to /home/wsl/dev/<repo-name>." }
         }
       },
-      "result": {
-        "type": "object",
-        "required": ["project"],
-        "properties": {
-          "project": { "$ref": "#/$defs/Project" }
-        }
-      }
+      "result": { "$ref": "#/$defs/Project" }
     },
 
     "project.remove": {

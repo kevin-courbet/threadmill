@@ -165,7 +165,7 @@ Transport drop detected (SSH dies, WebSocket closes)
 | project.list | → | {} | [Project] |
 | project.remove | → | {project_id} | {} |
 | project.branches | → | {project_id} | [string] |
-| project.clone | → | {url, path?} | {project} |
+| project.clone | → | {url, path?} | Project |
 | thread.create | → | {project_id, name, branch?} | {thread} |
 | thread.list | → | {} | [Thread] |
 | thread.close | → | {thread_id} | {} |
