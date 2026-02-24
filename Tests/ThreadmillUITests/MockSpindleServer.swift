@@ -2,11 +2,18 @@ import Foundation
 import Network
 
 final class MockSpindleServer {
+    private struct MockPreset {
+        var name: String
+        var command: String
+        var cwd: String?
+    }
+
     private struct MockProject {
         var id: String
         var name: String
         var path: String
         var defaultBranch: String
+        var presets: [MockPreset]
     }
 
     private struct MockThread {
@@ -124,7 +131,16 @@ final class MockSpindleServer {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
         projects = [
-            MockProject(id: "project-main", name: "myautonomy", path: "/home/wsl/dev/myautonomy", defaultBranch: "main"),
+            MockProject(
+                id: "project-main",
+                name: "myautonomy",
+                path: "/home/wsl/dev/myautonomy",
+                defaultBranch: "main",
+                presets: [
+                    MockPreset(name: "editor", command: "nvim", cwd: nil),
+                    MockPreset(name: "shell", command: "bash", cwd: nil),
+                ]
+            ),
         ]
 
         threads = [
@@ -284,7 +300,16 @@ final class MockSpindleServer {
         case "project.add":
             let path = params?["path"] as? String ?? "/home/wsl/dev/project"
             let name = URL(fileURLWithPath: path).lastPathComponent
-            let project = MockProject(id: uniqueProjectID(for: name), name: name, path: path, defaultBranch: "main")
+            let project = MockProject(
+                id: uniqueProjectID(for: name),
+                name: name,
+                path: path,
+                defaultBranch: "main",
+                presets: [
+                    MockPreset(name: "editor", command: "nvim", cwd: nil),
+                    MockPreset(name: "shell", command: "bash", cwd: nil),
+                ]
+            )
             projects.append(project)
             let event: [String: Any] = ["method": "project.added", "params": ["project_id": project.id]]
             return (ok(id: id, result: projectPayload(project)), [event])
@@ -402,6 +427,13 @@ final class MockSpindleServer {
             "name": project.name,
             "path": project.path,
             "default_branch": project.defaultBranch,
+            "presets": project.presets.map { preset in
+                [
+                    "name": preset.name,
+                    "command": preset.command,
+                    "cwd": preset.cwd as Any,
+                ]
+            },
         ]
     }
 
