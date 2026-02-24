@@ -4,6 +4,7 @@ struct ProjectSection: View {
     let project: Project
     let threads: [ThreadModel]
     @Binding var selectedThreadID: String?
+    let onNewThread: (Project) -> Void
     let onHideThread: (ThreadModel) -> Void
     let onCloseThread: (ThreadModel) -> Void
     let onReopenThread: (ThreadModel) -> Void
@@ -48,8 +49,21 @@ struct ProjectSection: View {
                     }
                 }
             } label: {
-                Text(project.name)
-                    .font(.headline)
+                HStack(spacing: 8) {
+                    Text(project.name)
+                        .font(.headline)
+
+                    Spacer(minLength: 0)
+
+                    Button {
+                        onNewThread(project)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }

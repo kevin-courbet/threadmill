@@ -23,6 +23,8 @@ struct NewThreadSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
+    let preselectedProjectID: String?
+
     @State private var selectedProjectID: String?
     @State private var name = ""
     @State private var sourceType: NewThreadSourceType = .newFeature
@@ -31,6 +33,11 @@ struct NewThreadSheet: View {
     @State private var branches: [String] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+
+    init(preselectedProjectID: String? = nil) {
+        self.preselectedProjectID = preselectedProjectID
+        _selectedProjectID = State(initialValue: preselectedProjectID)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -43,6 +50,7 @@ struct NewThreadSheet: View {
                         Text(project.name).tag(Optional(project.id))
                     }
                 }
+                .disabled(preselectedProjectID != nil)
 
                 TextField("Thread name", text: $name)
 
@@ -97,7 +105,11 @@ struct NewThreadSheet: View {
         .padding(16)
         .frame(width: 520)
         .onAppear {
-            selectedProjectID = selectedProjectID ?? appState.projects.first?.id
+            if let preselectedProjectID {
+                selectedProjectID = preselectedProjectID
+            } else {
+                selectedProjectID = selectedProjectID ?? appState.projects.first?.id
+            }
         }
         .onChange(of: selectedProjectID) { _, _ in
             branches = []
