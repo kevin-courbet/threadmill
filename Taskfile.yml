@@ -13,7 +13,7 @@ tasks:
     cmds:
       - task: build:spindle
       - ssh beast "systemctl --user restart spindle"
-      - echo "Spindle restarted"
+      - ssh beast "systemctl --user status spindle --no-pager"
 
   spindle:logs:
     desc: Tail Spindle service logs on beast
@@ -23,7 +23,7 @@ tasks:
   spindle:status:
     desc: Show Spindle service status on beast
     cmds:
-      - ssh beast "systemctl --user status spindle"
+      - ssh beast "systemctl --user status spindle --no-pager"
 
   test:
     desc: Run all tests (Swift + Spindle)
