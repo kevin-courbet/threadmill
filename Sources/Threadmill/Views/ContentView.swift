@@ -7,6 +7,7 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             SidebarView(showingAddProjectSheet: $showingAddProjectSheet)
+                .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 400)
         } detail: {
             if appState.projects.isEmpty {
                 VStack(spacing: 14) {

@@ -27,7 +27,7 @@ struct JSONRPCErrorResponse: LocalizedError {
 }
 
 @MainActor
-final class WebSocketClient: NSObject {
+final class WebSocketClient: NSObject, WebSocketManaging {
     var onEvent: ((String, [String: Any]?) -> Void)?
     var onBinaryMessage: ((Data) -> Void)?
     var onDisconnect: ((Error?) -> Void)?
@@ -61,7 +61,6 @@ final class WebSocketClient: NSObject {
         self.isManualDisconnect = false
 
         socketTask.resume()
-        receiveNextMessage()
     }
 
     func disconnect() {
@@ -266,6 +265,16 @@ final class WebSocketClient: NSObject {
 }
 
 extension WebSocketClient: URLSessionWebSocketDelegate {
+    nonisolated func urlSession(
+        _: URLSession,
+        webSocketTask _: URLSessionWebSocketTask,
+        didOpenWithProtocol _: String?
+    ) {
+        Task { @MainActor [weak self] in
+            self?.receiveNextMessage()
+        }
+    }
+
     nonisolated func urlSession(
         _: URLSession,
         webSocketTask _: URLSessionWebSocketTask,
