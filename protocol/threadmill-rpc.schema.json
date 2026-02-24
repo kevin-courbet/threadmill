@@ -248,6 +248,25 @@
       "result": { "$ref": "#/$defs/Project" }
     },
 
+    "project.clone": {
+      "description": "Clone a repository on beast and register it as a project",
+      "params": {
+        "type": "object",
+        "required": ["url"],
+        "properties": {
+          "url": { "type": "string" },
+          "path": { "type": "string", "description": "Optional absolute directory on beast where the repository will be cloned" }
+        }
+      },
+      "result": {
+        "type": "object",
+        "required": ["project"],
+        "properties": {
+          "project": { "$ref": "#/$defs/Project" }
+        }
+      }
+    },
+
     "project.remove": {
       "description": "Unregister a project (does not delete files)",
       "params": {

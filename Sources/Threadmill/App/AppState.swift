@@ -341,6 +341,24 @@ final class AppState {
         await syncService?.syncFromDaemon()
     }
 
+    func cloneRepo(url: String, path: String?) async throws {
+        guard let connectionManager else {
+            return
+        }
+
+        var params: [String: Any] = ["url": url]
+        if let path {
+            params["path"] = path
+        }
+
+        _ = try await connectionManager.request(
+            method: "project.clone",
+            params: params,
+            timeout: 120
+        )
+        await syncService?.syncFromDaemon()
+    }
+
     func branches(for projectID: String) async throws -> [String] {
         guard let connectionManager else {
             return []
