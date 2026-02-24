@@ -1,13 +1,13 @@
 import Foundation
 
 @MainActor
-final class SyncService {
-    private let connectionManager: ConnectionManager
-    private let databaseManager: DatabaseManager
+final class SyncService: SyncServicing {
+    private let connectionManager: any ConnectionManaging
+    private let databaseManager: any DatabaseManaging
     private let appState: AppState
     private let formatter: ISO8601DateFormatter
 
-    init(connectionManager: ConnectionManager, databaseManager: DatabaseManager, appState: AppState) {
+    init(connectionManager: any ConnectionManaging, databaseManager: any DatabaseManaging, appState: AppState) {
         self.connectionManager = connectionManager
         self.databaseManager = databaseManager
         self.appState = appState
@@ -17,7 +17,7 @@ final class SyncService {
 
     func syncFromDaemon() async {
         do {
-            let projectsResult = try await connectionManager.request(method: "project.list", timeout: 10)
+            let projectsResult = try await connectionManager.request(method: "project.list", params: nil, timeout: 10)
             let threadsResult = try await connectionManager.request(method: "thread.list", params: [:], timeout: 10)
 
             let projects = parseProjects(projectsResult)

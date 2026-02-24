@@ -25,4 +25,16 @@ struct ThreadModel: Codable, FetchableRecord, PersistableRecord, Identifiable, E
         case createdAt = "created_at"
         case tmuxSession = "tmux_session"
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case projectId = "project_id"
+        case name
+        case branch
+        case worktreePath = "worktree_path"
+        case status
+        case sourceType = "source_type"
+        case createdAt = "created_at"
+        case tmuxSession = "tmux_session"
+    }
 }

@@ -61,6 +61,7 @@ final class WebSocketClient: NSObject, WebSocketManaging {
         self.isManualDisconnect = false
 
         socketTask.resume()
+        receiveNextMessage()
     }
 
     func disconnect() {
@@ -270,9 +271,7 @@ extension WebSocketClient: URLSessionWebSocketDelegate {
         webSocketTask _: URLSessionWebSocketTask,
         didOpenWithProtocol _: String?
     ) {
-        Task { @MainActor [weak self] in
-            self?.receiveNextMessage()
-        }
+        // Handshake complete — receive loop already started in connect()
     }
 
     nonisolated func urlSession(

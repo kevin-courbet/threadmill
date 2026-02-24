@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class TerminalMultiplexer {
+final class TerminalMultiplexer: TerminalMultiplexing {
     private struct AttachmentKey: Hashable {
         let threadID: String
         let preset: String
@@ -10,10 +10,10 @@ final class TerminalMultiplexer {
     private var endpointsByChannel: [UInt16: RelayEndpoint] = [:]
     private var endpointsByAttachment: [AttachmentKey: RelayEndpoint] = [:]
 
-    private let connectionManager: ConnectionManager
-    private let surfaceHost: GhosttySurfaceHost
+    private let connectionManager: any ConnectionManaging
+    private let surfaceHost: any SurfaceHosting
 
-    init(connectionManager: ConnectionManager, surfaceHost: GhosttySurfaceHost) {
+    init(connectionManager: any ConnectionManaging, surfaceHost: any SurfaceHosting) {
         self.connectionManager = connectionManager
         self.surfaceHost = surfaceHost
     }

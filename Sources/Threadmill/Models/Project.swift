@@ -15,4 +15,11 @@ struct Project: Codable, FetchableRecord, PersistableRecord, Identifiable, Equat
         case remotePath = "remote_path"
         case defaultBranch = "default_branch"
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case remotePath = "remote_path"
+        case defaultBranch = "default_branch"
+    }
 }

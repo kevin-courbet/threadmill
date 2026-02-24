@@ -1,8 +1,21 @@
 import Foundation
 
 struct ThreadmillConfig {
-    static let host = "beast"
-    static let daemonPort = 19990
+    let host: String
+    let daemonPort: Int
+    let useSSHTunnel: Bool
+
+    static func load(environment: [String: String] = ProcessInfo.processInfo.environment) -> ThreadmillConfig {
+        let host = environment["THREADMILL_HOST"] ?? "beast"
+        let daemonPort = Int(environment["THREADMILL_DAEMON_PORT"] ?? "") ?? 19990
+        let disableTunnel = (environment["THREADMILL_DISABLE_SSH_TUNNEL"] ?? "").lowercased()
+        let useSSHTunnel = !(disableTunnel == "1" || disableTunnel == "true" || disableTunnel == "yes")
+        return ThreadmillConfig(host: host, daemonPort: daemonPort, useSSHTunnel: useSSHTunnel)
+    }
+
+    var webSocketHost: String {
+        useSSHTunnel ? "127.0.0.1" : host
+    }
 }
 
 enum ConnectionStatus: Equatable {
@@ -33,7 +46,9 @@ enum ConnectionStatus: Equatable {
 }
 
 @MainActor
-final class ConnectionManager {
+final class ConnectionManager: ConnectionManaging {
+    private let config: ThreadmillConfig
+
     private(set) var state: ConnectionStatus = .disconnected {
         didSet {
             guard oldValue != state else {
@@ -50,10 +65,11 @@ final class ConnectionManager {
     var onConnected: (() -> Void)?
     var onEvent: ((String, [String: Any]?) -> Void)?
 
-    let tunnelManager: SSHTunnelManager
-    let webSocketClient: WebSocketClient
+    let tunnelManager: any TunnelManaging
+    let webSocketClient: any WebSocketManaging
 
-    private let maxReconnectAttempts = 8
+    private let maxReconnectAttempts: Int
+    private let reconnectDelay: (Int) -> TimeInterval
     private var reconnectAttempt = 0
     private var shouldRun = false
     private var isConnecting = false
@@ -63,29 +79,40 @@ final class ConnectionManager {
 
     private var binaryFrameHandler: ((Data) -> Void)?
 
-    init() {
-        tunnelManager = SSHTunnelManager(
-            host: ThreadmillConfig.host,
-            localPort: ThreadmillConfig.daemonPort,
-            remotePort: ThreadmillConfig.daemonPort
+    init(
+        config: ThreadmillConfig = .load(),
+        tunnelManager: (any TunnelManaging)? = nil,
+        webSocketClient: (any WebSocketManaging)? = nil,
+        maxReconnectAttempts: Int = 8,
+        reconnectDelay: @escaping (Int) -> TimeInterval = { attempt in
+            min(pow(2.0, Double(attempt - 1)), 30.0)
+        }
+    ) {
+        self.config = config
+        self.maxReconnectAttempts = maxReconnectAttempts
+        self.reconnectDelay = reconnectDelay
+        self.tunnelManager = tunnelManager ?? SSHTunnelManager(
+            host: config.host,
+            localPort: config.daemonPort,
+            remotePort: config.daemonPort
         )
-        webSocketClient = WebSocketClient()
+        self.webSocketClient = webSocketClient ?? WebSocketClient()
 
-        tunnelManager.onExit = { [weak self] _ in
+        self.tunnelManager.onExit = { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.handleTransportDrop()
             }
         }
 
-        webSocketClient.onBinaryMessage = { [weak self] data in
+        self.webSocketClient.onBinaryMessage = { [weak self] data in
             self?.binaryFrameHandler?(data)
         }
 
-        webSocketClient.onEvent = { [weak self] method, params in
+        self.webSocketClient.onEvent = { [weak self] method, params in
             self?.onEvent?(method, params)
         }
 
-        webSocketClient.onDisconnect = { [weak self] _ in
+        self.webSocketClient.onDisconnect = { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.handleTransportDrop()
             }
@@ -99,7 +126,7 @@ final class ConnectionManager {
 
         shouldRun = true
         reconnectAttempt = 0
-        reconnectTask?.cancel()
+        cancelScheduledReconnect()
 
         Task {
             await connect(initial: true)
@@ -108,12 +135,16 @@ final class ConnectionManager {
 
     func stop() {
         shouldRun = false
-        reconnectTask?.cancel()
-        reconnectTask = nil
+        cancelScheduledReconnect()
         stopPingLoop()
         webSocketClient.disconnect()
         tunnelManager.stop()
         state = .disconnected
+    }
+
+    func cancelScheduledReconnect() {
+        reconnectTask?.cancel()
+        reconnectTask = nil
     }
 
     func setBinaryFrameHandler(_ handler: ((Data) -> Void)?) {
@@ -150,11 +181,13 @@ final class ConnectionManager {
         NSLog("threadmill-conn: connecting (initial=%d)", initial ? 1 : 0)
 
         do {
-            NSLog("threadmill-conn: starting SSH tunnel")
-            try await tunnelManager.start()
-            NSLog("threadmill-conn: SSH tunnel up")
+            if config.useSSHTunnel {
+                NSLog("threadmill-conn: starting SSH tunnel")
+                try await tunnelManager.start()
+                NSLog("threadmill-conn: SSH tunnel up")
+            }
 
-            guard let url = URL(string: "ws://127.0.0.1:\(ThreadmillConfig.daemonPort)") else {
+            guard let url = URL(string: "ws://\(config.webSocketHost):\(config.daemonPort)") else {
                 state = .disconnected
                 return
             }
@@ -172,7 +205,9 @@ final class ConnectionManager {
             NSLog("threadmill-conn: connect failed: %@", "\(error)")
             stopPingLoop()
             webSocketClient.disconnect()
-            tunnelManager.stop()
+            if config.useSSHTunnel {
+                tunnelManager.stop()
+            }
             scheduleReconnect()
         }
     }
@@ -197,7 +232,9 @@ final class ConnectionManager {
         state = .disconnected
         stopPingLoop()
         webSocketClient.disconnect()
-        tunnelManager.stop()
+        if config.useSSHTunnel {
+            tunnelManager.stop()
+        }
         scheduleReconnect()
     }
 
@@ -207,7 +244,7 @@ final class ConnectionManager {
             return
         }
 
-        reconnectTask?.cancel()
+        cancelScheduledReconnect()
 
         guard reconnectAttempt < maxReconnectAttempts else {
             state = .disconnected
@@ -217,7 +254,7 @@ final class ConnectionManager {
         reconnectAttempt += 1
         state = .reconnecting(attempt: reconnectAttempt)
 
-        let delaySeconds = min(pow(2.0, Double(reconnectAttempt - 1)), 30.0)
+        let delaySeconds = reconnectDelay(reconnectAttempt)
         reconnectTask = Task { [weak self] in
             do {
                 try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))

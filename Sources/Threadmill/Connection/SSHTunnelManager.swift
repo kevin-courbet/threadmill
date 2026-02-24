@@ -13,7 +13,7 @@ enum SSHTunnelError: LocalizedError {
 }
 
 @MainActor
-final class SSHTunnelManager: ObservableObject {
+final class SSHTunnelManager: ObservableObject, TunnelManaging {
     @Published private(set) var isRunning = false
 
     let host: String

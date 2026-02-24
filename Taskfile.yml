@@ -1,6 +1,20 @@
 version: '3'
 
 tasks:
+  run:
+    desc: Build and launch Threadmill (restarts Spindle if needed)
+    cmds:
+      - task: build
+      - task: spindle:restart
+      - open .build/debug/Threadmill
+
+  spindle:restart:
+    desc: Rebuild and restart Spindle daemon on beast
+    cmds:
+      - task: build:spindle
+      - ssh beast "pkill spindle; sleep 0.5; cd /home/wsl/dev/spindle && nohup ./target/debug/spindle > /tmp/spindle.log 2>&1 &"
+      - echo "Spindle restarted"
+
   test:
     desc: Run all tests (Swift + Spindle)
     cmds:

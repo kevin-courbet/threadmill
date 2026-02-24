@@ -51,6 +51,16 @@ let package = Package(
                 .linkedLibrary("z"),
                 .linkedLibrary("c++"),
             ]
+        ),
+        .testTarget(
+            name: "ThreadmillTests",
+            dependencies: ["Threadmill"],
+            path: "Tests/ThreadmillTests"
+        ),
+        .testTarget(
+            name: "ThreadmillUITests",
+            dependencies: ["Threadmill"],
+            path: "Tests/ThreadmillUITests"
         )
     ]
 )

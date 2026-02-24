@@ -2,20 +2,31 @@ import Foundation
 import GRDB
 
 @MainActor
-final class DatabaseManager {
+final class DatabaseManager: DatabaseManaging {
     private let dbQueue: DatabaseQueue
 
     init() throws {
         let fileManager = FileManager.default
-        let appSupportURL = try fileManager.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let directoryURL = appSupportURL.appendingPathComponent("Threadmill", isDirectory: true)
-        try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true, attributes: nil)
-        let databaseURL = directoryURL.appendingPathComponent("threadmill.db")
+        let databaseURL: URL
+
+        if let overridePath = ProcessInfo.processInfo.environment["THREADMILL_DB_PATH"], !overridePath.isEmpty {
+            databaseURL = URL(fileURLWithPath: overridePath)
+            try fileManager.createDirectory(
+                at: databaseURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+        } else {
+            let appSupportURL = try fileManager.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
+            )
+            let directoryURL = appSupportURL.appendingPathComponent("Threadmill", isDirectory: true)
+            try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true, attributes: nil)
+            databaseURL = directoryURL.appendingPathComponent("threadmill.db")
+        }
 
         dbQueue = try DatabaseQueue(path: databaseURL.path)
         try migrate()

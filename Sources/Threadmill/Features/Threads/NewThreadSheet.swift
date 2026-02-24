@@ -51,14 +51,20 @@ struct NewThreadSheet: View {
                     }
                 }
                 .disabled(preselectedProjectID != nil)
+                .accessibilityIdentifier("sheet.new-thread.project-picker")
+                .accessibilityLabel("Sheet New Thread Project")
 
                 TextField("Thread name", text: $name)
+                    .accessibilityIdentifier("sheet.new-thread.name-input")
+                    .accessibilityLabel("Sheet New Thread Name")
 
                 Picker("Source", selection: $sourceType) {
                     ForEach(NewThreadSourceType.allCases) { type in
                         Text(type.label).tag(type)
                     }
                 }
+                .accessibilityIdentifier("sheet.new-thread.source-picker")
+                .accessibilityLabel("Sheet New Thread Source")
 
                 if sourceType == .existingBranch {
                     if branches.isEmpty {
@@ -74,10 +80,14 @@ struct NewThreadSheet: View {
                             Text(branch).tag(branch)
                         }
                     }
+                    .accessibilityIdentifier("sheet.new-thread.branch-picker")
+                    .accessibilityLabel("Sheet New Thread Branch")
                 }
 
                 if sourceType == .pullRequest {
                     TextField("PR URL", text: $prURL)
+                        .accessibilityIdentifier("sheet.new-thread.pr-url-input")
+                        .accessibilityLabel("Sheet New Thread PR URL")
                 }
 
                 if let errorMessage {
@@ -93,6 +103,8 @@ struct NewThreadSheet: View {
                 Button("Cancel") {
                     dismiss()
                 }
+                .accessibilityIdentifier("sheet.new-thread.cancel-button")
+                .accessibilityLabel("Sheet New Thread Cancel")
                 Button("Create") {
                     Task {
                         await createThread()
@@ -100,10 +112,13 @@ struct NewThreadSheet: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(isCreateDisabled)
+                .accessibilityIdentifier("sheet.new-thread.submit-button")
+                .accessibilityLabel("Sheet New Thread Submit")
             }
         }
         .padding(16)
         .frame(width: 520)
+        .accessibilityIdentifier("sheet.new-thread")
         .onAppear {
             if let preselectedProjectID {
                 selectedProjectID = preselectedProjectID
