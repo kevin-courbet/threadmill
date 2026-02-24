@@ -152,21 +152,21 @@ struct NewThreadSheet: View {
 
         do {
             errorMessage = nil
-            let sourceRef: String?
+            let branch: String?
             switch sourceType {
             case .newFeature:
-                sourceRef = nil
+                branch = nil
             case .existingBranch:
-                sourceRef = selectedBranch
+                branch = selectedBranch
             case .pullRequest:
-                sourceRef = prURL
+                branch = prURL
             }
 
             try await appState.createThread(
                 projectID: selectedProjectID,
                 name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                 sourceType: sourceType.rawValue,
-                sourceRef: sourceRef
+                branch: branch
             )
             dismiss()
         } catch {

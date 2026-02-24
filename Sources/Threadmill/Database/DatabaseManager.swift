@@ -66,11 +66,12 @@ final class DatabaseManager {
         }
     }
 
-    func updateThreadStatus(threadID: String, status: ThreadStatus) throws {
+    func updateThreadStatus(threadID: String, status: ThreadStatus) throws -> Bool {
         try dbQueue.write { db in
-            _ = try ThreadModel
+            let updated = try ThreadModel
                 .filter(ThreadModel.Columns.id == threadID)
                 .updateAll(db, ThreadModel.Columns.status.set(to: status.rawValue))
+            return updated > 0
         }
     }
 

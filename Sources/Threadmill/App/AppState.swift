@@ -15,6 +15,7 @@ final class AppState {
     private var syncService: SyncService?
     private var multiplexer: TerminalMultiplexer?
     private var connectionManager: ConnectionManager?
+    private var eventSyncScheduled = false
 
     var selectedThread: ThreadModel? {
         threads.first { $0.id == selectedThreadID }
@@ -76,7 +77,7 @@ final class AppState {
         case "thread.status_changed":
             handleThreadStatusChanged(params)
         case "thread.progress":
-            logThreadProgress(params)
+            handleThreadProgress(params)
         default:
             break
         }
@@ -180,7 +181,7 @@ final class AppState {
         projectID: String,
         name: String,
         sourceType: String,
-        sourceRef: String?
+        branch: String?
     ) async throws {
         guard let connectionManager else {
             return
@@ -191,8 +192,8 @@ final class AppState {
             "name": name,
             "source_type": sourceType,
         ]
-        if let sourceRef, !sourceRef.isEmpty {
-            params["branch"] = sourceRef
+        if let branch, !branch.isEmpty {
+            params["branch"] = branch
         }
 
         _ = try await connectionManager.request(method: "thread.create", params: params, timeout: 30)
@@ -210,18 +211,10 @@ final class AppState {
             return
         }
 
-        if let index = threads.firstIndex(where: { $0.id == threadID }) {
-            threads[index].status = status
-        }
-
-        do {
-            try databaseManager?.updateThreadStatus(threadID: threadID, status: status)
-        } catch {
-            NSLog("threadmill-state: failed to persist thread status (%@): %@", threadID, "\(error)")
-        }
+        _ = updateThreadStatus(threadID: threadID, status: status)
     }
 
-    private func logThreadProgress(_ params: [String: Any]?) {
+    private func handleThreadProgress(_ params: [String: Any]?) {
         guard let params else {
             NSLog("threadmill-state: thread.progress payload missing")
             return
@@ -232,10 +225,50 @@ final class AppState {
         let message = params["message"] as? String ?? ""
         let errorText = params["error"] as? String
 
+        if threadID != "unknown", threads.first(where: { $0.id == threadID }) == nil {
+            scheduleEventSync()
+        }
+
+        if threadID != "unknown", let errorText, !errorText.isEmpty {
+            _ = updateThreadStatus(threadID: threadID, status: .failed)
+        }
+
         if let errorText, !errorText.isEmpty {
             NSLog("threadmill-state: thread.progress thread=%@ step=%@ message=%@ error=%@", threadID, step, message, errorText)
         } else {
             NSLog("threadmill-state: thread.progress thread=%@ step=%@ message=%@", threadID, step, message)
+        }
+    }
+
+    @discardableResult
+    private func updateThreadStatus(threadID: String, status: ThreadStatus) -> Bool {
+        let hasLocalRow = threads.contains(where: { $0.id == threadID })
+        if let index = threads.firstIndex(where: { $0.id == threadID }) {
+            threads[index].status = status
+        }
+
+        do {
+            let persisted = try databaseManager?.updateThreadStatus(threadID: threadID, status: status) ?? false
+            if !hasLocalRow || !persisted {
+                scheduleEventSync()
+            }
+            return hasLocalRow || persisted
+        } catch {
+            NSLog("threadmill-state: failed to persist thread status (%@): %@", threadID, "\(error)")
+            scheduleEventSync()
+            return hasLocalRow
+        }
+    }
+
+    private func scheduleEventSync() {
+        guard !eventSyncScheduled else {
+            return
+        }
+        eventSyncScheduled = true
+
+        Task { @MainActor [weak self] in
+            defer { self?.eventSyncScheduled = false }
+            await self?.syncService?.syncFromDaemon()
         }
     }
 }
