@@ -268,8 +268,27 @@ final class RelayEndpoint {
         frame[1] = UInt8(channelID & 0xFF)
         frame.replaceSubrange(2 ..< (2 + n), with: buf[0 ..< n])
 
+        let activeChannelID = channelID
         Task {
-            try? await connectionManager.sendBinaryFrame(frame)
+            do {
+                try await connectionManager.sendBinaryFrame(frame)
+            } catch {
+                NSLog(
+                    "threadmill-relay: binary send failed thread_id=%@ preset=%@ channel=%hu error=%@",
+                    threadID,
+                    preset,
+                    activeChannelID,
+                    "\(error)"
+                )
+                NSLog(
+                    "threadmill-relay: forcing transport recovery thread_id=%@ preset=%@ channel=%hu",
+                    threadID,
+                    preset,
+                    activeChannelID
+                )
+                connectionManager.stop()
+                connectionManager.start()
+            }
         }
     }
 

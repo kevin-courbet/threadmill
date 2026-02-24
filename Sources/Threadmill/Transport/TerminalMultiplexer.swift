@@ -125,6 +125,9 @@ final class TerminalMultiplexer {
     }
 
     private func detach(endpoint: RelayEndpoint, sendDetachRPC: Bool) {
+        let threadID = endpoint.threadID
+        let preset = endpoint.preset
+        let channelID = endpoint.channelID
         endpointsByAttachment.removeValue(forKey: AttachmentKey(threadID: endpoint.threadID, preset: endpoint.preset))
         if endpoint.channelID > 0 {
             endpointsByChannel.removeValue(forKey: endpoint.channelID)
@@ -136,14 +139,24 @@ final class TerminalMultiplexer {
         }
 
         Task {
-            _ = try? await connectionManager.request(
-                method: "terminal.detach",
-                params: [
-                    "thread_id": endpoint.threadID,
-                    "preset": endpoint.preset,
-                ],
-                timeout: 5
-            )
+            do {
+                _ = try await connectionManager.request(
+                    method: "terminal.detach",
+                    params: [
+                        "thread_id": threadID,
+                        "preset": preset,
+                    ],
+                    timeout: 5
+                )
+            } catch {
+                NSLog(
+                    "threadmill-mux: detach RPC failed thread_id=%@ preset=%@ channel=%hu error=%@",
+                    threadID,
+                    preset,
+                    channelID,
+                    "\(error)"
+                )
+            }
         }
     }
 
