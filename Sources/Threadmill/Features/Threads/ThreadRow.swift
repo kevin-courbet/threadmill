@@ -10,7 +10,7 @@ struct ThreadRow: View {
                 Text(thread.name)
                     .lineLimit(1)
                 Text(thread.branch)
-                    .font(.caption2)
+                    .font(.caption2.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }

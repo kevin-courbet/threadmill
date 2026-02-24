@@ -2,19 +2,35 @@ import SwiftUI
 
 struct TerminalTabView: View {
     let endpoint: RelayEndpoint?
+    let isConnecting: Bool
+
+    private var isMockTerminalEnabled: Bool {
+        let value = ProcessInfo.processInfo.environment["THREADMILL_USE_MOCK_TERMINAL"]?.lowercased() ?? ""
+        return value == "1" || value == "true" || value == "yes"
+    }
 
     var body: some View {
-        Group {
+        ZStack {
             if let endpoint {
-                GhosttyTerminalView(endpoint: endpoint)
+                if isMockTerminalEnabled {
+                    Text("Mock terminal: \(endpoint.preset)")
+                        .accessibilityIdentifier("terminal.mock.text")
+                } else {
+                    GhosttyTerminalView(endpoint: endpoint)
+                }
             } else {
-                ContentUnavailableView(
-                    "Connecting Terminal",
-                    systemImage: "bolt.horizontal",
-                    description: Text("Attach to a preset to start terminal streaming.")
-                )
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(isConnecting ? "Connecting..." : "Starting terminal...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityIdentifier("terminal.connecting")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier("terminal.content")
+        .accessibilityValue(endpoint?.preset ?? "detached")
     }
 }

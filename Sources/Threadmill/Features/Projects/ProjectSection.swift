@@ -15,12 +15,18 @@ struct ProjectSection: View {
         Section {
             DisclosureGroup(isExpanded: $isExpanded) {
                 if threads.isEmpty {
-                    Text("No threads")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("No threads yet")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text("Press + to create one")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
                         .padding(.leading, 20)
                 } else {
                     ForEach(threads) { thread in
+                        let isSelected = selectedThreadID == thread.id
                         Button {
                             selectedThreadID = thread.id
                         } label: {
@@ -30,7 +36,15 @@ struct ProjectSection: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .buttonStyle(.plain)
-                        .background(selectedThreadID == thread.id ? Color.accentColor.opacity(0.15) : .clear)
+                        .accessibilityIdentifier("thread.row.\(thread.id)")
+                        .background(isSelected ? Color.accentColor.opacity(0.14) : .clear)
+                        .overlay(alignment: .leading) {
+                            if isSelected {
+                                Rectangle()
+                                    .fill(Color.accentColor)
+                                    .frame(width: 2)
+                            }
+                        }
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .contextMenu {
                             if thread.status == .hidden {
@@ -52,6 +66,9 @@ struct ProjectSection: View {
                 HStack(spacing: 8) {
                     Text(project.name)
                         .font(.headline)
+                    Text("(\(threads.count))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
                     Spacer(minLength: 0)
 
@@ -63,8 +80,10 @@ struct ProjectSection: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("project.section.new-thread.\(project.id)")
                 }
             }
+            .accessibilityIdentifier("project.section.\(project.id)")
         }
     }
 }

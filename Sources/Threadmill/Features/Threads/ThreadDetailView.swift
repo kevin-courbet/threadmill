@@ -3,6 +3,10 @@ import SwiftUI
 struct ThreadDetailView: View {
     @Environment(AppState.self) private var appState
 
+    private var isUITestMode: Bool {
+        ProcessInfo.processInfo.environment["THREADMILL_UI_TEST_MODE"] == "1"
+    }
+
     private var projectName: String {
         guard let thread = appState.selectedThread else {
             return ""
@@ -14,47 +18,83 @@ struct ThreadDetailView: View {
         @Bindable var bindableState = appState
 
         if let thread = appState.selectedThread {
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(thread.name)
-                        .font(.title2.weight(.semibold))
-                    Text("\(projectName) · \(thread.branch)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 10) {
-                    Button("Hide") {
-                        Task {
-                            await appState.hideThread(threadID: thread.id)
-                        }
-                    }
-                    .disabled(thread.status == .hidden || thread.status == .closed)
+                    Text("\(projectName) · \(thread.name)")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .layoutPriority(1)
 
-                    Button("Close", role: .destructive) {
-                        Task {
-                            await appState.closeThread(threadID: thread.id)
-                        }
-                    }
-                    .disabled(thread.status == .closed)
+                    TerminalTabBar(
+                        tabs: appState.terminalTabs,
+                        selectedPreset: $bindableState.selectedPreset
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Spacer()
+                    ConnectionStatusView(status: appState.connectionStatus)
                 }
 
-                TerminalTabBar(
-                    tabs: appState.terminalTabs,
-                    threadStatus: thread.status,
-                    selectedPreset: $bindableState.selectedPreset
+                TerminalTabView(
+                    endpoint: appState.selectedEndpoint,
+                    isConnecting: appState.connectionStatus != .disconnected
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                TerminalTabView(endpoint: appState.selectedEndpoint)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
-                    )
+                if isUITestMode {
+                    VStack(spacing: 2) {
+                        Button("Automation Open Add Project") {
+                            Task {
+                                try? await appState.addProject(path: "/home/wsl/dev/factorio")
+                            }
+                        }
+                        .accessibilityIdentifier("automation.open-add-project")
+                        .accessibilityLabel("Automation Open Add Project")
+
+                        Button("Automation Open New Thread") {
+                            Task {
+                                guard let projectID = appState.projects.first?.id else {
+                                    return
+                                }
+                                try? await appState.createThread(
+                                    projectID: projectID,
+                                    name: "ui-e2e-thread",
+                                    sourceType: "new_feature",
+                                    branch: nil
+                                )
+                            }
+                        }
+                        .accessibilityIdentifier("automation.open-new-thread")
+                        .accessibilityLabel("Automation Open New Thread")
+
+                        ForEach(appState.threads) { candidate in
+                            Button("Automation Switch \(candidate.id)") {
+                                bindableState.selectedThreadID = candidate.id
+                            }
+                            .accessibilityIdentifier("automation.switch-thread.\(candidate.id)")
+                            .accessibilityLabel("Automation Switch \(candidate.id)")
+                        }
+
+                        Button("Automation Close Selected") {
+                            Task {
+                                await appState.closeThread(threadID: thread.id)
+                            }
+                        }
+                        .accessibilityIdentifier("automation.close-selected-thread")
+                        .accessibilityLabel("Automation Close Selected")
+
+                        ForEach(appState.presets, id: \.name) { preset in
+                            Button("Automation Preset \(preset.name)") {
+                                bindableState.selectedPreset = preset.name
+                            }
+                            .accessibilityIdentifier("automation.select-preset.\(preset.name)")
+                            .accessibilityLabel("Automation Preset \(preset.name)")
+                        }
+                    }
+                    .font(.caption2)
+                }
             }
-            .padding(16)
+            .padding(10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .onAppear {
                 if appState.selectedPreset == nil {

@@ -9,9 +9,13 @@ struct ThreadmillApp: App {
         WindowGroup {
             ContentView()
                 .environment(appState)
+                .frame(minWidth: 1200, minHeight: 800)
+                .preferredColorScheme(.dark)
                 .task {
                     appDelegate.bootstrap(appState: appState)
                 }
         }
+        .defaultSize(width: 1200, height: 800)
+        .windowResizability(.contentMinSize)
     }
 }

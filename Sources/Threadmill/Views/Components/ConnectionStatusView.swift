@@ -3,14 +3,14 @@ import SwiftUI
 struct ConnectionStatusView: View {
     let status: ConnectionStatus
 
-    private var icon: String {
+    private var color: Color {
         switch status {
         case .connected:
-            return "🟢"
+            return .green
         case .connecting, .reconnecting:
-            return "🟡"
+            return .orange
         case .disconnected:
-            return "🔴"
+            return .red
         }
     }
 
@@ -28,10 +28,17 @@ struct ConnectionStatusView: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Text(icon)
-            Text(text)
-                .font(.caption)
-        }
+        Circle()
+            .fill(color)
+            .frame(width: 9, height: 9)
+            .overlay {
+                Circle()
+                    .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+            }
+            .help(text)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("connection.status")
+        .accessibilityLabel("Connection")
+        .accessibilityValue(status.label)
     }
 }

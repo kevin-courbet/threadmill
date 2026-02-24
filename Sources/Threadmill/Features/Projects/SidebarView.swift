@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SidebarView: View {
     @Environment(AppState.self) private var appState
-    @State private var showingAddProjectSheet = false
+    @Binding var showingAddProjectSheet: Bool
     @State private var showingCloneRepoSheet = false
     @State private var newThreadProjectID: String?
 
@@ -96,9 +96,6 @@ struct SidebarView: View {
             }
         }
         .navigationTitle("Projects")
-        .sheet(isPresented: $showingAddProjectSheet) {
-            AddProjectSheet()
-        }
         .sheet(isPresented: $showingCloneRepoSheet) {
             CloneRepoSheet()
         }
