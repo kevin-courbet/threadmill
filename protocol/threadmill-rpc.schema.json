@@ -48,12 +48,26 @@
 
     "Project": {
       "type": "object",
-      "required": ["id", "name", "path", "default_branch"],
+      "required": ["id", "name", "path", "default_branch", "presets"],
       "properties": {
         "id": { "type": "string", "format": "uuid" },
         "name": { "type": "string" },
         "path": { "type": "string", "description": "Absolute path on beast" },
-        "default_branch": { "type": "string" }
+        "default_branch": { "type": "string" },
+        "presets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/PresetConfig" }
+        }
+      }
+    },
+
+    "PresetConfig": {
+      "type": "object",
+      "required": ["name", "command"],
+      "properties": {
+        "name": { "type": "string" },
+        "command": { "type": "string" },
+        "cwd": { "type": ["string", "null"] }
       }
     },
 

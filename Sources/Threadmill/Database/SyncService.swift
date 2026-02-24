@@ -43,7 +43,31 @@ final class SyncService: SyncServicing {
             else {
                 return nil
             }
-            return Project(id: id, name: name, remotePath: remotePath, defaultBranch: defaultBranch)
+            let presets = parsePresetConfigs(row["presets"])
+            return Project(
+                id: id,
+                name: name,
+                remotePath: remotePath,
+                defaultBranch: defaultBranch,
+                presets: presets
+            )
+        }
+    }
+
+    private func parsePresetConfigs(_ payload: Any?) -> [PresetConfig] {
+        guard let rows = payload as? [[String: Any]] else {
+            return []
+        }
+
+        return rows.compactMap { row in
+            guard
+                let name = row["name"] as? String,
+                let command = row["command"] as? String
+            else {
+                return nil
+            }
+
+            return PresetConfig(name: name, command: command, cwd: row["cwd"] as? String)
         }
     }
 

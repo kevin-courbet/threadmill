@@ -6,8 +6,20 @@ struct Preset: Identifiable, Hashable, Codable {
 
     var id: String { name }
 
+    init(name: String, label: String? = nil) {
+        self.name = name
+        self.label = label ?? Self.displayLabel(for: name)
+    }
+
+    static func displayLabel(for name: String) -> String {
+        name
+            .split(separator: "-")
+            .map { $0.capitalized }
+            .joined(separator: " ")
+    }
+
     static let defaults: [Preset] = [
-        Preset(name: "terminal", label: "Terminal"),
-        Preset(name: "dev-server", label: "Dev Server")
+        Preset(name: "editor", label: "Editor"),
+        Preset(name: "shell", label: "Shell")
     ]
 }

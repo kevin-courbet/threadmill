@@ -110,6 +110,12 @@ final class DatabaseManager: DatabaseManaging {
             }
         }
 
+        migrator.registerMigration("v2_project_presets") { db in
+            try db.alter(table: "projects") { table in
+                table.add(column: "presets_json", .text).notNull().defaults(to: "[]")
+            }
+        }
+
         try migrator.migrate(dbQueue)
     }
 }

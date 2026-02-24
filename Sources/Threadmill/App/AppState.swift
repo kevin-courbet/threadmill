@@ -14,6 +14,7 @@ final class AppState {
     var threads: [ThreadModel] = []
     var selectedThreadID: String? {
         didSet {
+            ensureSelectedPresetIsValid()
             refreshSelectedEndpoint()
         }
     }
@@ -37,6 +38,13 @@ final class AppState {
         threads.first { $0.id == selectedThreadID }
     }
 
+    var selectedProject: Project? {
+        guard let projectID = selectedThread?.projectId else {
+            return nil
+        }
+        return projects.first { $0.id == projectID }
+    }
+
     var projectsWithThreads: [(Project, [ThreadModel])] {
         let grouped = Dictionary(grouping: threads, by: \.projectId)
         return projects
@@ -48,7 +56,10 @@ final class AppState {
     }
 
     var presets: [Preset] {
-        Preset.defaults
+        guard let selectedProject, !selectedProject.presets.isEmpty else {
+            return Preset.defaults
+        }
+        return selectedProject.presets.map { Preset(name: $0.name) }
     }
 
     var terminalTabs: [TerminalTabModel] {
@@ -94,6 +105,7 @@ final class AppState {
             threads = try databaseManager.allThreads()
             pruneDetachedThreadEndpoints()
             ensureValidSelection()
+            ensureSelectedPresetIsValid()
             refreshSelectedEndpoint()
         } catch {
             NSLog("threadmill-state: failed to load cache: %@", "\(error)")
@@ -135,7 +147,7 @@ final class AppState {
             return
         }
 
-        let preset = selectedPreset ?? presets.first?.name ?? "terminal"
+        let preset = selectedPreset ?? presets.first?.name ?? "shell"
         let requestedThreadID = selectedThread.id
         let key = AttachmentKey(threadID: requestedThreadID, preset: preset)
 
@@ -544,6 +556,20 @@ final class AppState {
         }
 
         selectedEndpoint = attachedEndpoints[AttachmentKey(threadID: threadID, preset: preset)]
+    }
+
+    private func ensureSelectedPresetIsValid() {
+        let availablePresets = presets.map(\.name)
+        guard !availablePresets.isEmpty else {
+            selectedPreset = nil
+            return
+        }
+
+        if let selectedPreset, availablePresets.contains(selectedPreset) {
+            return
+        }
+
+        selectedPreset = availablePresets[0]
     }
 
     private func pruneDetachedThreadEndpoints() {
