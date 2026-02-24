@@ -9,7 +9,5 @@ struct TerminalTabModel: Identifiable {
         "\(threadID)::\(preset.name)"
     }
 
-    var isAttached: Bool {
-        endpoint != nil
-    }
+    @MainActor var isAttached: Bool { endpoint?.channelID ?? 0 > 0 }
 }

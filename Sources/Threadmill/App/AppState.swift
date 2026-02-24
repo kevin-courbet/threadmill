@@ -108,6 +108,13 @@ final class AppState {
             handleThreadStatusChanged(params)
         case "thread.progress":
             handleThreadProgress(params)
+        case "thread.created",
+             "thread.removed",
+             "project.added",
+             "project.removed",
+             "state.delta",
+             "preset.process_event":
+            scheduleEventSync()
         default:
             break
         }
