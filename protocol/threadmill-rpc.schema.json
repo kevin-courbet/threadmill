@@ -242,7 +242,7 @@
         "type": "object",
         "required": ["path"],
         "properties": {
-          "path": { "type": "string", "description": "Absolute path to git repo on beast" }
+          "path": { "type": "string", "description": "Absolute path to a git repository on beast (the remote machine), not your local Mac" }
         }
       },
       "result": { "$ref": "#/$defs/Project" }
