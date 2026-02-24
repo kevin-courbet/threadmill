@@ -127,7 +127,13 @@ final class AppState {
         }
 
         let preset = selectedPreset ?? presets.first?.name ?? "terminal"
-        let key = AttachmentKey(threadID: selectedThread.id, preset: preset)
+        let requestedThreadID = selectedThread.id
+        let requestedPreset = preset
+        let key = AttachmentKey(threadID: requestedThreadID, preset: requestedPreset)
+
+        func selectionMatchesRequest() -> Bool {
+            selectedThreadID == requestedThreadID && selectedPreset == requestedPreset
+        }
 
         guard let connectionManager, let multiplexer else {
             return
@@ -140,12 +146,19 @@ final class AppState {
                     _ = try await connectionManager.request(
                         method: "preset.start",
                         params: [
-                            "thread_id": selectedThread.id,
-                            "preset": preset,
+                            "thread_id": requestedThreadID,
+                            "preset": requestedPreset,
                         ],
                         timeout: 20
                     )
-                    _ = try await multiplexer.attach(threadID: selectedThread.id, preset: preset)
+                    guard selectionMatchesRequest() else {
+                        return
+                    }
+
+                    _ = try await multiplexer.attach(threadID: requestedThreadID, preset: requestedPreset)
+                    guard selectionMatchesRequest() else {
+                        return
+                    }
                 } catch {
                     NSLog("threadmill-state: reattach failed: %@", "\(error)")
                 }
@@ -157,13 +170,20 @@ final class AppState {
             _ = try await connectionManager.request(
                 method: "preset.start",
                 params: [
-                    "thread_id": selectedThread.id,
-                    "preset": preset,
+                    "thread_id": requestedThreadID,
+                    "preset": requestedPreset,
                 ],
                 timeout: 20
             )
+            guard selectionMatchesRequest() else {
+                return
+            }
 
-            let endpoint = try await multiplexer.attach(threadID: selectedThread.id, preset: preset)
+            let endpoint = try await multiplexer.attach(threadID: requestedThreadID, preset: requestedPreset)
+            guard selectionMatchesRequest() else {
+                return
+            }
+
             attachedEndpoints[key] = endpoint
             selectedEndpoint = endpoint
         } catch {
