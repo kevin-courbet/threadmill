@@ -59,6 +59,16 @@ tasks:
     cmds:
       - ssh beast "cd /home/wsl/dev/spindle && ~/.cargo/bin/cargo build"
 
+  cli:build:
+    desc: Build threadmill-cli on beast
+    cmds:
+      - ssh beast "cd /home/wsl/dev/spindle && ~/.cargo/bin/cargo build --bin threadmill-cli"
+
+  cli:install:
+    desc: Install threadmill-cli symlink on beast
+    cmds:
+      - ssh beast "ln -sf /home/wsl/dev/spindle/target/debug/threadmill-cli ~/.local/bin/threadmill-cli"
+
   build:all:
     desc: Build both Threadmill and Spindle
     cmds:
