@@ -11,6 +11,7 @@ struct ThreadModel: Codable, FetchableRecord, PersistableRecord, Identifiable, E
     var sourceType: String
     var createdAt: Date
     var tmuxSession: String
+    var portOffset: Int? = nil
 
     static let databaseTableName = "threads"
 
@@ -24,6 +25,7 @@ struct ThreadModel: Codable, FetchableRecord, PersistableRecord, Identifiable, E
         case sourceType = "source_type"
         case createdAt = "created_at"
         case tmuxSession = "tmux_session"
+        case portOffset = "port_offset"
     }
 
     enum CodingKeys: String, CodingKey {
@@ -36,5 +38,6 @@ struct ThreadModel: Codable, FetchableRecord, PersistableRecord, Identifiable, E
         case sourceType = "source_type"
         case createdAt = "created_at"
         case tmuxSession = "tmux_session"
+        case portOffset = "port_offset"
     }
 }

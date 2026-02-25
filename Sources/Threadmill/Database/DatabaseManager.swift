@@ -116,6 +116,12 @@ final class DatabaseManager: DatabaseManaging {
             }
         }
 
+        migrator.registerMigration("v3_thread_port_offset") { db in
+            try db.alter(table: "threads") { table in
+                table.add(column: "port_offset", .integer)
+            }
+        }
+
         try migrator.migrate(dbQueue)
     }
 }

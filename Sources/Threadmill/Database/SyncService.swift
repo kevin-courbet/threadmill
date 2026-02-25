@@ -100,9 +100,23 @@ final class SyncService: SyncServicing {
                 status: status,
                 sourceType: sourceType,
                 createdAt: createdAt,
-                tmuxSession: row["tmux_session"] as? String ?? ""
+                tmuxSession: row["tmux_session"] as? String ?? "",
+                portOffset: parseOptionalInt(row["port_offset"] ?? row["portOffset"])
             )
         }
+    }
+
+    private func parseOptionalInt(_ value: Any?) -> Int? {
+        if let intValue = value as? Int {
+            return intValue
+        }
+        if let number = value as? NSNumber {
+            return number.intValue
+        }
+        if let text = value as? String {
+            return Int(text)
+        }
+        return nil
     }
 
     private func parseDate(_ value: Any?) -> Date? {
