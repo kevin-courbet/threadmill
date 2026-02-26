@@ -91,12 +91,15 @@ Daemon events currently emitted:
 - `thread.progress`
 - `thread.status_changed`
 - `thread.created`
-- `thread.removed`
 - `project.added`
 - `project.removed`
 - `state.delta`
 - `preset.process_event`
 - `project.clone_progress`
+
+Defined but not currently emitted by daemon:
+
+- `thread.removed` (reserved)
 
 Terminal binary frames use channel multiplexing:
 
@@ -183,7 +186,8 @@ presets:
 Notes:
 
 - `ports.offset` must be `> 0`.
-- If no config exists, Spindle provides defaults including a `terminal` preset.
+- If no config exists, project presets from `project.list` default to `editor` (`$EDITOR` or `nvim`) and `shell` (`$SHELL` or `bash`).
+- During thread creation, fallback lifecycle config adds a `terminal` preset for autostart/lifecycle handling.
 - Preset lifecycle flags (`autostart`, `parallel`) are still read from thread config where defined.
 
 ## Port Management (Implemented)

@@ -46,9 +46,8 @@
       }
     },
     "BinaryFrame": {
-      "description": "Binary WebSocket frame: [u16be channel_id][raw terminal bytes].",
+      "description": "Documentation-only representation of binary WebSocket wire format. Not transmitted as JSON payload. Wire bytes are [u16be channel_id][raw terminal bytes].",
       "type": "object",
-      "required": ["channel_id", "data"],
       "properties": {
         "channel_id": {
           "type": "integer",
@@ -574,7 +573,7 @@
       }
     },
     "thread.removed": {
-      "description": "Thread removed",
+      "description": "Thread removed (reserved event, currently not emitted by daemon)",
       "params": {
         "type": "object",
         "required": ["thread_id"],

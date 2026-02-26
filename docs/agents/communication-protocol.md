@@ -260,6 +260,7 @@ Server notification (event):
 
 `thread.removed`
 - Params: `{"thread_id":"<uuid>"}`
+- Status: defined/reserved, not currently emitted by daemon
 
 `project.added`
 - Params: `{"project":Project}`
