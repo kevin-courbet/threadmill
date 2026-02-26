@@ -1,612 +1,284 @@
 # Threadmill Architecture
 
+## Reality Check
+
+This document describes what is implemented today across:
+- **Threadmill** (macOS Swift app)
+- **Spindle** (Rust daemon on beast)
+- **threadmill-cli** (Rust CLI on beast)
+
+Planned work is explicitly marked as **Planned**.
+
 ## Overview
 
-Threadmill replaces Superset as the development orchestrator. Native macOS app (Swift/SwiftUI) + lightweight Rust daemon on beast (WSL2). macOS is a visor — all heavy work runs on beast.
+Threadmill is a native macOS visor for development workspaces that run on beast (WSL2).
+
+- The app uses one SSH tunnel and one WebSocket connection.
+- Spindle owns source-of-truth state and executes git/tmux/process work.
+- The Mac app caches daemon state in SQLite (GRDB) for rendering.
 
 ## Core Concepts
 
-### Thread
-A managed workspace mapped to a project + git worktree + branch. Threads are the primary unit of work. Creating a thread creates a worktree and tmux session on beast. Closing a thread deletes the worktree (or hides it to preserve files). Threads track their lifecycle: `creating → active → closing → closed | hidden | failed`.
-
 ### Project
-A registered git repository on beast. Added via "Open project" (existing repo) or "Clone repo" (from URL). Projects define:
-- Remote path on beast (e.g. `/home/wsl/dev/myautonomy`)
-- Setup hooks (global + per-project)
-- Terminal presets (what "dev server" means for this project)
-- Default branch (main/master)
 
-### Terminal Preset
-A named command or set of parallel commands scoped to a project. Examples:
-- `dev-server`: `task dev:worktree` (single command)
-- `dev-full`: `[task dev:worktree, bun run storybook]` (parallel, each in own pane)
-- `opencode`: `opencode` (AI agent session)
+A registered git repo on beast.
 
-Presets are defined in `.threadmill.yml` in the project repo.
+- Added via `project.add` (existing path) or `project.clone` (git URL).
+- Persisted in Spindle state (`threads.json`) with `id`, `name`, `path`, `default_branch`.
+- Includes parsed presets from `.threadmill.yml` (or daemon defaults if missing/invalid).
+
+### Thread
+
+A managed work context for a project.
+
+- Backed by git worktree + tmux session + persisted metadata.
+- Lifecycle: `creating -> active -> closing -> closed | hidden | failed`.
+- Includes `port_offset` for deterministic port allocation.
+
+### Preset
+
+A named terminal workflow.
+
+- Mapped to tmux windows.
+- Started/stopped/restarted over RPC.
+- Parsed from `.threadmill.yml` with `command` (current canonical format) and optional `cwd`.
 
 ## System Architecture
 
 ```
-┌─────────────────────────────────┐                     ┌──────────────────────────────┐
-│  macOS (visor)                  │  single WebSocket    │  beast (WSL2)                │
-│                                 │  over SSH tunnel     │                              │
-│  Threadmill.app (SwiftUI)       │ ◄──────────────────► │  threadmill-daemon (Rust)    │
-│  ├── GRDB (projects, threads,   │                     │  ├── WebSocket server         │
-│  │    UI state — cache only)    │                     │  ├── Terminal I/O relay        │
-│  ├── libghostty (GPU terminal)  │                     │  ├── Git operations (local)   │
-│  └── WebSocket client           │                     │  ├── tmux control             │
-│                                 │                     │  ├── Process management       │
-│                                 │                     │  └── Hook execution           │
-│                                 │                     │                              │
-│                                 │                     │  threads.json (daemon state)  │
-│                                 │                     │  tmux (persistence layer)     │
-│                                 │                     │  ├── session per thread       │
-│                                 │                     │  ├── windows per preset       │
-│                                 │                     │  └── survives daemon restart  │
-└─────────────────────────────────┘                     └──────────────────────────────┘
+macOS (Threadmill)                              beast / WSL2 (Spindle)
+-------------------                              -----------------------
+SwiftUI + AppKit                                Rust daemon (tokio)
+GRDB cache                                      state_store (threads.json)
+GhosttyKit terminal surface                     git + tmux orchestration
+WebSocket client                                WebSocket server
+
+           single SSH tunnel + single WebSocket connection
 ```
 
-Key: all terminal I/O, RPC commands, and events flow through a **single WebSocket connection** over one SSH tunnel. No per-tab SSH connections.
+All JSON-RPC requests, daemon events, and terminal binary frames share this single WebSocket.
 
-### Path Resolution
+## Supervision (Implemented)
 
-All paths are **beast-local**. The Mac app never accesses beast's filesystem directly — no NFS dependency. Every file operation goes through the daemon over WebSocket (git diff, file browsing, terminal output). The NFS mount (`/Volumes/wsl-dev`) is irrelevant to Threadmill.
+Spindle runs as a **systemd user service**:
 
-This is hardcoded for `beast` — no generic multi-host SSH abstraction:
+`~/.config/systemd/user/spindle.service`
+
+- `ExecStart=/home/wsl/dev/spindle/target/debug/spindle`
+- `Restart=on-failure`
+- `RestartSec=2`
+- `WantedBy=default.target`
+
+Operational commands are exposed in `Taskfile.yml`:
+
+- `task spindle:restart`
+- `task spindle:status`
+- `task spindle:logs`
+
+## RPC and Event Protocol (Implemented)
+
+JSON-RPC 2.0 methods currently routed by `rpc_router.rs`:
+
+- `ping`
+- `state.snapshot`
+- `project.list`, `project.add`, `project.clone`, `project.remove`, `project.branches`, `project.browse`
+- `thread.create`, `thread.list`, `thread.close`, `thread.reopen`, `thread.hide`
+- `terminal.attach`, `terminal.detach`, `terminal.resize`
+- `preset.start`, `preset.stop`, `preset.restart`
+
+Daemon events currently emitted:
+
+- `thread.progress`
+- `thread.status_changed`
+- `thread.created`
+- `thread.removed`
+- `project.added`
+- `project.removed`
+- `state.delta`
+- `preset.process_event`
+- `project.clone_progress`
+
+Terminal binary frames use channel multiplexing:
+
+`[u16 channel_id][raw bytes...]`
+
+## Auth (Current State)
+
+There is currently **no enforced daemon auth layer** on localhost WebSocket access.
+
+- Daemon is expected to listen on localhost and usually be reached via SSH tunnel from macOS.
+- `threadmill-cli` can include `auth_token` if `~/.config/threadmill/auth_token` exists, but current daemon routing does not enforce it.
+
+## State Model
+
+Spindle persists state in:
+
+`~/.config/threadmill/threads.json`
+
+Thread entries include:
+
+- `id`, `project_id`, `name`, `branch`, `worktree_path`
+- `status`, `source_type`, `created_at`, `tmux_session`
+- `port_offset`
+
+On startup, Spindle reconciles persisted state against:
+
+- worktree existence
+- tmux session existence
+
+and repairs status / sessions where possible.
+
+## Data Model (Threadmill GRDB Cache)
+
+### Project model
+
+`Sources/Threadmill/Models/Project.swift`:
+
+- `id`
+- `name`
+- `remotePath`
+- `defaultBranch`
+- `presets` (`presets_json` column)
+
+Preset entries contain:
+
+- `name`
+- `command`
+- `cwd` (optional)
+
+### Thread model
+
+`Sources/Threadmill/Models/Thread.swift`:
+
+- `id`, `projectId`, `name`, `branch`, `worktreePath`
+- `status`, `sourceType`, `createdAt`, `tmuxSession`
+- `portOffset` (`port_offset` column)
+
+## Project Config (`.threadmill.yml`)
+
+Spindle actively parses `.threadmill.yml`.
+
+Current implemented fields:
 
 ```yaml
-# ~/Library/Application Support/Threadmill/config.yml (on Mac)
-host: beast                              # SSH host (matches ~/.ssh/config)
-daemon_port: 19990
-projects_root: /home/wsl/dev             # default root when browsing for projects
-editor: cursor                           # or "code" for VS Code
-```
-
-"Open in editor" constructs a Remote SSH URI directly:
-```
-vscode://vscode-remote/ssh-remote+beast<worktree_path>
-```
-
-When adding a project, the daemon provides `project.browse { path }` to list directories on beast — no local file picker needed.
-
-## macOS App (SwiftUI)
-
-### Data Model (GRDB — local cache of daemon state)
-
-The daemon is the single source of truth. GRDB on the Mac is a cache for fast rendering and offline display. On every WebSocket connect, the Mac syncs from the daemon.
-
-```swift
-struct Project: Codable, FetchableRecord, PersistableRecord {
-    var id: String                // daemon-assigned UUID
-    var name: String              // "myautonomy"
-    var remotePath: String        // "/home/wsl/dev/myautonomy"
-    var defaultBranch: String     // "main"
-}
-
-struct Thread: Codable, FetchableRecord, PersistableRecord {
-    var id: String                // daemon-assigned UUID
-    var projectId: String
-    var name: String              // "bridge-test-integration"
-    var branch: String
-    var worktreePath: String      // "/home/wsl/dev/.threadmill/myautonomy/bridge-test-integration"
-    var status: ThreadStatus      // .creating, .active, .closing, .closed, .hidden, .failed
-    var createdAt: Date
-    var sourceType: SourceType    // .newFeature, .existingBranch, .pullRequest(url)
-}
-
-enum ThreadStatus: String, Codable {
-    case creating, active, closing, closed, hidden, failed
-}
-
-enum SourceType: String, Codable {
-    case newFeature
-    case existingBranch
-    case pullRequest
-}
-```
-
-### UI Layout
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│ Threadmill                                    ● connected    │
-├──────────────┬───────────────────────────────────────────────┤
-│ PROJECTS     │  Thread: bridge-test-integration              │
-│              │  myautonomy · feature/bridge-test              │
-│ myautonomy   │                                               │
-│  ├ bridge-t… │  ┌─────────────────────────────────────────┐  │
-│  └ fix-auth  │  │ [Dev Server ●] [OpenCode] [Terminal]    │  │
-│              │  ├─────────────────────────────────────────┤  │
-│ tigerdata    │  │                                         │  │
-│  └ dbt-ref…  │  │  $ task dev:worktree                    │  │
-│              │  │  > Server running on :3001               │  │
-│              │  │  > Ready in 2.3s                         │  │
-│ factorio     │  │                                         │  │
-│              │  │                                         │  │
-│──────────────│  │                                         │  │
-│ + New Thread │  │                                         │  │
-│ + Add Project│  │                                         │  │
-│              │  └─────────────────────────────────────────┘  │
-└──────────────┴───────────────────────────────────────────────┘
-```
-
-- **Sidebar**: Projects as sections, threads as items. Status indicators (● running, ○ stopped, ✕ failed).
-- **Main area**: Selected thread's terminal view (libghostty). Tab bar for preset terminals.
-- **Connection indicator**: top-right shows daemon connection state.
-
-### Add Project Flow
-
-1. User clicks "+ Add Project"
-2. Choose method:
-   - **Open existing**: enter or browse beast path (e.g. `/home/wsl/dev/myautonomy`). Daemon validates path contains a git repo.
-   - **Clone repo**: paste git URL + optional target directory. Daemon runs `git clone` into `/home/wsl/dev/<name>`.
-3. Daemon reads `.threadmill.yml` if present, registers project in `threads.json`
-4. If no `.threadmill.yml` exists, daemon scaffolds a default one with `terminal` preset only
-5. Project appears in sidebar
-
-### New Thread Flow
-
-1. User clicks "+ New Thread"
-2. Select project from list
-3. Choose source:
-   - **New feature**: enter worktree/branch name
-   - **Existing branch**: select from remote branches
-   - **Pull request**: paste PR URL (extracts branch via `gh`/`glab`)
-4. App sends `thread.create` to daemon
-5. Daemon returns thread ID immediately with status `creating`
-6. Daemon executes async (pushing `thread.progress` events per step):
-   a. `git fetch origin`
-   b. `git worktree add <path> -b <branch>` (or checkout existing)
-   c. Copy files from `copy_from_main` list
-   d. Run project setup hooks (from `.threadmill.yml`)
-   e. Create tmux session with preset windows (autostart presets)
-   f. Status → `active`
-7. On failure at any step: status → `failed`, cleanup partial state, report error
-8. Cancellable: Mac can send `thread.cancel` to abort mid-create
-
-Per-project mutex prevents concurrent git operations on the same repo.
-
-### Close Thread Flow
-
-1. User right-clicks thread → Close (or Hide)
-2. **Close**: daemon kills tmux session, runs teardown hooks, `git worktree remove`, deletes branch if merged
-3. **Hide**: daemon kills tmux session only, worktree stays on disk. Thread shows as "hidden" in sidebar. Can be reopened later.
-
-### Terminal Rendering (libghostty)
-
-Terminal rendering uses **libghostty** (from the Ghostty terminal emulator) — GPU-accelerated via Metal, same renderer as the standalone Ghostty app. This replaces the initial SwiftTerm prototype.
-
-#### Why libghostty over SwiftTerm
-
-SwiftTerm is a pure-Swift terminal emulator. It works, but libghostty provides:
-- Metal-based GPU rendering (faster, lower CPU usage for scrolling/output)
-- Ghostty's mature VT parser and rendering pipeline
-- Consistent look with the user's Ghostty config (fonts, themes, keybindings)
-- Active upstream development with regular releases
-
-#### cmux analysis (informed this decision)
-
-We analyzed [cmux](https://github.com/manaflow-ai/cmux), a native macOS terminal multiplexer that also uses libghostty. Key findings:
-- cmux has good workspace/pane management (Bonsplit library) and AppKit+SwiftUI hybrid patterns
-- cmux does NOT have: remote daemon support, project/thread model, worktree management
-- cmux assumes local processes — its architecture fights a remote-terminal model
-- **Decision**: port libghostty integration code into threadmill, don't fork cmux
-- We took: Ghostty submodule + zig build pipeline, the `ghostty_surface_*` API patterns
-- Bonsplit is available as a separate dependency for future split/pane management
-
-#### PTY shim for remote terminal
-
-libghostty's `ghostty_surface_new` expects to own a local process — it spawns a command and manages the PTY internally. There is no direct byte-feed API. For remote terminal rendering, we use a **PTY shim**:
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│  macOS                                                           │
-│                                                                  │
-│  ghostty surface ←→ PTY ←→ relay process ←→ Unix socket          │
-│                                                     ↕             │
-│  Threadmill app (bridges Unix socket ↔ WebSocket)                │
-│                                    ↕                             │
-│                               SSH tunnel                         │
-└──────────────────────────────────────────────────────────────────┘
-                                    ↕
-┌──────────────────────────────────────────────────────────────────┐
-│  beast                                                           │
-│  Spindle daemon ←→ tmux pipe-pane + pane TTY write               │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-1. Ghostty surface is configured with `command = "/path/to/threadmill-relay"`
-2. Ghostty spawns the relay inside a PTY it owns (GPU rendering works normally)
-3. Relay connects back to the app via a Unix domain socket (path passed via env var)
-4. App bridges Unix socket ↔ WebSocket ↔ Spindle ↔ tmux pane
-5. Relay is ~30 lines: stdin→socket, socket→stdout
-
-This is the same pattern iTerm2 uses for SSH integration — proven and reliable.
-
-#### Build pipeline
-
-libghostty is built from the official [ghostty-org/ghostty](https://github.com/ghostty-org/ghostty) repo (pinned to `main`, 1.3.0-dev) as a git submodule:
-
-```bash
-# One-time build (requires zig 0.15.2, Xcode with Metal toolchain)
-cd ghostty && zig build -Demit-xcframework=true -Doptimize=ReleaseFast -Dxcframework-target=native
-```
-
-Produces `ghostty/macos/GhosttyKit.xcframework` (~135MB static lib), symlinked into the project root and consumed as an SPM `.binaryTarget`.
-
-#### Terminal I/O flow
-
-Terminal I/O is **multiplexed through the WebSocket** — no separate SSH connections per tab.
-
-```
-ghostty surface ←→ PTY shim ←→ Unix socket ←→ WebSocket ←→ Daemon ←→ tmux
-```
-
-1. Mac sends `terminal.attach { thread_id, preset_name }` over WebSocket
-2. Daemon attaches to the tmux pane programmatically and begins relaying output
-3. Terminal data flows as binary WebSocket frames:
-   - `terminal.output { thread_id, preset, data }` (daemon → mac)
-   - `terminal.input  { thread_id, preset, data }` (mac → daemon)
-   - `terminal.resize { thread_id, preset, cols, rows }` (mac → daemon)
-4. Ghostty renders the byte stream via its Metal renderer
-5. On disconnect/reconnect, daemon replays recent scrollback from tmux capture-pane
-
-Benefits:
-- Single connection — atomic reconnect, no partial failures
-- GPU-accelerated terminal rendering identical to standalone Ghostty
-- Terminals are persistent (tmux survives everything)
-- Multiple clients can view the same session (agents, phone via SSH, another Mac)
-- No per-tab PTY management
-
-## Beast Daemon (Rust)
-
-### Responsibilities
-
-1. **Git operations**: worktree create/remove, fetch, status, diff, commit — all local (no NFS)
-2. **tmux orchestration**: create/destroy sessions, manage windows per preset
-3. **Terminal I/O relay**: bridge tmux panes to WebSocket for Mac terminal views
-4. **Hook execution**: run setup/teardown scripts defined in `.threadmill.yml`
-5. **Process monitoring**: track which preset commands are running, report health
-6. **Event push**: notify Mac app of state changes (process died, git status changed)
-7. **State management**: persist thread metadata, reconcile with tmux/filesystem on startup
-8. **Project management**: register repos, clone new ones, read `.threadmill.yml`
-
-### Supervision
-
-Managed by systemd:
-```bash
-systemctl --user enable --now threadmill-daemon
-```
-
-### WebSocket Protocol (JSON-RPC 2.0)
-
-Bidirectional communication over SSH tunnel. Uses JSON-RPC 2.0 for request/response correlation. Binary frames for terminal I/O.
-
-**Commands (Mac → Daemon):**
-```jsonc
-// Project management
-{ "id": 1, "method": "project.list" }
-{ "id": 2, "method": "project.add", "params": { "path": "/home/wsl/dev/myautonomy" } }
-{ "id": 3, "method": "project.clone", "params": { "url": "git@github.com:...", "path": "/home/wsl/dev/newproject" } }
-{ "id": 4, "method": "project.remove", "params": { "project_id": "..." } }
-{ "id": 5, "method": "project.branches", "params": { "project_id": "..." } }
-{ "id": 6, "method": "project.browse", "params": { "path": "/home/wsl/dev" } }  // list dirs on beast for project picker
-{ "id": 7, "method": "thread.open_editor", "params": { "thread_id": "..." } }   // returns editor URI
-
-// Thread lifecycle
-{ "id": 10, "method": "thread.create", "params": { "project_id": "...", "name": "feature-x", "source_type": "new_feature" } }
-{ "id": 11, "method": "thread.close", "params": { "thread_id": "...", "mode": "close" } }
-{ "id": 12, "method": "thread.reopen", "params": { "thread_id": "..." } }
-{ "id": 13, "method": "thread.list", "params": { "project_id": "..." } }  // optional filter
-{ "id": 14, "method": "thread.cancel", "params": { "thread_id": "..." } }
-
-// Terminal I/O (binary frames preferred for data, JSON for control)
-{ "id": 20, "method": "terminal.attach", "params": { "thread_id": "...", "preset": "dev-server" } }
-{ "id": 21, "method": "terminal.detach", "params": { "thread_id": "...", "preset": "dev-server" } }
-{ "id": 22, "method": "terminal.resize", "params": { "thread_id": "...", "preset": "dev-server", "cols": 120, "rows": 40 } }
-
-// Preset management
-{ "id": 30, "method": "preset.start", "params": { "thread_id": "...", "preset": "dev-server" } }
-{ "id": 31, "method": "preset.stop", "params": { "thread_id": "...", "preset": "dev-server" } }
-{ "id": 32, "method": "preset.restart", "params": { "thread_id": "...", "preset": "dev-server" } }
-
-// Connection health
-{ "id": 99, "method": "ping" }
-```
-
-**Events (Daemon → Mac, no id):**
-```jsonc
-{ "method": "thread.progress", "params": { "thread_id": "...", "step": "running_hooks", "message": "bun install...", "error": null } }
-{ "method": "thread.status_changed", "params": { "thread_id": "...", "old": "creating", "new": "active" } }
-{ "method": "preset.process_event", "params": { "thread_id": "...", "preset": "dev-server", "event": "crashed", "exit_code": 1 } }
-
-```
-
-**Error responses:**
-```jsonc
-{ "id": 10, "error": { "code": -1, "message": "branch 'feature-x' already exists" } }
-```
-
-**Backpressure**: max 32 in-flight requests per connection (semaphore). Events are broadcast to all connected clients via `tokio::sync::broadcast`.
-
-### Auth
-
-- **Over SSH tunnel**: no additional auth needed (SSH provides identity)
-- **Local access on beast** (`threadmill-cli`): shared secret in `~/.config/threadmill/auth_token`, sent as first message on connect
-
-### State Model
-
-Daemon persists thread metadata in `~/.config/threadmill/threads.json`:
-```jsonc
-{
-  "threads": [
-    {
-      "id": "uuid",
-      "project_id": "uuid",
-      "name": "bridge-test-integration",
-      "branch": "bridge-test-integration",
-      "worktree_path": "/home/wsl/dev/.threadmill/myautonomy/bridge-test-integration",
-      "status": "active",
-      "source_type": "new_feature",
-      "created_at": "2026-02-20T10:00:00Z"
-    }
-  ],
-  "projects": [
-    {
-      "id": "uuid",
-      "name": "myautonomy",
-      "path": "/home/wsl/dev/myautonomy",
-      "default_branch": "main"
-    }
-  ]
-}
-```
-
-On startup, the daemon reconciles `threads.json` against reality:
-- tmux session exists + worktree exists → `active` (keep)
-- tmux session missing + worktree exists + status was `active` → crashed, restart tmux session
-- tmux session missing + worktree exists + status was `hidden` → keep as `hidden`
-- tmux session exists + worktree missing → orphan, kill tmux session, mark `failed`
-- thread in JSON but worktree deleted externally → mark `closed`, remove from JSON
-
-### Sync Protocol
-
-On WebSocket connect:
-1. Mac calls `thread.list` and `project.list`
-2. Daemon returns authoritative state
-3. Mac replaces local GRDB cache with daemon state
-4. Mac subscribes to events for live updates
-
-Daemon truth always wins. GRDB is a rendering cache.
-
-### tmux Naming Convention
-
-```
-Session: tm_<project-id-short>_<sanitized-thread-name>
-Window:  <preset-name>
-```
-
-Thread/project names are sanitized: colons, periods, spaces → hyphens. IDs used in session names to avoid collisions. Short IDs (first 8 chars of UUID).
-
-### Worktree Layout
-
-```
-/home/wsl/dev/                          # project repos (clones)
-├── myautonomy/                         # main worktree
-├── tigerdata/
-└── .threadmill/                        # managed worktrees
-    ├── myautonomy/
-    │   ├── bridge-test-integration/    # thread worktree
-    │   └── fix-auth/
-    └── tigerdata/
-        └── dbt-refactor/
-```
-
-### tmux Session Layout
-
-```
-tmux session: tm_a1b2c3d4_bridge-test-integration
-├── window 0: "dev-server"     → runs `task dev:worktree`
-├── window 1: "opencode"       → runs `opencode`
-└── window 2: "terminal"       → plain shell in worktree dir
-```
-
-Windows are created from terminal presets. Each preset = one tmux window. Parallel commands within a preset = split panes within that window.
-
-## Project Config (.threadmill.yml)
-
-Lives in the project repo root. Committed and versioned.
-
-```yaml
-# .threadmill.yml
 setup:
-  # Runs after worktree creation + copy_from_main, before presets start
   - bun install
-  - task db:branch:sync
 
 teardown:
-  # Runs before worktree deletion
   - task db:branch:delete
 
 copy_from_main:
-  # Files/dirs copied from main worktree to new thread worktree
   - .env.local
-  - .env.development.local
+
+ports:
+  base: 3000
+  offset: 20
 
 presets:
   dev-server:
-    label: "Dev Server"
-    commands:
-      - task dev:worktree
-    autostart: true
-
-  dev-full:
-    label: "Dev (Full Stack)"
-    commands:
-      - task dev:worktree
-      - bun run storybook
-    parallel: true      # each command gets its own pane
-    autostart: false
-
-  opencode:
-    label: "OpenCode"
-    commands:
-      - opencode
-    autostart: false
-
-  terminal:
-    label: "Terminal"
-    commands:
-      - $SHELL
-    autostart: true
+    command: task dev:worktree
+    cwd: .
 ```
 
-### Global Hooks
+Notes:
 
-Global hooks (run for all projects) are defined in the daemon config:
+- `ports.offset` must be `> 0`.
+- If no config exists, Spindle provides defaults including a `terminal` preset.
+- Preset lifecycle flags (`autostart`, `parallel`) are still read from thread config where defined.
 
-```yaml
-# ~/.config/threadmill/config.yml (on beast)
-global_hooks:
-  post_create:
-    - echo "Thread created: $THREADMILL_THREAD"
-  pre_delete:
-    - echo "Thread closing: $THREADMILL_THREAD"
+## Port Management (Implemented)
 
-# Environment variables available in hooks and preset commands:
-# THREADMILL_PROJECT      - project name
-# THREADMILL_THREAD       - thread name
-# THREADMILL_BRANCH       - git branch
-# THREADMILL_WORKTREE     - worktree absolute path
-# THREADMILL_MAIN         - main worktree absolute path
-# THREADMILL_PORT_OFFSET  - per-thread port offset for dev servers
-```
+Per-project deterministic allocation:
 
-### Port Management
+1. Read `ports.offset` (default `20`).
+2. Collect used offsets for that project from non-closed/non-failed threads.
+3. Allocate first free offset in sequence: `0, 20, 40, ...`.
+4. Compute port base with `ports.base + port_offset`.
 
-Each thread gets a port offset to avoid conflicts when running multiple dev servers:
+Example with `base: 3000`, `offset: 20`:
 
-```yaml
-# .threadmill.yml
-ports:
-  base: 3000        # base port for dev server
-  offset: 20        # each thread gets base + (thread_index * offset)
-```
+- thread A -> `THREADMILL_PORT_OFFSET=0`, `THREADMILL_PORT_BASE=3000`
+- thread B -> `THREADMILL_PORT_OFFSET=20`, `THREADMILL_PORT_BASE=3020`
 
-Daemon exposes `$THREADMILL_PORT_OFFSET` (0, 20, 40, ...) and `$THREADMILL_PORT_BASE` (3000, 3020, 3040, ...) as env vars in tmux sessions.
+## Thread Environment Variables (Implemented)
 
-## Connection & Transport
+Spindle injects these into tmux sessions and hook execution:
 
-```
-Mac app ──SSH tunnel──► beast:19990 (daemon WebSocket)
-         (single connection, multiplexed terminal I/O + RPC + events)
-```
+- `THREADMILL_PROJECT`
+- `THREADMILL_THREAD`
+- `THREADMILL_BRANCH`
+- `THREADMILL_WORKTREE`
+- `THREADMILL_MAIN`
+- `THREADMILL_PORT_OFFSET`
+- `THREADMILL_PORT_BASE`
 
-The SSH tunnel is managed by the app. The daemon listens on `127.0.0.1:19990` (localhost only).
+## External Agent Access (Implemented)
 
-### Connection State Machine
+Agents on beast can use tmux directly or `threadmill-cli`.
 
-```
-disconnected → connecting → authenticating → connected → reconnecting → ...
-                                                ↓
-                                           disconnected (if max retries exceeded)
-```
+CLI commands implemented in `src/bin/threadmill-cli.rs`:
 
-- Auto-reconnect on tunnel drop with exponential backoff
-- Queue commands during reconnection, fail after timeout
-- On reconnect: full state sync (thread.list + project.list)
-- Ping every 30s to detect dead tunnels
+- `threadmill-cli status [--pretty]`
+- `threadmill-cli project list [--pretty]`
+- `threadmill-cli thread list [--project <id|name>] [--pretty]`
+- `threadmill-cli thread create <project-id|project-name> <name> [--branch <branch>] [--pretty]`
+- `threadmill-cli thread close <thread-id> [--pretty]`
+- `threadmill-cli thread info [--pretty]` (uses `THREADMILL_THREAD` env)
 
-### SSH Tunnel Management
+Default endpoint is `ws://127.0.0.1:19990` and can be overridden with `THREADMILL_CLI_WS_URL`.
 
-Shell out to `ssh` (inherits user's SSH config, agent, ProxyJump). Managed as a child process:
-```bash
-ssh -N -L 19990:127.0.0.1:19990 beast
-```
+## Technology Choices (Current)
 
-App monitors the process, restarts on exit.
+| Component | Choice |
+|---|---|
+| Mac app | Swift + SwiftUI + AppKit |
+| Mac cache | GRDB / SQLite |
+| Terminal rendering | GhosttyKit (libghostty) |
+| Transport | SSH tunnel + WebSocket |
+| Protocol | JSON-RPC 2.0 + binary frames |
+| Daemon runtime | Rust + tokio + tokio-tungstenite |
+| Daemon persistence | JSON state store (`threads.json`) + tmux |
+| Config parsing | `serde_yaml` |
+| CLI | `clap` + `threadmill-cli` binary |
 
-### External Agent Access
+## Milestone Status
 
-AI agents (OpenCode, Claude Code) running on beast can interact with threads:
-- **tmux**: `tmux attach -t tm_a1b2c3d4_feature-x:opencode` — direct terminal access
-- **CLI**: `threadmill-cli thread list`, `threadmill-cli thread create myautonomy feature-x` — talks to daemon WebSocket locally on beast
-- **Discovery**: agents find their thread context from `$THREADMILL_THREAD` env var set in tmux sessions
+### M0: Connection + Terminal Feasibility
+- [x] SSH tunnel management from app
+- [x] WebSocket JSON-RPC transport
+- [x] Reconnect state machine
+- [x] Daemon ping + terminal attach/detach/resize
+- [x] End-to-end terminal relay over single connection
+- [x] GhosttyKit integration
+- [x] PTY shim relay path used for remote terminal rendering
 
-## Technology Choices
+### M1: Projects and Threads
+- [x] `project.add` / `project.clone` / `project.list` / `project.remove`
+- [x] `thread.create` with progress streaming
+- [ ] `thread.create` cancellation (`thread.cancel`)
+- [x] `thread.close` / `thread.hide` / `thread.reopen`
+- [x] `threads.json` persistence + reconciliation
+- [x] GRDB cache + sync-from-daemon model
+- [x] Project/thread sidebar model in app state
 
-| Component | Choice | Rationale |
-|---|---|---|
-| Mac UI | AppKit + SwiftUI | AppKit for window/surface hosting, SwiftUI for sidebar/chrome |
-| Mac persistence | GRDB | Mature SQLite wrapper, predictable concurrency model, cache of daemon state |
-| Mac terminal | libghostty (GhosttyKit) | GPU-accelerated Metal renderer from Ghostty. Built from upstream ghostty-org/ghostty (1.3.0-dev) via zig. PTY shim bridges to remote via Unix socket. |
-| Mac ↔ beast | SSH tunnel + WebSocket | Single multiplexed connection for RPC, events, and terminal I/O |
-| Protocol | JSON-RPC 2.0 + binary frames | Request IDs, error codes, batching. Binary frames for terminal data. |
-| Beast daemon | Rust + tokio | Fast, reliable, `tokio-tungstenite` for WebSocket, systemd-managed |
-| Beast persistence | `threads.json` + tmux | Thin JSON for metadata, tmux for session persistence, reconciled on startup |
-| Beast git | CLI (local) | Git runs natively on beast, no NFS, no wrapper needed |
-| Project config | YAML in repo | Versioned, shared with team, readable |
-
-## What This Eliminates
-
-From the current Superset + WSL setup, Threadmill removes:
-- `~/.superset/bin/git` wrapper (git is local on beast)
-- NFS worktree checkout issues (worktrees created on beast natively)
-- LSEnvironment / Info.plist patching (no Electron, no PATH discovery issues)
-- `wsl-run` (daemon runs commands directly)
-- `beast-port` / `beast-tunnel` workarounds (single SSH tunnel built into app)
-- `ensure-superset-env` LaunchAgent (no longer needed)
-- All path mapping logic (remote↔local) in the git wrapper
-
-## Known Risks & Mitigations
-
-| Risk | Severity | Mitigation |
-|---|---|---|
-| libghostty PTY shim relay latency | Medium | PTY shim adds one hop (Unix socket). Proven pattern (iTerm2 SSH). Validated: local shell renders correctly. |
-| tmux resize with multiple viewers at different sizes | Medium | `set -g window-size latest` — tmux uses most recent client's size |
-| `.threadmill.yml` in malicious PR runs arbitrary commands | Medium | Trust-on-first-use: warn on new/changed hooks, require confirmation |
-| Hidden threads accumulate disk usage | Low | Show disk usage in sidebar, optional auto-cleanup TTL in config |
-
-## MVP Milestones
-
-### M0: Connection + Terminal Feasibility ✅
-- [x] SSH tunnel establishment from Swift (shell out to `ssh`, process management)
-- [x] WebSocket client over tunnel with JSON-RPC 2.0
-- [x] Connection state machine (connect/reconnect/disconnect)
-- [x] Daemon scaffolding: WebSocket server, `ping`, terminal attach/detach/resize via tmux pipe-pane
-- [x] End-to-end terminal relay: Mac → SSH tunnel → beast:19990 → Spindle → tmux pane → output back
-- [x] **libghostty integration**: GhosttyKit.xcframework built from upstream ghostty (1.3.0-dev), linked via SPM `.binaryTarget`, renders a local shell with Metal GPU acceleration
-- [ ] **PTY shim relay**: swap local shell for relay process that bridges ghostty surface ↔ Unix socket ↔ WebSocket ↔ Spindle ↔ tmux (in progress)
-
-### M1: Projects & Threads
-- [ ] `project.add` / `project.clone` / `project.list` / `project.remove`
-- [ ] `thread.create` with progress streaming and cancellation
-- [ ] `thread.close` / `thread.hide` / `thread.reopen`
-- [ ] `threads.json` persistence + startup reconciliation
-- [ ] GRDB cache on Mac, sync protocol on connect
-- [ ] SwiftUI sidebar with projects and threads
-
-### M2: Terminals & Presets
-- [ ] Terminal I/O relay through WebSocket (attach/detach/resize)
-- [ ] Multiple terminal tabs per thread (one per preset)
-- [ ] Preset start/stop/restart
-- [ ] Process status indicators (running/stopped/crashed)
+### M2: Terminals and Presets
+- [x] Terminal I/O relay (`terminal.attach` / `detach` / `resize`)
+- [x] Multiple preset tabs per thread
+- [x] `preset.start` / `preset.stop` / `preset.restart`
+- [x] Preset process event stream (`preset.process_event`)
 - [ ] Scrollback replay on reconnect via `tmux capture-pane`
 
-### M3: Lifecycle & Hooks
-- [ ] `.threadmill.yml` parsing and validation
-- [ ] Setup/teardown hook execution with progress reporting
-- [ ] `copy_from_main` support
-- [ ] Thread from existing branch
-- [ ] Thread from PR URL
-- [ ] Port management (offset allocation)
-- [ ] `threadmill-cli` for beast-side agent access
-- [ ] Keyboard shortcuts
+### M3: Lifecycle and Hooks
+- [x] `.threadmill.yml` parsing
+- [x] setup/teardown hooks
+- [x] `copy_from_main`
+- [x] Existing branch thread creation path
+- [ ] PR URL -> branch extraction workflow
+- [x] Port offset management
+- [x] `threadmill-cli`
+- [ ] Keyboard shortcut coverage
 
-### Post-MVP
-- [ ] Menu bar quick access
-- [ ] Notifications (process crashed, hook failed)
-- [ ] Hidden thread TTL / disk usage visibility
-
-### Non-goals
-- **Git diff/commit UI** — use VS Code Remote SSH, GitHub Desktop, or neovim (fugitive/diffview) in a terminal preset. Threadmill manages threads, not git.
+### Planned (Post-MVP)
+- [ ] Menu bar quick actions
+- [ ] User-facing notifications for crashes/failures
+- [ ] Hidden-thread TTL and disk-usage controls

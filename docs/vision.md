@@ -1,98 +1,125 @@
 # Threadmill Vision
 
-## Problem
+## Purpose
 
-Superset (Electron app) manages git worktrees but has chronic issues:
-- Auto-updates wipe LSEnvironment, bypassing the git wrapper
-- SHELL/PATH discovery fails with nushell, falling back to bare PATH
-- NFS-based worktree checkouts are slow and fragile
-- No awareness of AI agent sessions running in worktrees
-- Opaque Electron internals make fixes fragile and recurring
+Threadmill replaces Superset with a native macOS visor over a beast-hosted runtime:
 
-## Core Idea
+- no NFS dependency for core operations
+- no Electron environment fragility
+- explicit project/thread/preset model with tmux persistence
 
-macOS is just a visor. Everything runs on beast (WSL2). A native macOS app (Threadmill) talks to a Rust daemon (Spindle) on beast over a single WebSocket connection. No NFS dependency for any operation.
+## Current Product Shape
+
+Everything below is split into implemented vs planned.
 
 ## Key Features
 
-### 1. Projects
-- "Add repository" — either "Open project" (existing repo on beast) or "Clone repo" (from URL)
-- Projects define terminal presets, setup hooks, and teardown hooks
-- Config lives in `.threadmill.yml` committed to each project repo
+### 1) Projects
 
-### 2. Threads
-- A thread = a project + git worktree + branch + tmux session
-- Threads are the primary workspace unit, visible in the sidebar grouped by project
-- Create a new thread by selecting a project, then choosing:
-  - New feature (enter branch name)
-  - Existing branch (select from remote branches)
-  - From PR URL (extracts branch)
-- Closing a thread deletes the worktree (with "hide" option to keep files on disk)
-- Thread lifecycle: creating → active → closing → closed | hidden | failed
+- [x] Add existing beast repo (`project.add`)
+- [x] Clone repo from URL (`project.clone`)
+- [x] List/remove projects (`project.list`, `project.remove`)
+- [x] Parse `.threadmill.yml` and expose project presets
+- [ ] Trust UX for reviewing changed project hooks before execution (Planned)
 
-### 3. Terminal Presets
-- A project defines what "dev server" means — could be one command, or multiple parallel commands
-- Presets are tabs in the thread view (e.g. [Dev Server] [OpenCode] [Terminal])
-- Each preset maps to a tmux window (parallel commands = split panes within that window)
-- Preset output is always accessible for introspection (server logs, agent output, etc.)
-- Example presets:
-  ```yaml
+### 2) Threads
+
+- [x] Thread = project + worktree + branch + tmux session
+- [x] Create from new feature branch
+- [x] Create from existing branch path
+- [x] Hide thread (keep worktree) and reopen
+- [x] Close thread (teardown + worktree removal)
+- [ ] Cancel in-flight thread creation (Planned)
+- [ ] Full PR URL intake flow in app (Planned)
+
+### 3) Terminal Presets
+
+- [x] Presets render as tabs in thread view
+- [x] Presets map to tmux windows
+- [x] Start/stop/restart over RPC
+- [x] Process events streamed (`preset.process_event`)
+
+Current preset format:
+
+```yaml
+presets:
   dev-server:
-    commands: [task dev:worktree]
-    autostart: true
-  dev-full:
-    commands: [task dev:worktree, bun run storybook]
-    parallel: true
+    command: task dev:worktree
   opencode:
-    commands: [opencode]
+    command: opencode
   terminal:
-    commands: [$SHELL]
-    autostart: true
-  ```
+    command: $SHELL
+```
 
-### 4. Setup Hooks
-- Global hooks (run for all projects) and per-project hooks
-- Some projects need to copy files from main branch to new worktrees (e.g. `.env.local`)
-- Setup runs after worktree creation, before presets start
-- Teardown runs before worktree deletion
-- Example:
-  ```yaml
-  setup:
-    - bun install
-    - task db:branch:sync
-  teardown:
-    - task db:branch:delete
-  copy_from_main:
-    - .env.local
-    - .env.development.local
-  ```
+Optional `cwd` is supported for presets.
 
-### 5. AI Agent Awareness
-- OpenCode/Claude Code sessions are just terminal presets — agent-agnostic
-- Agents running on beast can discover thread context via `$THREADMILL_THREAD` env var
-- Agents can create threads, list threads, attach to sessions via `threadmill-cli` or tmux
-- Multiple agents can work in parallel across different worktrees
-- Starting work from an agent should create a visible thread in the app
+### 4) Setup / Teardown and File Copy
 
-### 6. Persistence via tmux
-- All sessions survive: app quit, SSH drops, daemon restarts, network blips
-- Reattach from anywhere (phone via SSH, another Mac, an agent)
-- No custom PTY management — tmux is the persistence layer
+- [x] `setup` hooks run during thread creation
+- [x] `teardown` hooks run during close
+- [x] `copy_from_main` supports bootstrapping files like `.env.local`
 
-## Non-Goals
-- Git diff/commit UI — use VS Code Remote SSH, GitHub Desktop, or neovim in a terminal preset
-- Multi-host support — hardcoded for beast
-- Generic SSH abstraction — uses beast SSH config directly
+### 5) AI Agent Awareness
+
+- [x] Agent sessions can run as normal presets (agent-agnostic)
+- [x] tmux sessions include thread context env vars
+- [x] `threadmill-cli` is available for agent-side automation
+- [x] `threadmill-cli thread info` resolves context from `THREADMILL_THREAD`
+
+### 6) Port Management
+
+- [x] Per-project port offsets are allocated and persisted
+- [x] `.threadmill.yml` supports:
+
+```yaml
+ports:
+  base: 3000
+  offset: 20
+```
+
+- [x] tmux/hook env receives `THREADMILL_PORT_OFFSET` and `THREADMILL_PORT_BASE`
+
+### 7) Transport and Persistence
+
+- [x] Single SSH tunnel + single WebSocket for RPC/events/terminal data
+- [x] tmux persistence survives app disconnects and daemon restarts
+- [x] Daemon state persisted in `threads.json` and reconciled at startup
 
 ## Architecture Split
-- **Threadmill** (macOS, Swift/AppKit) — the visor, UI, connection management, terminal rendering via libghostty (GPU-accelerated Metal)
-- **Spindle** (beast, Rust) — the daemon, git/tmux/process orchestration
-- **Protocol** — JSON-RPC 2.0 schema owned by Threadmill, consumed by Spindle via git submodule
 
-## Terminal Rendering
+- **Threadmill (macOS)**: UI, selection state, local GRDB cache, terminal surface hosting
+- **Spindle (beast)**: JSON-RPC server, git/tmux orchestration, state persistence, hook execution
+- **Protocol**: shared JSON-RPC schema + runtime events
+- **threadmill-cli (beast)**: local command interface to daemon WebSocket
 
-Uses **libghostty** from the official [Ghostty](https://github.com/ghostty-org/ghostty) terminal emulator. Built as an xcframework via zig, linked as a static library. Renders via Metal — same quality as standalone Ghostty.
+## Milestone Status
 
-Remote terminal I/O uses a PTY shim: ghostty owns a local PTY running a relay process, which connects back to the app via Unix socket. The app bridges that socket to the WebSocket connection to Spindle. This avoids any libghostty API limitations (it expects to own a local process) while preserving full GPU rendering.
+### M0
+- [x] Connection and transport foundation
+- [x] Terminal rendering and relay pipeline
 
-We evaluated [cmux](https://github.com/manaflow-ai/cmux) (also uses libghostty) but decided to port the integration code rather than fork — cmux assumes local processes and doesn't have our remote daemon model.
+### M1
+- [x] Projects CRUD and clone
+- [x] Threads lifecycle core (create/hide/reopen/close)
+- [x] Persistent daemon state + app sync cache
+- [ ] Create cancellation
+
+### M2
+- [x] Preset tabs and controls
+- [x] Terminal attach/detach/resize RPC path
+- [x] Preset process event stream
+- [ ] Reconnect scrollback replay
+
+### M3
+- [x] `.threadmill.yml` parsing in daemon
+- [x] setup/teardown/copy_from_main
+- [x] Port offset model and env wiring
+- [x] `threadmill-cli`
+- [ ] PR URL to branch flow in app UX
+- [ ] Keyboard shortcut coverage
+
+## Non-Goals (unchanged)
+
+- Git diff/commit UI in Threadmill
+- Generic multi-host orchestration
+- Generic SSH abstraction layer
