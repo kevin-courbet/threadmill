@@ -271,12 +271,12 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         appState.selectedPreset = "opencode"
         await appState.attachSelectedPreset()
 
-        XCTAssertEqual(appState.terminalTabs.map(\.preset.name), ["terminal", "opencode"])
+        XCTAssertEqual(appState.terminalTabs.compactMap { $0.preset?.name }, ["terminal", "opencode"])
 
         await appState.stopPreset(named: "opencode")
 
         XCTAssertEqual(appState.selectedPreset, "terminal")
-        XCTAssertEqual(appState.terminalTabs.map(\.preset.name), ["terminal"])
+        XCTAssertEqual(appState.terminalTabs.compactMap { $0.preset?.name }, ["terminal"])
         XCTAssertTrue(connection.requests.contains(where: { $0.method == "preset.stop" }))
     }
 
@@ -348,6 +348,28 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
 
         XCTAssertEqual(appState.presets.map(\.name), ["terminal", "opencode", "logs"])
         XCTAssertEqual(appState.selectedPreset, "terminal")
+    }
+
+    func testTerminalTabsAlwaysIncludeChatTab() {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = makeProject(id: "project-1")
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        let chatTab = appState.terminalTabs.first { $0.selectionID == TerminalTabModel.chatTabSelectionID }
+
+        XCTAssertNotNil(chatTab)
+        if case .chat? = chatTab?.type {
+            XCTAssertTrue(true)
+        } else {
+            XCTFail("Expected chat tab type")
+        }
     }
 
     private func makeAppState(

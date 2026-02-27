@@ -41,14 +41,14 @@ struct TerminalTabBar: View {
 
     @ViewBuilder
     private func tabButton(for tab: TerminalTabModel) -> some View {
-        let isSelected = selectedPreset == tab.preset.name
-        let showsClose = isSelected || hoveredPresetName == tab.preset.name
+        let isSelected = selectedPreset == tab.selectionID
+        let showsClose = tab.isClosable && (isSelected || hoveredPresetName == tab.selectionID)
 
         HStack(spacing: 4) {
             Button {
-                selectedPreset = tab.preset.name
+                selectedPreset = tab.selectionID
             } label: {
-                Text(tab.preset.label)
+                Text(tab.title)
                     .font(.subheadline)
                     .lineLimit(1)
                     .frame(height: 34)
@@ -60,7 +60,7 @@ struct TerminalTabBar: View {
 
             if showsClose {
                 Button {
-                    onClose(tab.preset.name)
+                    onClose(tab.selectionID)
                 } label: {
                     Image(systemName: "xmark")
                         .font(.caption2.weight(.semibold))
@@ -69,14 +69,14 @@ struct TerminalTabBar: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.trailing, 10)
-                .help("Stop \(tab.preset.label)")
+                .help("Stop \(tab.title)")
             }
         }
         .background(isSelected ? Color.white.opacity(0.08) : .clear)
         .onHover { hovering in
-            hoveredPresetName = hovering ? tab.preset.name : nil
+            hoveredPresetName = hovering ? tab.selectionID : nil
         }
-        .accessibilityIdentifier("terminal.tab.\(tab.preset.name)")
+        .accessibilityIdentifier("terminal.tab.\(tab.selectionID)")
     }
 
     private var addPresetButton: some View {

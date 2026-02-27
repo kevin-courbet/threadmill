@@ -30,11 +30,25 @@ struct ThreadDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 if thread.status == .active {
-                    TerminalTabView(
-                        endpoint: appState.selectedEndpoint,
-                        isConnecting: appState.connectionStatus != .disconnected
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if appState.selectedPreset == TerminalTabModel.chatTabSelectionID {
+                        if let openCodeClient = appState.openCodeClient {
+                            ChatView(directory: thread.worktreePath, openCodeClient: openCodeClient)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            ContentUnavailableView(
+                                "Chat unavailable",
+                                systemImage: "bubble.left.and.bubble.right",
+                                description: Text("OpenCode client is not configured.")
+                            )
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    } else {
+                        TerminalTabView(
+                            endpoint: appState.selectedEndpoint,
+                            isConnecting: appState.connectionStatus != .disconnected
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                 } else {
                     VStack(spacing: 12) {
                         Image(systemName: thread.status == .creating ? "hourglass" : "terminal")

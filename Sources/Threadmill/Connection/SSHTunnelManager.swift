@@ -24,6 +24,8 @@ final class SSHTunnelManager: ObservableObject, TunnelManaging {
 
     private var process: Process?
 
+    private let opencodePort = 4101
+
     init(host: String, localPort: Int, remotePort: Int) {
         self.host = host
         self.localPort = localPort
@@ -37,12 +39,16 @@ final class SSHTunnelManager: ObservableObject, TunnelManaging {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
-        process.arguments = [
+        var arguments = [
             "-N",
             "-o", "ExitOnForwardFailure=yes",
             "-L", "\(localPort):127.0.0.1:\(remotePort)",
-            host
         ]
+        if localPort != opencodePort {
+            arguments += ["-L", "\(opencodePort):127.0.0.1:\(opencodePort)"]
+        }
+        arguments.append(host)
+        process.arguments = arguments
 
         process.terminationHandler = { [weak self] process in
             Task { @MainActor [weak self] in

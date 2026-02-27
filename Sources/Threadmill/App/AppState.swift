@@ -42,6 +42,7 @@ final class AppState {
         }
     }
     var selectedEndpoint: RelayEndpoint?
+    private(set) var openCodeClient: (any OpenCodeManaging)?
 
     private var databaseManager: (any DatabaseManaging)?
     private var syncService: (any SyncServicing)?
@@ -94,21 +95,25 @@ final class AppState {
             .map(\.name)
             .filter { openPresetNames.contains($0) || selectedPreset == $0 }
 
-        return visiblePresetNames.compactMap { presetName in
+        let terminalTabs: [TerminalTabModel] = visiblePresetNames.compactMap { presetName in
             guard let preset = presets.first(where: { $0.name == presetName }) else {
                 return nil
             }
 
             return TerminalTabModel(
                 threadID: thread.id,
-                preset: preset,
+                type: .terminal(preset),
                 endpoint: attachedEndpoints[AttachmentKey(threadID: thread.id, preset: presetName)]
             )
         }
+
+        return terminalTabs + [
+            TerminalTabModel(threadID: thread.id, type: .chat, endpoint: nil)
+        ]
     }
 
     var startablePresets: [Preset] {
-        let visibleTabNames = Set(terminalTabs.map(\.preset.name))
+        let visibleTabNames = Set(terminalTabs.compactMap { $0.preset?.name })
         return presets.filter { !visibleTabNames.contains($0.name) }
     }
 
@@ -116,12 +121,14 @@ final class AppState {
         connectionManager: any ConnectionManaging,
         databaseManager: any DatabaseManaging,
         syncService: any SyncServicing,
-        multiplexer: any TerminalMultiplexing
+        multiplexer: any TerminalMultiplexing,
+        openCodeClient: any OpenCodeManaging = OpenCodeClient()
     ) {
         self.connectionManager = connectionManager
         self.databaseManager = databaseManager
         self.syncService = syncService
         self.multiplexer = multiplexer
+        self.openCodeClient = openCodeClient
     }
 
     func ensureValidSelection() {
@@ -182,6 +189,12 @@ final class AppState {
     func attachSelectedPreset() async {
         guard let selectedThread else {
             cancelPendingAttachTasks()
+            selectedEndpoint = nil
+            return
+        }
+
+        if selectedPreset == TerminalTabModel.chatTabSelectionID {
+            cancelPendingAttachTasks(threadID: selectedThread.id)
             selectedEndpoint = nil
             return
         }
@@ -742,7 +755,8 @@ final class AppState {
     private func refreshSelectedEndpoint() {
         guard
             let threadID = selectedThreadID,
-            let preset = selectedPreset
+            let preset = selectedPreset,
+            preset != TerminalTabModel.chatTabSelectionID
         else {
             selectedEndpoint = nil
             return
@@ -754,7 +768,11 @@ final class AppState {
     private func ensureSelectedPresetIsValid() {
         let availablePresets = presets.map(\.name)
         guard !availablePresets.isEmpty else {
-            selectedPreset = nil
+            selectedPreset = TerminalTabModel.chatTabSelectionID
+            return
+        }
+
+        if selectedPreset == TerminalTabModel.chatTabSelectionID {
             return
         }
 
@@ -835,7 +853,14 @@ final class AppState {
     }
 
     func restartCurrentPreset() {
-        guard let threadID = selectedThreadID, let preset = selectedPreset, let connectionManager else { return }
+        guard
+            let threadID = selectedThreadID,
+            let preset = selectedPreset,
+            presets.contains(where: { $0.name == preset }),
+            let connectionManager
+        else {
+            return
+        }
         Task {
             do {
                 _ = try await connectionManager.request(

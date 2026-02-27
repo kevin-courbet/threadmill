@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isBootstrapped = false
     private let connectionManager = ConnectionManager()
     private let surfaceHost = GhosttySurfaceHost()
+    private let openCodeClient = OpenCodeClient()
 
     private var databaseManager: DatabaseManager?
     private var syncService: SyncService?
@@ -43,7 +44,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 connectionManager: connectionManager,
                 databaseManager: databaseManager,
                 syncService: syncService,
-                multiplexer: multiplexer
+                multiplexer: multiplexer,
+                openCodeClient: openCodeClient
             )
             appState.reloadFromDatabase()
 
