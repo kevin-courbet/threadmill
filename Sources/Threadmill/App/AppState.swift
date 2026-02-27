@@ -12,6 +12,7 @@ final class AppState {
     var connectionStatus: ConnectionStatus = .disconnected
     var projects: [Project] = []
     var threads: [ThreadModel] = []
+    var isNewThreadSheetPresented = false
     var selectedThreadID: String? {
         didSet {
             ensureSelectedPresetIsValid()
@@ -634,5 +635,65 @@ final class AppState {
 
         multiplexer?.detach(threadID: threadID, preset: preset)
         refreshSelectedEndpoint()
+    }
+
+    // MARK: - Keyboard shortcut actions
+
+    func selectThreadByIndex(_ index: Int) {
+        guard index >= 0, index < threads.count else { return }
+        selectedThreadID = threads[index].id
+    }
+
+    func openNewThreadSheet() {
+        isNewThreadSheetPresented = true
+    }
+
+    func closeSelectedThread() {
+        guard let threadID = selectedThreadID else { return }
+        Task { await closeThread(threadID: threadID) }
+    }
+
+    func nextPresetTab() {
+        let names = presets.map(\.name)
+        guard !names.isEmpty else { return }
+        guard let current = selectedPreset, let idx = names.firstIndex(of: current) else {
+            selectedPreset = names[0]
+            return
+        }
+        selectedPreset = names[(idx + 1) % names.count]
+    }
+
+    func previousPresetTab() {
+        let names = presets.map(\.name)
+        guard !names.isEmpty else { return }
+        guard let current = selectedPreset, let idx = names.firstIndex(of: current) else {
+            selectedPreset = names[0]
+            return
+        }
+        selectedPreset = names[(idx - 1 + names.count) % names.count]
+    }
+
+    func restartCurrentPreset() {
+        guard let threadID = selectedThreadID, let preset = selectedPreset, let connectionManager else { return }
+        Task {
+            do {
+                _ = try await connectionManager.request(
+                    method: "preset.restart",
+                    params: ["thread_id": threadID, "preset": preset],
+                    timeout: 20
+                )
+            } catch {
+                NSLog("threadmill-state: preset.restart failed: %@", "\(error)")
+            }
+        }
+    }
+
+    func toggleConnection() {
+        guard let connectionManager else { return }
+        if connectionManager.state.isConnected {
+            connectionManager.stop()
+        } else {
+            connectionManager.start()
+        }
     }
 }
