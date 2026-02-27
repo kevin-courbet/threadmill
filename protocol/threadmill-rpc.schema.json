@@ -310,6 +310,27 @@
         }
       }
     },
+    "OpencodeStatusResult": {
+      "type": "object",
+      "required": [
+        "running",
+        "port",
+        "url"
+      ],
+      "properties": {
+        "running": {
+          "type": "boolean"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
     "StateDeltaChange": {
       "oneOf": [
         {
@@ -468,6 +489,24 @@
       },
       "result": {
         "$ref": "#/$defs/StateSnapshot"
+      }
+    },
+    "opencode.status": {
+      "description": "Check shared opencode serve status",
+      "params": {
+        "$ref": "#/$defs/EmptyParams"
+      },
+      "result": {
+        "$ref": "#/$defs/OpencodeStatusResult"
+      }
+    },
+    "opencode.ensure": {
+      "description": "Ensure shared opencode serve is running",
+      "params": {
+        "$ref": "#/$defs/EmptyParams"
+      },
+      "result": {
+        "type": "string"
       }
     },
     "project.list": {
