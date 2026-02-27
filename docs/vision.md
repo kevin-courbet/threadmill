@@ -20,7 +20,6 @@ Everything below is split into implemented vs planned.
 - [x] Clone repo from URL (`project.clone`)
 - [x] List/remove projects (`project.list`, `project.remove`)
 - [x] Parse `.threadmill.yml` and expose project presets
-- [ ] Trust UX for reviewing changed project hooks before execution (Planned)
 
 ### 2) Threads
 
@@ -29,8 +28,8 @@ Everything below is split into implemented vs planned.
 - [x] Create from existing branch path
 - [x] Hide thread (keep worktree) and reopen
 - [x] Close thread (teardown + worktree removal)
-- [ ] Cancel in-flight thread creation (Planned)
-- [ ] Full PR URL intake flow in app (Planned)
+- [x] Cancel in-flight thread creation (`thread.cancel`)
+- [x] PR URL → branch extraction and thread creation
 
 ### 3) Terminal Presets
 
@@ -84,6 +83,16 @@ ports:
 - [x] Single SSH tunnel + single WebSocket for RPC/events/terminal data
 - [x] tmux persistence survives app disconnects and daemon restarts
 - [x] Daemon state persisted in `threads.json` and reconciled at startup
+- [x] Scrollback replay on reconnect via `tmux capture-pane`
+
+### 8) Keyboard Shortcuts
+
+- [x] Cmd+1..9 select thread by index
+- [x] Cmd+T new thread sheet
+- [x] Cmd+W close selected thread
+- [x] Cmd+]/[ next/prev preset tab
+- [x] Cmd+Shift+R restart current preset
+- [x] Cmd+Shift+K toggle connection
 
 ## Architecture Split
 
@@ -102,24 +111,25 @@ ports:
 - [x] Projects CRUD and clone
 - [x] Threads lifecycle core (create/hide/reopen/close)
 - [x] Persistent daemon state + app sync cache
-- [ ] Create cancellation
+- [x] Create cancellation
 
 ### M2
 - [x] Preset tabs and controls
 - [x] Terminal attach/detach/resize RPC path
 - [x] Preset process event stream
-- [ ] Reconnect scrollback replay
+- [x] Reconnect scrollback replay
 
 ### M3
 - [x] `.threadmill.yml` parsing in daemon
 - [x] setup/teardown/copy_from_main
 - [x] Port offset model and env wiring
 - [x] `threadmill-cli`
-- [ ] PR URL to branch flow in app UX
-- [ ] Keyboard shortcut coverage
+- [x] PR URL to branch flow in app UX
+- [x] Keyboard shortcut coverage
 
-## Non-Goals (unchanged)
+## Non-Goals
 
 - Git diff/commit UI in Threadmill
 - Generic multi-host orchestration
 - Generic SSH abstraction layer
+- Trust UX for hook review (unnecessary for single-user)
