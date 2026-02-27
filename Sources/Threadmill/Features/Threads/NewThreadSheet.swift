@@ -180,20 +180,25 @@ struct NewThreadSheet: View {
         do {
             errorMessage = nil
             let branch: String?
+            let prURL: String?
             switch sourceType {
             case .newFeature:
                 branch = nil
+                prURL = nil
             case .existingBranch:
                 branch = selectedBranch
+                prURL = nil
             case .pullRequest:
-                branch = prURL
+                branch = nil
+                prURL = self.prURL
             }
 
             try await appState.createThread(
                 projectID: selectedProjectID,
                 name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                 sourceType: sourceType.rawValue,
-                branch: branch
+                branch: branch,
+                prURL: prURL
             )
             dismiss()
         } catch {

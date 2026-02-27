@@ -394,7 +394,8 @@ final class AppState {
         projectID: String,
         name: String,
         sourceType: String,
-        branch: String?
+        branch: String?,
+        prURL: String? = nil
     ) async throws {
         guard let connectionManager else {
             return
@@ -408,6 +409,10 @@ final class AppState {
 
         if let branch, !branch.isEmpty {
             params["branch"] = branch
+        }
+
+        if let prURL {
+            params["pr_url"] = prURL
         }
 
         _ = try await connectionManager.request(method: "thread.create", params: params, timeout: 30)
