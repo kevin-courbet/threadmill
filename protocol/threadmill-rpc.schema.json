@@ -506,7 +506,7 @@
         "$ref": "#/$defs/EmptyParams"
       },
       "result": {
-        "type": "string"
+        "$ref": "#/$defs/OpencodeStatusResult"
       }
     },
     "project.list": {

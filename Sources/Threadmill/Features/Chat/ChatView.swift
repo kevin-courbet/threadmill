@@ -7,9 +7,13 @@ struct ChatView: View {
     @State private var draftText = ""
     @State private var expandedToolPartIDs: Set<String> = []
 
-    init(directory: String, openCodeClient: any OpenCodeManaging) {
+    init(
+        directory: String,
+        openCodeClient: any OpenCodeManaging,
+        ensureOpenCodeRunning: (() async throws -> Void)? = nil
+    ) {
         self.directory = directory
-        _viewModel = State(initialValue: ChatViewModel(openCodeClient: openCodeClient))
+        _viewModel = State(initialValue: ChatViewModel(openCodeClient: openCodeClient, ensureOpenCodeRunning: ensureOpenCodeRunning))
     }
 
     var body: some View {

@@ -13,12 +13,26 @@ final class ChatViewModel {
     var lastError: String?
 
     private let openCodeClient: any OpenCodeManaging
+    private let ensureOpenCodeRunning: (() async throws -> Void)?
     private var activeDirectory: String?
+    private var hasEnsuredOpenCodeRunning = false
     private var eventStreamDirectory: String?
     private var eventStreamTask: Task<Void, Never>?
+    private var eventStreamToken = UUID()
+    private var messageLoadTask: Task<Void, Never>?
+    private var messageLoadToken = UUID()
 
-    init(openCodeClient: any OpenCodeManaging) {
+    init(
+        openCodeClient: any OpenCodeManaging,
+        ensureOpenCodeRunning: (() async throws -> Void)? = nil
+    ) {
         self.openCodeClient = openCodeClient
+        self.ensureOpenCodeRunning = ensureOpenCodeRunning
+    }
+
+    @MainActor deinit {
+        eventStreamTask?.cancel()
+        messageLoadTask?.cancel()
     }
 
     func loadSessions(directory: String) async {
@@ -28,12 +42,16 @@ final class ChatViewModel {
             messages = []
             streamingParts = [:]
             lastError = nil
+            messageLoadTask?.cancel()
+            messageLoadTask = nil
+            messageLoadToken = UUID()
         }
 
         activeDirectory = directory
-        startEventStreamIfNeeded(directory: directory)
 
         do {
+            try await ensureOpenCodeRunningIfNeeded()
+            startEventStreamIfNeeded(directory: directory)
             let loadedSessions = try await openCodeClient.listSessions(directory: directory)
             sessions = loadedSessions.sorted { lhs, rhs in
                 (lhs.time?.updated ?? 0) > (rhs.time?.updated ?? 0)
@@ -69,6 +87,13 @@ final class ChatViewModel {
             return
         }
 
+        do {
+            try await ensureOpenCodeRunningIfNeeded()
+        } catch {
+            lastError = error.localizedDescription
+            return
+        }
+
         if currentSession == nil {
             await createSession(directory: directory)
         }
@@ -98,6 +123,7 @@ final class ChatViewModel {
         }
 
         do {
+            try await ensureOpenCodeRunningIfNeeded()
             try await openCodeClient.abort(sessionID: sessionID, directory: directory)
         } catch {
             lastError = error.localizedDescription
@@ -121,10 +147,11 @@ final class ChatViewModel {
 
     func createSession(directory: String) async {
         activeDirectory = directory
-        startEventStreamIfNeeded(directory: directory)
 
         do {
-            let newSession = try await openCodeClient.initSession(id: Self.makeSessionID(), directory: directory)
+            try await ensureOpenCodeRunningIfNeeded()
+            startEventStreamIfNeeded(directory: directory)
+            let newSession = try await openCodeClient.createSession(directory: directory)
             upsertSession(newSession)
             currentSession = newSession
             messages = []
@@ -136,13 +163,43 @@ final class ChatViewModel {
     }
 
     private func loadMessages(sessionID: String, directory: String) async {
-        do {
-            messages = try await openCodeClient.getMessages(sessionID: sessionID, directory: directory)
-            streamingParts = [:]
-        } catch {
-            messages = []
-            streamingParts = [:]
-            lastError = error.localizedDescription
+        messageLoadTask?.cancel()
+        let token = UUID()
+        messageLoadToken = token
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            do {
+                try await self.ensureOpenCodeRunningIfNeeded()
+                let loadedMessages = try await self.openCodeClient.getMessages(sessionID: sessionID, directory: directory)
+                guard !Task.isCancelled else {
+                    return
+                }
+                guard self.messageLoadToken == token, self.currentSession?.id == sessionID, self.activeDirectory == directory else {
+                    return
+                }
+                self.messages = loadedMessages
+                self.streamingParts = [:]
+            } catch is CancellationError {
+                return
+            } catch {
+                guard self.messageLoadToken == token, self.currentSession?.id == sessionID, self.activeDirectory == directory else {
+                    return
+                }
+                self.messages = []
+                self.streamingParts = [:]
+                self.lastError = error.localizedDescription
+            }
+        }
+
+        messageLoadTask = task
+        await task.value
+
+        if messageLoadToken == token {
+            messageLoadTask = nil
         }
     }
 
@@ -153,9 +210,17 @@ final class ChatViewModel {
 
         eventStreamTask?.cancel()
         eventStreamDirectory = directory
+        let token = UUID()
+        eventStreamToken = token
 
         let eventStream = openCodeClient.streamEvents(directory: directory)
-        eventStreamTask = Task { [weak self] in
+        eventStreamTask = Task { @MainActor [weak self] in
+            defer {
+                if let self, self.eventStreamToken == token {
+                    self.eventStreamTask = nil
+                }
+            }
+
             for await event in eventStream {
                 if Task.isCancelled {
                     return
@@ -166,6 +231,15 @@ final class ChatViewModel {
                 self.handleEvent(event, directory: directory)
             }
         }
+    }
+
+    private func ensureOpenCodeRunningIfNeeded() async throws {
+        guard !hasEnsuredOpenCodeRunning else {
+            return
+        }
+
+        try await ensureOpenCodeRunning?()
+        hasEnsuredOpenCodeRunning = true
     }
 
     private func handleEvent(_ event: OCEvent, directory: String) {
@@ -297,9 +371,6 @@ final class ChatViewModel {
         }
     }
 
-    private static func makeSessionID() -> String {
-        "ses_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
-    }
 }
 
 private extension OCMessage {

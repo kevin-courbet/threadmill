@@ -538,6 +538,18 @@ final class AppState {
         return result as? [String] ?? []
     }
 
+    func ensureOpenCodeRunning() async throws {
+        guard let connectionManager else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+
+        _ = try await connectionManager.request(
+            method: "opencode.ensure",
+            params: nil,
+            timeout: 15
+        )
+    }
+
     func createThread(
         projectID: String,
         name: String,

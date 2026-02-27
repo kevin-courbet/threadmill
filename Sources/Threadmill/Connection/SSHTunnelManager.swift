@@ -39,13 +39,14 @@ final class SSHTunnelManager: ObservableObject, TunnelManaging {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+        let shouldForwardOpenCodePort = localPort != opencodePort && !isPortOpen(opencodePort)
         var arguments = [
             "-N",
             "-o", "ExitOnForwardFailure=yes",
-            "-L", "\(localPort):127.0.0.1:\(remotePort)",
+            "-L", "127.0.0.1:\(localPort):127.0.0.1:\(remotePort)",
         ]
-        if localPort != opencodePort {
-            arguments += ["-L", "\(opencodePort):127.0.0.1:\(opencodePort)"]
+        if shouldForwardOpenCodePort {
+            arguments += ["-L", "127.0.0.1:\(opencodePort):127.0.0.1:\(opencodePort)"]
         }
         arguments.append(host)
         process.arguments = arguments

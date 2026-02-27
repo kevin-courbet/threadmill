@@ -32,7 +32,13 @@ struct ThreadDetailView: View {
                 if thread.status == .active {
                     if appState.selectedPreset == TerminalTabModel.chatTabSelectionID {
                         if let openCodeClient = appState.openCodeClient {
-                            ChatView(directory: thread.worktreePath, openCodeClient: openCodeClient)
+                            ChatView(
+                                directory: thread.worktreePath,
+                                openCodeClient: openCodeClient,
+                                ensureOpenCodeRunning: {
+                                    try await appState.ensureOpenCodeRunning()
+                                }
+                            )
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                         } else {
                             ContentUnavailableView(

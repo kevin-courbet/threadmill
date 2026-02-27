@@ -46,7 +46,7 @@ final class ChatViewModelTests: XCTestCase {
         )
 
         mock.listSessionsResult = .success([])
-        mock.initSessionResult = .success(session)
+        mock.createSessionResult = .success(session)
         mock.getMessagesResult = .success([])
 
         var continuation: AsyncStream<OCEvent>.Continuation?
@@ -80,6 +80,100 @@ final class ChatViewModelTests: XCTestCase {
         let assistantMessage = viewModel.messages.first(where: { $0.id == "msg_assistant" })
         let text = assistantMessage?.parts.first(where: { $0.id == "part_1" })?.text
         XCTAssertEqual(text, "Hello")
+    }
+
+    func testLoadSessionsEnsuresOpenCodeBeforeFirstRequest() async {
+        let mock = MockOpenCodeClient()
+        mock.listSessionsResult = .success([])
+
+        var ensureCalls = 0
+        let viewModel = ChatViewModel(
+            openCodeClient: mock,
+            ensureOpenCodeRunning: {
+                ensureCalls += 1
+            }
+        )
+
+        await viewModel.loadSessions(directory: "/tmp/worktree")
+        await viewModel.loadSessions(directory: "/tmp/worktree")
+
+        XCTAssertEqual(ensureCalls, 1)
+        XCTAssertEqual(mock.listedDirectories, ["/tmp/worktree", "/tmp/worktree"])
+    }
+
+    func testSelectSessionIgnoresStaleMessageLoadResults() async {
+        let mock = MockOpenCodeClient()
+        let firstSession = OCSession(
+            id: "ses_1",
+            slug: "first",
+            title: "First",
+            directory: "/tmp/worktree",
+            projectID: "proj_1",
+            version: nil,
+            parentID: nil,
+            time: nil,
+            summary: nil
+        )
+        let secondSession = OCSession(
+            id: "ses_2",
+            slug: "second",
+            title: "Second",
+            directory: "/tmp/worktree",
+            projectID: "proj_1",
+            version: nil,
+            parentID: nil,
+            time: nil,
+            summary: nil
+        )
+
+        mock.listSessionsResult = .success([firstSession, secondSession])
+        mock.getMessagesHandler = { sessionID, _ in
+            if sessionID == firstSession.id {
+                try await Task.sleep(nanoseconds: 150_000_000)
+                return [OCMessage(id: "msg_stale", sessionID: sessionID, role: "assistant")]
+            }
+            return [OCMessage(id: "msg_fresh", sessionID: sessionID, role: "assistant")]
+        }
+
+        let viewModel = ChatViewModel(openCodeClient: mock)
+        let loadTask = Task {
+            await viewModel.loadSessions(directory: "/tmp/worktree")
+        }
+
+        let selectedSecond = await waitForCondition {
+            !viewModel.sessions.isEmpty
+        }
+        XCTAssertTrue(selectedSecond)
+
+        await viewModel.selectSession(id: secondSession.id)
+        _ = await loadTask.value
+
+        XCTAssertEqual(viewModel.currentSession?.id, secondSession.id)
+        XCTAssertEqual(viewModel.messages.map(\.id), ["msg_fresh"])
+    }
+
+    func testLoadSessionsRestartsEventStreamAfterStreamCompletes() async {
+        let mock = MockOpenCodeClient()
+        mock.listSessionsResult = .success([])
+        mock.eventStream = AsyncStream { continuation in
+            continuation.finish()
+        }
+
+        let viewModel = ChatViewModel(openCodeClient: mock)
+        await viewModel.loadSessions(directory: "/tmp/worktree")
+        let streamFinished = await waitForCondition {
+            mock.streamedDirectories.count == 1
+        }
+        XCTAssertTrue(streamFinished)
+
+        for _ in 0..<5 {
+            await viewModel.loadSessions(directory: "/tmp/worktree")
+            if mock.streamedDirectories.count == 2 {
+                break
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertEqual(mock.streamedDirectories.count, 2)
     }
 
     func testAbortCallsClientForCurrentSession() async {
