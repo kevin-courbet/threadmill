@@ -57,7 +57,9 @@ final class AppState {
         return projects
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             .map { project in
-                let rows = (grouped[project.id] ?? []).sorted { $0.createdAt > $1.createdAt }
+                let rows = (grouped[project.id] ?? [])
+                    .filter { $0.status != .closed && $0.status != .failed }
+                    .sorted { $0.createdAt > $1.createdAt }
                 return (project, rows)
             }
     }
