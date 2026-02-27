@@ -18,7 +18,7 @@ struct ChatInputView: View {
                         Text("No sessions").tag("")
                     }
                     ForEach(sessions) { session in
-                        Text(session.title.isEmpty ? session.slug : session.title)
+                        Text(displayName(for: session))
                             .tag(session.id)
                     }
                 }
@@ -84,5 +84,17 @@ struct ChatInputView: View {
                 onSelectSession(newID)
             }
         )
+    }
+
+    private func displayName(for session: OCSession) -> String {
+        if !session.title.isEmpty {
+            return session.title
+        }
+
+        if let slug = session.slug, !slug.isEmpty {
+            return slug
+        }
+
+        return session.id
     }
 }

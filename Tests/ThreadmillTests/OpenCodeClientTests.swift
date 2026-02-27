@@ -6,6 +6,9 @@ final class OpenCodeClientTests: XCTestCase {
     func testListSessionsSendsEncodedDirectoryHeaderAndDecodesResponse() async throws {
         TestURLProtocol.requestHandler = { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "x-opencode-directory"), "%2Fhome%2Fwsl%2Fdev%2Fmy%20autonomy")
+            let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+            XCTAssertEqual(components?.percentEncodedPath, "/session")
+            XCTAssertEqual(components?.queryItems?.first(where: { $0.name == "directory" })?.value, "/home/wsl/dev/my autonomy")
 
             let payload = """
             [
@@ -118,6 +121,62 @@ final class OpenCodeClientTests: XCTestCase {
         XCTAssertEqual(mock.promptedSessions.first?.sessionID, "ses_1")
         XCTAssertEqual(mock.promptedSessions.first?.prompt, "Hello")
         XCTAssertEqual(mock.promptedSessions.first?.directory, "/tmp/worktree")
+    }
+
+    func testCreateSessionUsesSessionCollectionEndpoint() async throws {
+        TestURLProtocol.requestHandler = { request in
+            let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(components?.percentEncodedPath, "/session")
+            XCTAssertEqual(components?.queryItems?.first(where: { $0.name == "directory" })?.value, "/tmp/worktree")
+
+            let payload = """
+            {
+              "id": "ses_1",
+              "projectID": "proj_1",
+              "directory": "/tmp/worktree",
+              "title": "Session",
+              "version": "1.1.65",
+              "time": { "created": 1, "updated": 2 }
+            }
+            """.data(using: .utf8)!
+
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                payload
+            )
+        }
+
+        let client = makeClient()
+        let session = try await client.createSession(directory: "/tmp/worktree")
+        XCTAssertEqual(session.id, "ses_1")
+        XCTAssertNil(session.slug)
+    }
+
+    func testGetSessionEscapesForwardSlashesInPathComponents() async throws {
+        TestURLProtocol.requestHandler = { request in
+            let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+            XCTAssertEqual(components?.percentEncodedPath, "/session/ses_malicious%2Fsubpath")
+
+            let payload = """
+            {
+              "id": "ses_malicious/subpath",
+              "projectID": "proj_1",
+              "directory": "/tmp/worktree",
+              "title": "Session",
+              "version": "1.1.65",
+              "time": { "created": 1, "updated": 2 }
+            }
+            """.data(using: .utf8)!
+
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                payload
+            )
+        }
+
+        let client = makeClient()
+        _ = try await client.getSession(id: "ses_malicious/subpath", directory: "/tmp/worktree")
     }
 
     func testSSEParserUsesExplicitEventFieldWhenTypeIsMissingInData() throws {

@@ -223,8 +223,10 @@ func makeFrame(channelID: UInt16, payload: [UInt8]) -> Data {
 final class MockOpenCodeClient: OpenCodeManaging {
     var listSessionsResult: Result<[OCSession], Error> = .failure(TestError.missingStub)
     var getSessionResult: Result<OCSession, Error> = .failure(TestError.missingStub)
+    var createSessionResult: Result<OCSession, Error> = .failure(TestError.missingStub)
     var initSessionResult: Result<OCSession, Error> = .failure(TestError.missingStub)
     var getMessagesResult: Result<[OCMessage], Error> = .failure(TestError.missingStub)
+    var getMessagesHandler: ((String, String) async throws -> [OCMessage])?
     var sendPromptResult: Result<Void, Error> = .success(())
     var abortResult: Result<Void, Error> = .success(())
     var getProvidersResult: Result<[OCProvider], Error> = .failure(TestError.missingStub)
@@ -237,6 +239,7 @@ final class MockOpenCodeClient: OpenCodeManaging {
 
     private(set) var listedDirectories: [String] = []
     private(set) var fetchedSessions: [(id: String, directory: String)] = []
+    private(set) var createdSessionsInDirectories: [String] = []
     private(set) var initializedSessions: [(id: String, directory: String)] = []
     private(set) var fetchedMessages: [(sessionID: String, directory: String)] = []
     private(set) var promptedSessions: [(sessionID: String, prompt: String, directory: String)] = []
@@ -256,6 +259,11 @@ final class MockOpenCodeClient: OpenCodeManaging {
         return try getSessionResult.get()
     }
 
+    func createSession(directory: String) async throws -> OCSession {
+        createdSessionsInDirectories.append(directory)
+        return try createSessionResult.get()
+    }
+
     func initSession(id: String, directory: String) async throws -> OCSession {
         initializedSessions.append((id, directory))
         return try initSessionResult.get()
@@ -263,6 +271,9 @@ final class MockOpenCodeClient: OpenCodeManaging {
 
     func getMessages(sessionID: String, directory: String) async throws -> [OCMessage] {
         fetchedMessages.append((sessionID, directory))
+        if let getMessagesHandler {
+            return try await getMessagesHandler(sessionID, directory)
+        }
         return try getMessagesResult.get()
     }
 

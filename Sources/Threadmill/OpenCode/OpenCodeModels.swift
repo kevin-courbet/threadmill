@@ -2,7 +2,7 @@ import Foundation
 
 struct OCSession: Codable, Identifiable, Equatable {
     let id: String
-    let slug: String
+    let slug: String?
     let title: String
     let directory: String
     let projectID: String

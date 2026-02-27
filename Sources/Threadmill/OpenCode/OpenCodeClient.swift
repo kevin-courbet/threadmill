@@ -32,6 +32,11 @@ final class OpenCodeClient: OpenCodeManaging {
     private let encoder = JSONEncoder()
 
     private static let directoryHeaderAllowedCharacters = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+    private static let pathComponentAllowedCharacters: CharacterSet = {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/")
+        return allowed
+    }()
 
     init(
         baseURL: URL = URL(string: "http://127.0.0.1:4101")!,
@@ -46,18 +51,22 @@ final class OpenCodeClient: OpenCodeManaging {
     }
 
     func listSessions(directory: String) async throws -> [OCSession] {
-        let data = try await performDataRequest(path: "/session", method: "GET", directory: directory)
+        let data = try await performDataRequest(pathComponents: ["session"], method: "GET", directory: directory)
         return try decoder.decode([OCSession].self, from: data)
     }
 
     func getSession(id: String, directory: String) async throws -> OCSession {
-        let sessionID = encodePathComponent(id)
-        let data = try await performDataRequest(path: "/session/\(sessionID)", method: "GET", directory: directory)
+        let data = try await performDataRequest(pathComponents: ["session", id], method: "GET", directory: directory)
+        return try decoder.decode(OCSession.self, from: data)
+    }
+
+    func createSession(directory: String) async throws -> OCSession {
+        let data = try await performDataRequest(pathComponents: ["session"], method: "POST", directory: directory)
         return try decoder.decode(OCSession.self, from: data)
     }
 
     func initSession(id: String, directory: String) async throws -> OCSession {
-        let sessionID = encodePathComponent(id)
+        let sessionID = id
         let providers = try await getProvidersPayload(directory: directory)
         guard let model = defaultModel(from: providers) else {
             throw OpenCodeClientError.missingDefaultModel
@@ -69,14 +78,13 @@ final class OpenCodeClient: OpenCodeManaging {
             messageID: Self.makeMessageID()
         )
         let body = try encoder.encode(initRequest)
-        _ = try await performDataRequest(path: "/session/\(sessionID)/init", method: "POST", directory: directory, body: body)
+        _ = try await performDataRequest(pathComponents: ["session", sessionID, "init"], method: "POST", directory: directory, body: body)
 
         return try await getSession(id: id, directory: directory)
     }
 
     func getMessages(sessionID: String, directory: String) async throws -> [OCMessage] {
-        let encodedSessionID = encodePathComponent(sessionID)
-        let data = try await performDataRequest(path: "/session/\(encodedSessionID)/message", method: "GET", directory: directory)
+        let data = try await performDataRequest(pathComponents: ["session", sessionID, "message"], method: "GET", directory: directory)
         let payload = try decoder.decode([OCMessageEnvelope].self, from: data)
         return payload.map { envelope in
             envelope.info.withParts(envelope.parts)
@@ -84,7 +92,6 @@ final class OpenCodeClient: OpenCodeManaging {
     }
 
     func sendPrompt(sessionID: String, prompt: String, directory: String) async throws {
-        let encodedSessionID = encodePathComponent(sessionID)
         let payload = OCPromptRequest(
             messageID: Self.makeMessageID(),
             parts: [OCTextPromptPart(type: "text", text: prompt)]
@@ -92,7 +99,7 @@ final class OpenCodeClient: OpenCodeManaging {
         let body = try encoder.encode(payload)
 
         _ = try await performDataRequest(
-            path: "/session/\(encodedSessionID)/prompt_async",
+            pathComponents: ["session", sessionID, "prompt_async"],
             method: "POST",
             directory: directory,
             body: body
@@ -100,8 +107,7 @@ final class OpenCodeClient: OpenCodeManaging {
     }
 
     func abort(sessionID: String, directory: String) async throws {
-        let encodedSessionID = encodePathComponent(sessionID)
-        _ = try await performDataRequest(path: "/session/\(encodedSessionID)/abort", method: "POST", directory: directory)
+        _ = try await performDataRequest(pathComponents: ["session", sessionID, "abort"], method: "POST", directory: directory)
     }
 
     func getProviders(directory: String) async throws -> [OCProvider] {
@@ -110,19 +116,18 @@ final class OpenCodeClient: OpenCodeManaging {
     }
 
     func getAgents(directory: String) async throws -> [OCAgent] {
-        let data = try await performDataRequest(path: "/agent", method: "GET", directory: directory)
+        let data = try await performDataRequest(pathComponents: ["agent"], method: "GET", directory: directory)
         return try decoder.decode([OCAgent].self, from: data)
     }
 
     func getSessionDiff(sessionID: String, directory: String) async throws -> OCDiff {
-        let encodedSessionID = encodePathComponent(sessionID)
-        let data = try await performDataRequest(path: "/session/\(encodedSessionID)/diff", method: "GET", directory: directory)
+        let data = try await performDataRequest(pathComponents: ["session", sessionID, "diff"], method: "GET", directory: directory)
         let files = try decoder.decode([OCDiffFile].self, from: data)
         return OCDiff(files: files)
     }
 
     func healthCheck() async throws -> Bool {
-        let data = try await performDataRequest(path: "/global/health", method: "GET", directory: nil)
+        let data = try await performDataRequest(pathComponents: ["global", "health"], method: "GET", directory: nil)
         let response = try decoder.decode(OCHealthResponse.self, from: data)
         return response.healthy
     }
@@ -131,7 +136,7 @@ final class OpenCodeClient: OpenCodeManaging {
         AsyncStream { continuation in
             let task = Task {
                 do {
-                    var request = try makeRequest(path: "/event", method: "GET", directory: directory, body: nil)
+                    var request = try makeRequest(pathComponents: ["event"], method: "GET", directory: directory, body: nil)
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
                     let (bytes, response) = try await session.bytes(for: request)
@@ -160,7 +165,7 @@ final class OpenCodeClient: OpenCodeManaging {
     }
 
     private func getProvidersPayload(directory: String) async throws -> OCProvidersPayload {
-        let data = try await performDataRequest(path: "/provider", method: "GET", directory: directory)
+        let data = try await performDataRequest(pathComponents: ["provider"], method: "GET", directory: directory)
 
         if let payload = try? decoder.decode(OCProvidersPayload.self, from: data) {
             return payload
@@ -202,16 +207,34 @@ final class OpenCodeClient: OpenCodeManaging {
         return nil
     }
 
-    private func performDataRequest(path: String, method: String, directory: String?, body: Data? = nil) async throws -> Data {
-        let request = try makeRequest(path: path, method: method, directory: directory, body: body)
+    private func performDataRequest(pathComponents: [String], method: String, directory: String?, body: Data? = nil) async throws -> Data {
+        let request = try makeRequest(pathComponents: pathComponents, method: method, directory: directory, body: body)
         let (data, response) = try await session.data(for: request)
         try validateResponse(response)
         return data
     }
 
-    private func makeRequest(path: String, method: String, directory: String?, body: Data?) throws -> URLRequest {
-        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
-            throw OpenCodeClientError.invalidURL(path: path)
+    private func makeRequest(pathComponents: [String], method: String, directory: String?, body: Data?) throws -> URLRequest {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            throw OpenCodeClientError.invalidURL(path: pathComponents.joined(separator: "/"))
+        }
+
+        let encodedPathComponents = pathComponents.map(encodePathComponent)
+        let basePath = components.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let joinedPath = encodedPathComponents.joined(separator: "/")
+        let fullPath = [basePath, joinedPath]
+            .filter { !$0.isEmpty }
+            .joined(separator: "/")
+        components.percentEncodedPath = "/\(fullPath)"
+
+        if let directory {
+            var queryItems = components.queryItems ?? []
+            queryItems.append(URLQueryItem(name: "directory", value: directory))
+            components.queryItems = queryItems
+        }
+
+        guard let url = components.url else {
+            throw OpenCodeClientError.invalidURL(path: pathComponents.joined(separator: "/"))
         }
 
         var request = URLRequest(url: url)
@@ -250,7 +273,7 @@ final class OpenCodeClient: OpenCodeManaging {
     }
 
     private func encodePathComponent(_ value: String) -> String {
-        value.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? value
+        value.addingPercentEncoding(withAllowedCharacters: Self.pathComponentAllowedCharacters) ?? value
     }
 
     private static func makeMessageID() -> String {
