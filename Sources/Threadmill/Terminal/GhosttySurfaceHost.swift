@@ -27,8 +27,11 @@ final class GhosttySurfaceHost: SurfaceHosting {
 
     func createSurface(in view: GhosttyNSView, socketPath: String) -> ghostty_surface_t? {
         guard let ghosttyApp else { return nil }
+        guard let relayPath = relayBinaryPath() else {
+            NSLog("threadmill: threadmill-relay binary not found")
+            return nil
+        }
 
-        let relayPath = relayBinaryPath()
         var surfaceConfig = ghostty_surface_config_new()
         surfaceConfig.platform_tag = GHOSTTY_PLATFORM_MACOS
         surfaceConfig.platform = ghostty_platform_u(
@@ -138,14 +141,8 @@ final class GhosttySurfaceHost: SurfaceHosting {
         }
     }
 
-    private func relayBinaryPath() -> String {
-        let selfURL = URL(fileURLWithPath: CommandLine.arguments[0]).standardized
-        let dir = selfURL.deletingLastPathComponent()
-        let candidate = dir.appendingPathComponent("threadmill-relay").path
-        if FileManager.default.isExecutableFile(atPath: candidate) {
-            return candidate
-        }
-        return "/usr/local/bin/threadmill-relay"
+    private func relayBinaryPath() -> String? {
+        RelayBinaryLocator.resolve()
     }
 
     private func initializeGhostty() {
