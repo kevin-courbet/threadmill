@@ -59,9 +59,11 @@ final class MockSurfaceHost: SurfaceHosting {
 @MainActor
 final class MockSyncService: SyncServicing {
     var syncCount = 0
+    var syncHandler: (() async -> Void)?
 
     func syncFromDaemon() async {
         syncCount += 1
+        await syncHandler?()
     }
 }
 

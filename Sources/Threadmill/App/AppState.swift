@@ -395,6 +395,20 @@ final class AppState {
         await syncService?.syncFromDaemon()
     }
 
+    func removeProject(projectID: String) async {
+        guard let connectionManager else { return }
+        do {
+            _ = try await connectionManager.request(
+                method: "project.remove",
+                params: ["project_id": projectID],
+                timeout: 15
+            )
+            await syncService?.syncFromDaemon()
+        } catch {
+            NSLog("threadmill-state: project.remove failed (%@): %@", projectID, "\(error)")
+        }
+    }
+
     func cloneRepo(url: String, path: String?) async throws {
         guard let connectionManager else {
             return
