@@ -219,3 +219,84 @@ func makeFrame(channelID: UInt16, payload: [UInt8]) -> Data {
     frame.append(contentsOf: payload)
     return frame
 }
+
+final class MockOpenCodeClient: OpenCodeManaging {
+    var listSessionsResult: Result<[OCSession], Error> = .failure(TestError.missingStub)
+    var getSessionResult: Result<OCSession, Error> = .failure(TestError.missingStub)
+    var initSessionResult: Result<OCSession, Error> = .failure(TestError.missingStub)
+    var getMessagesResult: Result<[OCMessage], Error> = .failure(TestError.missingStub)
+    var sendPromptResult: Result<Void, Error> = .success(())
+    var abortResult: Result<Void, Error> = .success(())
+    var getProvidersResult: Result<[OCProvider], Error> = .failure(TestError.missingStub)
+    var getAgentsResult: Result<[OCAgent], Error> = .failure(TestError.missingStub)
+    var getSessionDiffResult: Result<OCDiff, Error> = .failure(TestError.missingStub)
+    var healthCheckResult: Result<Bool, Error> = .success(true)
+    var eventStream: AsyncStream<OCEvent> = AsyncStream { continuation in
+        continuation.finish()
+    }
+
+    private(set) var listedDirectories: [String] = []
+    private(set) var fetchedSessions: [(id: String, directory: String)] = []
+    private(set) var initializedSessions: [(id: String, directory: String)] = []
+    private(set) var fetchedMessages: [(sessionID: String, directory: String)] = []
+    private(set) var promptedSessions: [(sessionID: String, prompt: String, directory: String)] = []
+    private(set) var abortedSessions: [(sessionID: String, directory: String)] = []
+    private(set) var providerDirectories: [String] = []
+    private(set) var agentDirectories: [String] = []
+    private(set) var diffRequests: [(sessionID: String, directory: String)] = []
+    private(set) var streamedDirectories: [String] = []
+
+    func listSessions(directory: String) async throws -> [OCSession] {
+        listedDirectories.append(directory)
+        return try listSessionsResult.get()
+    }
+
+    func getSession(id: String, directory: String) async throws -> OCSession {
+        fetchedSessions.append((id, directory))
+        return try getSessionResult.get()
+    }
+
+    func initSession(id: String, directory: String) async throws -> OCSession {
+        initializedSessions.append((id, directory))
+        return try initSessionResult.get()
+    }
+
+    func getMessages(sessionID: String, directory: String) async throws -> [OCMessage] {
+        fetchedMessages.append((sessionID, directory))
+        return try getMessagesResult.get()
+    }
+
+    func sendPrompt(sessionID: String, prompt: String, directory: String) async throws {
+        promptedSessions.append((sessionID, prompt, directory))
+        _ = try sendPromptResult.get()
+    }
+
+    func abort(sessionID: String, directory: String) async throws {
+        abortedSessions.append((sessionID, directory))
+        _ = try abortResult.get()
+    }
+
+    func getProviders(directory: String) async throws -> [OCProvider] {
+        providerDirectories.append(directory)
+        return try getProvidersResult.get()
+    }
+
+    func getAgents(directory: String) async throws -> [OCAgent] {
+        agentDirectories.append(directory)
+        return try getAgentsResult.get()
+    }
+
+    func getSessionDiff(sessionID: String, directory: String) async throws -> OCDiff {
+        diffRequests.append((sessionID, directory))
+        return try getSessionDiffResult.get()
+    }
+
+    func healthCheck() async throws -> Bool {
+        try healthCheckResult.get()
+    }
+
+    func streamEvents(directory: String) -> AsyncStream<OCEvent> {
+        streamedDirectories.append(directory)
+        return eventStream
+    }
+}
