@@ -48,9 +48,18 @@ struct ContentView: View {
 
     @ViewBuilder
     private var keyboardShortcuts: some View {
-        // Cmd+T: new thread
-        Button("") { appState.openNewThreadSheet() }
+        // Cmd+T: new terminal tab
+        Button("") {
+            Task {
+                await appState.startPreset(named: "terminal")
+            }
+        }
             .keyboardShortcut("t", modifiers: .command)
+            .hidden()
+
+        // Cmd+Shift+T: new thread
+        Button("") { appState.openNewThreadSheet() }
+            .keyboardShortcut("t", modifiers: [.command, .shift])
             .hidden()
 
         // Cmd+W: close selected thread

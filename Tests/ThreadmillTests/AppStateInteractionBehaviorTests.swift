@@ -350,7 +350,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertEqual(appState.selectedPreset, "terminal")
     }
 
-    func testStartablePresetsPreferTerminalBeforeAnyPresetIsAttached() {
+    func testPresetsPreferTerminalBeforeAnyPresetIsAttached() {
         let connection = MockDaemonConnection(state: .connected)
         let database = MockDatabaseManager()
         let sync = MockSyncService()
@@ -373,7 +373,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
 
         XCTAssertEqual(appState.selectedPreset, "terminal")
-        XCTAssertEqual(appState.startablePresets.map(\.name), ["terminal", "opencode"])
+        XCTAssertEqual(appState.presets.map(\.name), ["terminal", "opencode"])
     }
 
     func testTerminalTabsAlwaysIncludeChatTab() {

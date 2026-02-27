@@ -1,13 +1,5 @@
 import SwiftUI
 
-func preferredPresetToStart(from presets: [Preset]) -> Preset? {
-    guard !presets.isEmpty else {
-        return nil
-    }
-
-    return Preset.orderedByDefaultPriority(presets).first
-}
-
 struct TerminalTabBar: View {
     let tabs: [TerminalTabModel]
     let availablePresets: [Preset]
@@ -23,9 +15,7 @@ struct TerminalTabBar: View {
                 tabButton(for: tab)
             }
 
-            if !availablePresets.isEmpty {
-                addPresetButton
-            }
+            addPresetButton
 
             Spacer(minLength: 0)
         }
@@ -84,13 +74,9 @@ struct TerminalTabBar: View {
     }
 
     private var addPresetButton: some View {
-        let defaultPreset = preferredPresetToStart(from: availablePresets)
-
         return HStack(spacing: 0) {
             Button {
-                if let defaultPreset {
-                    onAdd(defaultPreset.name)
-                }
+                onAdd("terminal")
             } label: {
                 Image(systemName: "plus")
                     .font(.caption.weight(.semibold))
@@ -98,7 +84,6 @@ struct TerminalTabBar: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(defaultPreset == nil)
             .accessibilityIdentifier("terminal.tab.add.default")
 
             Menu {
@@ -118,7 +103,7 @@ struct TerminalTabBar: View {
         }
         .foregroundStyle(.secondary)
         .padding(.leading, 6)
-        .help(defaultPreset.map { "Start \($0.label)" } ?? "")
+        .help("Start Terminal")
         .accessibilityIdentifier("terminal.tab.add")
     }
 }

@@ -3,6 +3,19 @@ import XCTest
 
 @MainActor
 final class KeyboardShortcutTests: XCTestCase {
+    func testContentViewMapsCmdTToTerminalAndCmdShiftTToNewThreadInSource() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Views/ContentView.swift")
+        let source = try String(contentsOf: sourcePath, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("await appState.startPreset(named: \"terminal\")"))
+        XCTAssertTrue(source.contains(".keyboardShortcut(\"t\", modifiers: .command)"))
+        XCTAssertTrue(source.contains(".keyboardShortcut(\"t\", modifiers: [.command, .shift])"))
+    }
+
     func testSelectThreadByIndexUpdatesSelectedThreadID() {
         let connection = MockDaemonConnection(state: .connected)
         let database = MockDatabaseManager()

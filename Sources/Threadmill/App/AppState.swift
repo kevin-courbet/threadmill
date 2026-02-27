@@ -112,15 +112,6 @@ final class AppState {
         ]
     }
 
-    var startablePresets: [Preset] {
-        guard let threadID = selectedThreadID else {
-            return presets
-        }
-
-        let runningPresetNames = openPresetNames(for: threadID)
-        return presets.filter { !runningPresetNames.contains($0.name) }
-    }
-
     func configure(
         connectionManager: any ConnectionManaging,
         databaseManager: any DatabaseManaging,

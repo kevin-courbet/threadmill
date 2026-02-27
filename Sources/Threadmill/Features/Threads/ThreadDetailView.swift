@@ -14,7 +14,7 @@ struct ThreadDetailView: View {
             VStack(spacing: 0) {
                 TerminalTabBar(
                     tabs: appState.terminalTabs,
-                    availablePresets: appState.startablePresets,
+                    availablePresets: appState.presets,
                     selectedPreset: $bindableState.selectedPreset,
                     onClose: { preset in
                         Task {
