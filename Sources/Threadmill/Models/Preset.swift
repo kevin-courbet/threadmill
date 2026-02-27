@@ -22,4 +22,22 @@ struct Preset: Identifiable, Hashable, Codable {
         Preset(name: "terminal", label: "Terminal"),
         Preset(name: "opencode", label: "Opencode")
     ]
+
+    static func orderedByDefaultPriority(_ presets: [Preset]) -> [Preset] {
+        let defaultOrder = defaults.map(\.name)
+
+        return presets
+            .enumerated()
+            .sorted { lhs, rhs in
+                let lhsPriority = defaultOrder.firstIndex(of: lhs.element.name) ?? Int.max
+                let rhsPriority = defaultOrder.firstIndex(of: rhs.element.name) ?? Int.max
+
+                if lhsPriority != rhsPriority {
+                    return lhsPriority < rhsPriority
+                }
+
+                return lhs.offset < rhs.offset
+            }
+            .map(\.element)
+    }
 }

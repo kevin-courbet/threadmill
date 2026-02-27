@@ -79,7 +79,9 @@ final class AppState {
         guard let selectedProject else {
             return []
         }
-        return selectedProject.presets.map { Preset(name: $0.name) }
+
+        let configuredPresets = selectedProject.presets.map { Preset(name: $0.name) }
+        return Preset.orderedByDefaultPriority(configuredPresets)
     }
 
     var terminalTabs: [TerminalTabModel] {

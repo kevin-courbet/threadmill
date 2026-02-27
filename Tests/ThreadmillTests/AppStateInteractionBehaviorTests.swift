@@ -323,7 +323,34 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertTrue(connection.requests.contains(where: { $0.method == "preset.start" }))
     }
 
-        private func makeAppState(
+    func testReloadSelectsTerminalAsDefaultPresetEvenWhenConfigOrderDiffers() {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [
+                PresetConfig(name: "opencode", command: "opencode", cwd: nil),
+                PresetConfig(name: "terminal", command: "$SHELL", cwd: nil),
+                PresetConfig(name: "logs", command: "tail -f log", cwd: nil),
+            ]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+
+        XCTAssertEqual(appState.presets.map(\.name), ["terminal", "opencode", "logs"])
+        XCTAssertEqual(appState.selectedPreset, "terminal")
+    }
+
+    private func makeAppState(
         connection: MockDaemonConnection,
         database: MockDatabaseManager,
         sync: MockSyncService,

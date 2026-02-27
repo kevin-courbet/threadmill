@@ -1,5 +1,18 @@
 import SwiftUI
 
+func preferredPresetToStart(from presets: [Preset]) -> Preset? {
+    guard !presets.isEmpty else {
+        return nil
+    }
+
+    if let defaultPresetName = Preset.defaults.first?.name,
+       let defaultPreset = presets.first(where: { $0.name == defaultPresetName }) {
+        return defaultPreset
+    }
+
+    return presets.first
+}
+
 struct TerminalTabBar: View {
     let tabs: [TerminalTabModel]
     let availablePresets: [Preset]
@@ -67,19 +80,41 @@ struct TerminalTabBar: View {
     }
 
     private var addPresetButton: some View {
-        Button {
-            if let first = availablePresets.first {
-                onAdd(first.name)
+        let defaultPreset = preferredPresetToStart(from: availablePresets)
+
+        return HStack(spacing: 0) {
+            Button {
+                if let defaultPreset {
+                    onAdd(defaultPreset.name)
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 30, height: 34)
+                    .contentShape(Rectangle())
             }
-        } label: {
-            Image(systemName: "plus")
-                .font(.caption.weight(.semibold))
-                .frame(width: 34, height: 34)
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .disabled(defaultPreset == nil)
+            .accessibilityIdentifier("terminal.tab.add.default")
+
+            Menu {
+                ForEach(availablePresets) { preset in
+                    Button(preset.label) {
+                        onAdd(preset.name)
+                    }
+                }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .frame(width: 14, height: 34)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .accessibilityIdentifier("terminal.tab.add.menu")
         }
-        .buttonStyle(.plain)
-        .help(availablePresets.first.map { "Start \($0.label)" } ?? "")
+        .foregroundStyle(.secondary)
+        .padding(.leading, 6)
+        .help(defaultPreset.map { "Start \($0.label)" } ?? "")
         .accessibilityIdentifier("terminal.tab.add")
     }
 }
