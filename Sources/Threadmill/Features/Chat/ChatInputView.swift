@@ -10,8 +10,12 @@ struct ChatInputView: View {
     let onSend: () -> Void
     let onAbort: () -> Void
 
+    private var canSend: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isGenerating
+    }
+
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             HStack(spacing: 8) {
                 Picker("Session", selection: sessionSelectionBinding) {
                     if sessions.isEmpty {
@@ -32,46 +36,55 @@ struct ChatInputView: View {
                     Label("New", systemImage: "plus")
                         .labelStyle(.titleAndIcon)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
                 .disabled(isGenerating)
 
                 Spacer(minLength: 0)
-            }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                TextEditor(text: $text)
-                    .font(.body)
-                    .frame(minHeight: 72, maxHeight: 140)
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .disabled(isGenerating)
-                    .accessibilityIdentifier("chat.input.text")
-
-                VStack(spacing: 8) {
-                    if isGenerating {
-                        Button("Abort") {
-                            onAbort()
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .accessibilityIdentifier("chat.input.abort")
+                if isGenerating {
+                    Button("Abort") {
+                        onAbort()
                     }
-
-                    Button("Send") {
-                        onSend()
-                    }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isGenerating)
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .accessibilityIdentifier("chat.input.send")
+                    .accessibilityIdentifier("chat.input.abort")
                 }
+
+                Button {
+                    onSend()
+                } label: {
+                    Label("Send", systemImage: "paperplane.fill")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(!canSend)
+                .keyboardShortcut(.return, modifiers: .command)
+                .accessibilityIdentifier("chat.input.send")
             }
+
+            TextField("Ask about this thread...", text: $text, axis: .vertical)
+                .lineLimit(1 ... 8)
+                .textFieldStyle(.plain)
+                .font(.body)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.65), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                )
+                .disabled(isGenerating)
+                .accessibilityIdentifier("chat.input.text")
         }
-        .padding(12)
-        .background(Color(nsColor: .underPageBackgroundColor))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Divider()
+                .overlay(Color.primary.opacity(0.12))
+        }
     }
 
     private var sessionSelectionBinding: Binding<String> {
@@ -90,11 +103,9 @@ struct ChatInputView: View {
         if !session.title.isEmpty {
             return session.title
         }
-
         if let slug = session.slug, !slug.isEmpty {
             return slug
         }
-
         return session.id
     }
 }
