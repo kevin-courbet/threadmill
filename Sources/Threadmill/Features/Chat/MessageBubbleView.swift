@@ -6,6 +6,7 @@ struct MessageBubbleView: View {
 
     @State private var isHovering = false
     @State private var copyConfirmed = false
+    @State private var isThinkingExpanded = false
 
     private var role: ChatMessageRole {
         ChatMessageRole(rawValue: message.role.lowercased()) ?? .assistant
@@ -24,6 +25,10 @@ struct MessageBubbleView: View {
         }
 
         for part in message.parts {
+            if part.isReasoningPart {
+                continue
+            }
+
             if part.isToolPart {
                 pendingTools.append(part)
                 continue
@@ -31,15 +36,24 @@ struct MessageBubbleView: View {
 
             flushTools()
 
-            if let text = part.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            if let text = part.renderText {
                 values.append(.text(text))
-            } else if !part.raw.isEmpty, let rawDump = chatFormattedJSON(part.raw.foundationValue) {
+            } else if !part.isStepBoundaryPart, !part.raw.isEmpty, let rawDump = chatFormattedJSON(part.raw.foundationValue) {
                 values.append(.raw(rawDump))
             }
         }
 
         flushTools()
         return values
+    }
+
+    private var thinkingBlocks: [String] {
+        message.parts.compactMap { part in
+            guard part.isReasoningPart else {
+                return nil
+            }
+            return part.renderText
+        }
     }
 
     var body: some View {
@@ -125,10 +139,16 @@ struct MessageBubbleView: View {
                 copyButton
             }
 
+            if !thinkingBlocks.isEmpty {
+                thinkingSection
+            }
+
             if segments.isEmpty {
-                Text("Thinking...")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
+                if thinkingBlocks.isEmpty {
+                    Text("Thinking...")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 ForEach(segments.indices, id: \.self) { index in
                     segmentView(segments[index], useMarkdown: true)
@@ -136,6 +156,43 @@ struct MessageBubbleView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var thinkingSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.14)) {
+                    isThinkingExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: isThinkingExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Thinking...")
+                        .font(.system(size: 11, weight: .semibold))
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isThinkingExpanded {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(thinkingBlocks.indices, id: \.self) { index in
+                        Text(thinkingBlocks[index])
+                            .font(.callout.italic())
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding(.leading, 14)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private var systemBody: some View {
@@ -212,10 +269,10 @@ struct MessageBubbleView: View {
 
     private var flattenedText: String {
         let chunks: [String] = message.parts.compactMap { part in
-            if let text = part.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            if let text = part.renderText {
                 return text
             }
-            if !part.raw.isEmpty {
+            if !part.isStepBoundaryPart, !part.raw.isEmpty {
                 return chatFormattedJSON(part.raw.foundationValue)
             }
             return nil

@@ -7,6 +7,37 @@ extension OCMessagePart {
         }
         return raw.keys.contains { $0.localizedCaseInsensitiveContains("tool") }
     }
+
+    var isReasoningPart: Bool {
+        let normalizedType = type.lowercased()
+        if normalizedType.contains("reason") || normalizedType.contains("think") || normalizedType == "analysis" {
+            return true
+        }
+
+        return raw.keys.contains { key in
+            let normalizedKey = key.lowercased()
+            return normalizedKey.contains("reason") || normalizedKey.contains("think")
+        }
+    }
+
+    var renderText: String? {
+        if let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            return text
+        }
+
+        if let fallback = raw.caseInsensitiveString(for: ["text", "reasoning", "thinking", "content"])?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !fallback.isEmpty
+        {
+            return fallback
+        }
+
+        return nil
+    }
+
+    var isStepBoundaryPart: Bool {
+        type.lowercased().hasPrefix("step-")
+    }
 }
 
 func chatFormattedJSON(_ value: OCJSONValue) -> String? {

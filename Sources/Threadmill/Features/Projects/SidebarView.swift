@@ -49,7 +49,7 @@ struct SidebarView: View {
                         }
                     )
                     .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+                    .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
                     .listRowBackground(Color.clear)
                 }
             }
@@ -57,8 +57,6 @@ struct SidebarView: View {
             .scrollContentBackground(.hidden)
             .background(sidebarBackground)
             .accessibilityIdentifier("sidebar.projects-list")
-
-            Divider()
 
             HStack {
                 Menu {
@@ -74,17 +72,17 @@ struct SidebarView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "plus")
-                            .font(.caption.weight(.semibold))
+                            .font(.system(size: 11, weight: .bold))
                         Text("Add repository")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.system(size: 12, weight: .semibold))
                     }
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                    .foregroundStyle(Color.white.opacity(0.9))
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 9)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.white.opacity(0.08))
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.white.opacity(0.06))
                     )
                 }
                 .buttonStyle(.plain)
@@ -94,6 +92,7 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
+            .background(Color.white.opacity(0.02))
 
             if isUITestMode {
                 VStack(spacing: 2) {

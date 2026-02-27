@@ -6,7 +6,10 @@ struct ChatView: View {
     @State private var viewModel: ChatViewModel
     @State private var draftText = ""
     @State private var viewportHeight: CGFloat = 1
-    @State private var bottomDistance: CGFloat = 0
+    @State private var isNearBottom = true
+    @State private var bottomDistanceBaseline: CGFloat = 0
+    @State private var hasBottomDistanceBaseline = false
+    @State private var shouldRebaseBottomDistance = false
     @State private var jumpRequestToken = 0
     @State private var hasAppeared = false
 
@@ -84,6 +87,7 @@ struct ChatView: View {
         .task(id: directory) {
             await viewModel.loadSessions(directory: directory)
             jumpRequestToken += 1
+            shouldRebaseBottomDistance = true
         }
     }
 
@@ -185,19 +189,21 @@ struct ChatView: View {
             viewportHeight = max(1, height)
         }
         .onPreferenceChange(ChatBottomYPreferenceKey.self) { bottomY in
-            bottomDistance = max(0, bottomY - viewportHeight)
+            updateNearBottomState(measuredDistance: max(0, bottomY - viewportHeight))
         }
     }
 
     private var shouldAutoScroll: Bool {
-        bottomDistance < 140
+        isNearBottom
     }
 
     private var shouldShowJumpButton: Bool {
-        bottomDistance > 220
+        !isNearBottom
     }
 
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool) {
+        shouldRebaseBottomDistance = true
+
         let action = {
             proxy.scrollTo("chat-bottom", anchor: .bottom)
         }
@@ -215,6 +221,26 @@ struct ChatView: View {
         Task {
             await viewModel.sendPrompt(text: outgoingText)
         }
+    }
+
+    private func updateNearBottomState(measuredDistance: CGFloat) {
+        if shouldRebaseBottomDistance || !hasBottomDistanceBaseline {
+            bottomDistanceBaseline = measuredDistance
+            hasBottomDistanceBaseline = true
+            shouldRebaseBottomDistance = false
+            isNearBottom = true
+            return
+        }
+
+        let effectiveDistance = max(0, measuredDistance - bottomDistanceBaseline)
+        let nearBottomThreshold: CGFloat = 140
+        let nearBottom = effectiveDistance < nearBottomThreshold
+
+        if nearBottom, measuredDistance > bottomDistanceBaseline {
+            bottomDistanceBaseline = measuredDistance
+        }
+
+        isNearBottom = nearBottom
     }
 }
 

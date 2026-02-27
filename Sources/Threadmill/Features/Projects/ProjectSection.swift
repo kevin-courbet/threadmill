@@ -49,14 +49,21 @@ struct ProjectSection: View {
                 Circle()
                     .fill(project.avatarColor.opacity(0.9))
                 Text(project.avatarLetter)
-                    .font(.caption.weight(.bold))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.white)
             }
-            .frame(width: 20, height: 20)
+            .frame(width: 22, height: 22)
 
-            Text("\(project.name) (\(threads.count))")
-                .font(.subheadline.weight(.semibold))
+            Text(project.name)
+                .font(.system(size: 13, weight: .semibold))
                 .lineLimit(1)
+
+            Text("\(threads.count)")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.white.opacity(0.06), in: Capsule())
 
             Spacer(minLength: 0)
 
@@ -64,9 +71,10 @@ struct ProjectSection: View {
                 onNewThread(project)
             } label: {
                 Image(systemName: "plus")
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 18, height: 18)
+                    .frame(width: 20, height: 20)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("project.section.new-thread.\(project.id)")
@@ -95,12 +103,12 @@ struct ProjectSection: View {
 
     private var mainBranchRow: some View {
         HStack(spacing: 8) {
-            Image(systemName: "folder")
-                .font(.caption)
+            Image(systemName: "arrow.triangle.branch")
+                .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
                 .frame(width: 14)
             Text(project.defaultBranch)
-                .font(.subheadline)
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
@@ -114,23 +122,16 @@ struct ProjectSection: View {
         let isSelected = selectedThreadID == thread.id
 
         ThreadRow(thread: thread, onCancelCreation: onCancelThreadCreation)
-            .padding(.vertical, 6)
-            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .padding(.horizontal, 10)
             .padding(.leading, 24)
             .contentShape(Rectangle())
             .onTapGesture {
                 selectedThreadID = thread.id
             }
             .accessibilityIdentifier("thread.row.\(thread.id)")
-            .background(isSelected ? Color.accentColor.opacity(0.18) : .clear)
-            .overlay(alignment: .leading) {
-                if isSelected {
-                    Rectangle()
-                        .fill(Color.accentColor)
-                        .frame(width: 2)
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(isSelected ? Color.white.opacity(0.1) : .clear)
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             .contextMenu {
                 if thread.status == .hidden {
                     Button("Reopen") {

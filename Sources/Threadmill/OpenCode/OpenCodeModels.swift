@@ -120,9 +120,6 @@ struct OCMessagePart: Codable, Identifiable, Equatable {
         let known = try decoder.container(keyedBy: CodingKeys.self)
         id = try known.decode(String.self, forKey: .id)
         type = try known.decode(String.self, forKey: .type)
-        sessionID = try known.decodeIfPresent(String.self, forKey: .sessionID)
-        messageID = try known.decodeIfPresent(String.self, forKey: .messageID)
-        text = try known.decodeIfPresent(String.self, forKey: .text)
 
         let dynamic = try decoder.container(keyedBy: OCDynamicCodingKey.self)
         var raw: [String: OCJSONValue] = [:]
@@ -130,6 +127,16 @@ struct OCMessagePart: Codable, Identifiable, Equatable {
             raw[key.stringValue] = try dynamic.decode(OCJSONValue.self, forKey: key)
         }
         self.raw = raw
+
+        sessionID =
+            try known.decodeIfPresent(String.self, forKey: .sessionID)
+            ?? raw.caseInsensitiveString(for: ["sessionID", "sessionId", "session_id"])
+        messageID =
+            try known.decodeIfPresent(String.self, forKey: .messageID)
+            ?? raw.caseInsensitiveString(for: ["messageID", "messageId", "message_id"])
+
+        let explicitText = try known.decodeIfPresent(String.self, forKey: .text)
+        text = explicitText ?? raw.caseInsensitiveString(for: ["text", "reasoning", "thinking", "content"])
     }
 
     func encode(to encoder: Encoder) throws {
@@ -303,5 +310,21 @@ struct OCDynamicCodingKey: CodingKey {
     init?(intValue: Int) {
         stringValue = String(intValue)
         self.intValue = intValue
+    }
+}
+
+extension Dictionary where Key == String, Value == OCJSONValue {
+    func caseInsensitiveString(for keys: [String]) -> String? {
+        for key in keys {
+            if let exact = self[key]?.stringValue, !exact.isEmpty {
+                return exact
+            }
+            if let matched = first(where: { $0.key.caseInsensitiveCompare(key) == .orderedSame })?.value.stringValue,
+               !matched.isEmpty
+            {
+                return matched
+            }
+        }
+        return nil
     }
 }
