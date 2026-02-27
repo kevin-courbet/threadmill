@@ -10,13 +10,14 @@ struct ThreadRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             StatusIndicator(status: thread.status)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(thread.name)
+                    .font(.subheadline.weight(.medium))
                     .lineLimit(1)
                 Text(thread.branch)
-                    .font(.caption2.monospaced())
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -35,5 +36,6 @@ struct ThreadRow: View {
                 .accessibilityIdentifier("thread.cancel.\(thread.id)")
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

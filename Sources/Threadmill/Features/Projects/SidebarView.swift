@@ -10,6 +10,10 @@ struct SidebarView: View {
         ProcessInfo.processInfo.environment["THREADMILL_UI_TEST_MODE"] == "1"
     }
 
+    private var sidebarBackground: Color {
+        Color(red: 0.06, green: 0.07, blue: 0.09)
+    }
+
     var body: some View {
         @Bindable var bindableState = appState
 
@@ -44,9 +48,14 @@ struct SidebarView: View {
                             }
                         }
                     )
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+                    .listRowBackground(Color.clear)
                 }
             }
-            .listStyle(.sidebar)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(sidebarBackground)
             .accessibilityIdentifier("sidebar.projects-list")
 
             Divider()
@@ -63,9 +72,22 @@ struct SidebarView: View {
                     }
                     .accessibilityIdentifier("sidebar.clone-repo-button")
                 } label: {
-                    Label("Add Repository", systemImage: "folder.badge.plus")
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus")
+                            .font(.caption.weight(.semibold))
+                        Text("Add repository")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.white.opacity(0.08))
+                    )
                 }
-                .menuStyle(.borderlessButton)
+                .buttonStyle(.plain)
                 .accessibilityIdentifier("sidebar.add-repository-menu")
 
                 Spacer()
@@ -100,7 +122,7 @@ struct SidebarView: View {
                 .padding(.bottom, 6)
             }
         }
-        .navigationTitle("Projects")
+        .background(sidebarBackground)
         .sheet(isPresented: $showingCloneRepoSheet) {
             CloneRepoSheet()
         }

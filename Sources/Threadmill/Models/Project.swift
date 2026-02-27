@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import SwiftUI
 
 struct PresetConfig: Codable, Equatable {
     var name: String
@@ -30,5 +31,24 @@ struct Project: Codable, FetchableRecord, PersistableRecord, Identifiable, Equat
         case remotePath = "remote_path"
         case defaultBranch = "default_branch"
         case presets = "presets_json"
+    }
+}
+
+extension Project {
+    private static let avatarPalette: [Color] = [.purple, .green, .teal, .pink, .blue, .orange, .red, .indigo, .mint, .cyan]
+
+    var avatarColorIndex: Int {
+        let hash = name.unicodeScalars.reduce(0) { partialResult, scalar in
+            partialResult + Int(scalar.value)
+        }
+        return hash % Self.avatarPalette.count
+    }
+
+    var avatarColor: Color {
+        Self.avatarPalette[avatarColorIndex]
+    }
+
+    var avatarLetter: String {
+        String(name.prefix(1)).uppercased()
     }
 }

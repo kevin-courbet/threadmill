@@ -13,77 +13,131 @@ struct ProjectSection: View {
     @State private var isExpanded = true
 
     var body: some View {
-        Section {
-            DisclosureGroup(isExpanded: $isExpanded) {
+        VStack(alignment: .leading, spacing: 4) {
+            header
+
+            if isExpanded {
+                mainBranchRow
+
                 if threads.isEmpty {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("No threads yet")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                        Text("Press + to create one")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                        .padding(.leading, 20)
+                    Text("No threads yet")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 38)
+                        .padding(.vertical, 3)
                 } else {
                     ForEach(threads) { thread in
-                        let isSelected = selectedThreadID == thread.id
-                        ThreadRow(thread: thread, onCancelCreation: onCancelThreadCreation)
-                            .padding(.vertical, 4)
-                            .padding(.horizontal, 8)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                selectedThreadID = thread.id
-                            }
-                        .accessibilityIdentifier("thread.row.\(thread.id)")
-                        .background(isSelected ? Color.accentColor.opacity(0.14) : .clear)
-                        .overlay(alignment: .leading) {
-                            if isSelected {
-                                Rectangle()
-                                    .fill(Color.accentColor)
-                                    .frame(width: 2)
-                            }
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .contextMenu {
-                            if thread.status == .hidden {
-                                Button("Reopen") {
-                                    onReopenThread(thread)
-                                }
-                            } else {
-                                Button("Hide") {
-                                    onHideThread(thread)
-                                }
-                                Button("Close", role: .destructive) {
-                                    onCloseThread(thread)
-                                }
-                            }
-                        }
+                        threadRow(thread)
                     }
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Text(project.name)
-                        .font(.headline)
-                    Text("(\(threads.count))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Spacer(minLength: 0)
-
-                    Button {
-                        onNewThread(project)
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityIdentifier("project.section.new-thread.\(project.id)")
                 }
             }
-            .accessibilityIdentifier("project.section.\(project.id)")
         }
+        .padding(.vertical, 4)
+        .accessibilityIdentifier("project.section.\(project.id)")
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(project.avatarColor.opacity(0.9))
+                Text(project.avatarLetter)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 20, height: 20)
+
+            Text("\(project.name) (\(threads.count))")
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            Button {
+                onNewThread(project)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("project.section.new-thread.\(project.id)")
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .frame(width: 16, height: 16)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isExpanded.toggle()
+            }
+        }
+    }
+
+    private var mainBranchRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "folder")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 14)
+            Text(project.defaultBranch)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 32)
+        .padding(.trailing, 8)
+        .padding(.vertical, 3)
+    }
+
+    @ViewBuilder
+    private func threadRow(_ thread: ThreadModel) -> some View {
+        let isSelected = selectedThreadID == thread.id
+
+        ThreadRow(thread: thread, onCancelCreation: onCancelThreadCreation)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .padding(.leading, 24)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                selectedThreadID = thread.id
+            }
+            .accessibilityIdentifier("thread.row.\(thread.id)")
+            .background(isSelected ? Color.accentColor.opacity(0.18) : .clear)
+            .overlay(alignment: .leading) {
+                if isSelected {
+                    Rectangle()
+                        .fill(Color.accentColor)
+                        .frame(width: 2)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .contextMenu {
+                if thread.status == .hidden {
+                    Button("Reopen") {
+                        onReopenThread(thread)
+                    }
+                } else {
+                    Button("Hide") {
+                        onHideThread(thread)
+                    }
+                    Button("Close", role: .destructive) {
+                        onCloseThread(thread)
+                    }
+                }
+            }
     }
 }
