@@ -31,15 +31,31 @@ struct ThreadDetailView: View {
                         selectedPreset: $bindableState.selectedPreset
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
-
-                    ConnectionStatusView(status: appState.connectionStatus)
                 }
 
-                TerminalTabView(
-                    endpoint: appState.selectedEndpoint,
-                    isConnecting: appState.connectionStatus != .disconnected
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if thread.status == .active {
+                    TerminalTabView(
+                        endpoint: appState.selectedEndpoint,
+                        isConnecting: appState.connectionStatus != .disconnected
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    VStack(spacing: 12) {
+                        Image(systemName: thread.status == .creating ? "hourglass" : "terminal")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.secondary)
+                        Text(thread.status == .creating ? "Creating thread..." : "Thread is \(thread.status.rawValue)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        if thread.status == .closed || thread.status == .hidden {
+                            Button("Reopen") {
+                                Task { await appState.reopenThread(threadID: thread.id) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
 
                 if isUITestMode {
                     VStack(spacing: 2) {

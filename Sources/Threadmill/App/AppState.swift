@@ -9,7 +9,13 @@ final class AppState {
         let preset: String
     }
 
-    var connectionStatus: ConnectionStatus = .disconnected
+    var connectionStatus: ConnectionStatus = .disconnected {
+        didSet {
+            if case .connected = connectionStatus, oldValue != connectionStatus {
+                scheduleAttachSelectedPreset()
+            }
+        }
+    }
     var projects: [Project] = []
     var threads: [ThreadModel] = []
     var isNewThreadSheetPresented = false
