@@ -19,19 +19,27 @@ struct ThreadDetailView: View {
 
         if let thread = appState.selectedThread {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    Text("\(projectName) · \(thread.name)")
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .layoutPriority(1)
+                Text("\(projectName) · \(thread.name)")
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
 
-                    TerminalTabBar(
-                        tabs: appState.terminalTabs,
-                        selectedPreset: $bindableState.selectedPreset
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                TerminalTabBar(
+                    tabs: appState.terminalTabs,
+                    availablePresets: appState.startablePresets,
+                    selectedPreset: $bindableState.selectedPreset,
+                    onClose: { preset in
+                        Task {
+                            await appState.stopPreset(named: preset)
+                        }
+                    },
+                    onAdd: { preset in
+                        Task {
+                            await appState.startPreset(named: preset)
+                        }
+                    }
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 if thread.status == .active {
                     TerminalTabView(

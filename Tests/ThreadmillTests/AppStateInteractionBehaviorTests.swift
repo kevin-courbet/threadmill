@@ -228,6 +228,58 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertEqual(appState.projects.map(\.id), [project.id])
     }
 
+    func testStopPresetRemovesClosedTabAndSelectsRemainingTab() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [
+                PresetConfig(name: "terminal", command: "$SHELL", cwd: nil),
+                PresetConfig(name: "editor", command: "nvim", cwd: nil),
+            ]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        connection.requestHandler = { method, _, _ in
+            if method == "preset.start" || method == "preset.stop" {
+                return ["ok": true]
+            }
+            throw TestError.missingStub
+        }
+        multiplexer.attachHandler = { _, preset in
+            let channelID: UInt16 = preset == "terminal" ? 1 : 2
+            return RelayEndpoint(
+                channelID: channelID,
+                threadID: thread.id,
+                preset: preset,
+                connectionManager: connection,
+                surfaceHost: MockSurfaceHost()
+            )
+        }
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+
+        await appState.attachSelectedPreset()
+        appState.selectedPreset = "editor"
+        await appState.attachSelectedPreset()
+
+        XCTAssertEqual(appState.terminalTabs.map(\.preset.name), ["terminal", "editor"])
+
+        await appState.stopPreset(named: "editor")
+
+        XCTAssertEqual(appState.selectedPreset, "terminal")
+        XCTAssertEqual(appState.terminalTabs.map(\.preset.name), ["terminal"])
+        XCTAssertTrue(connection.requests.contains(where: { $0.method == "preset.stop" }))
+    }
+
     private func makeAppState(
         connection: MockDaemonConnection,
         database: MockDatabaseManager,

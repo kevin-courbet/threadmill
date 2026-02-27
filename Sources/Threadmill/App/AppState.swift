@@ -86,13 +86,28 @@ final class AppState {
         guard let thread = selectedThread else {
             return []
         }
-        return presets.map { preset in
-            TerminalTabModel(
+
+        let openPresetNames = openPresetNames(for: thread.id)
+        let visiblePresetNames = presets
+            .map(\.name)
+            .filter { openPresetNames.contains($0) || selectedPreset == $0 }
+
+        return visiblePresetNames.compactMap { presetName in
+            guard let preset = presets.first(where: { $0.name == presetName }) else {
+                return nil
+            }
+
+            return TerminalTabModel(
                 threadID: thread.id,
                 preset: preset,
-                endpoint: attachedEndpoints[AttachmentKey(threadID: thread.id, preset: preset.name)]
+                endpoint: attachedEndpoints[AttachmentKey(threadID: thread.id, preset: presetName)]
             )
         }
+    }
+
+    var startablePresets: [Preset] {
+        let visibleTabNames = Set(terminalTabs.map(\.preset.name))
+        return presets.filter { !visibleTabNames.contains($0.name) }
     }
 
     func configure(
@@ -197,6 +212,57 @@ final class AppState {
         }
         pendingAttachTasks[key] = task
         await task.value
+    }
+
+    func startPreset(named preset: String) async {
+        guard presets.contains(where: { $0.name == preset }) else {
+            return
+        }
+
+        selectedPreset = preset
+        await attachSelectedPreset()
+    }
+
+    func stopPreset(named preset: String) async {
+        guard let threadID = selectedThreadID, let connectionManager else {
+            return
+        }
+
+        let key = AttachmentKey(threadID: threadID, preset: preset)
+
+        do {
+            _ = try await connectionManager.request(
+                method: "preset.stop",
+                params: [
+                    "thread_id": threadID,
+                    "preset": preset,
+                ],
+                timeout: 20
+            )
+
+            pendingAttachTasks[key]?.cancel()
+            pendingAttachTasks.removeValue(forKey: key)
+            permanentAttachFailures.remove(key)
+
+            let wasSelected = selectedPreset == preset
+            if wasSelected {
+                selectedPreset = nil
+            }
+
+            detachEndpoint(threadID: threadID, preset: preset)
+
+            if wasSelected {
+                let replacement = presets
+                    .map(\.name)
+                    .first(where: { openPresetNames(for: threadID).contains($0) })
+                selectedPreset = replacement
+                if replacement == nil {
+                    selectedEndpoint = nil
+                }
+            }
+        } catch {
+            NSLog("threadmill-state: preset.stop failed (%@/%@): %@", threadID, preset, "\(error)")
+        }
     }
 
     private func attachPreset(threadID requestedThreadID: String, preset requestedPreset: String, key: AttachmentKey) async {
@@ -678,6 +744,10 @@ final class AppState {
         }
 
         selectedPreset = availablePresets[0]
+    }
+
+    private func openPresetNames(for threadID: String) -> Set<String> {
+        Set(attachedEndpoints.keys.filter { $0.threadID == threadID }.map(\.preset))
     }
 
     private func pruneDetachedThreadEndpoints() {
