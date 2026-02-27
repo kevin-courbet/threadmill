@@ -34,11 +34,7 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                ConnectionStatusView(status: appState.connectionStatus)
-            }
-        }
+        .toolbar {}
         .sheet(isPresented: Bindable(appState).isNewThreadSheetPresented) {
             NewThreadSheet()
         }

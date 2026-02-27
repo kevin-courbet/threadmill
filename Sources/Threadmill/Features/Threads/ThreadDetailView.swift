@@ -47,7 +47,7 @@ struct ThreadDetailView: View {
                         Text(thread.status == .creating ? "Creating thread..." : "Thread is \(thread.status.rawValue)")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        if thread.status == .closed || thread.status == .hidden {
+                        if thread.status == .hidden {
                             Button("Reopen") {
                                 Task { await appState.reopenThread(threadID: thread.id) }
                             }
