@@ -15,7 +15,9 @@ struct TerminalTabBar: View {
                 tabButton(for: tab)
             }
 
-            addPresetButton
+            if !availablePresets.isEmpty {
+                addPresetButton
+            }
 
             Spacer(minLength: 0)
         }
@@ -65,29 +67,19 @@ struct TerminalTabBar: View {
     }
 
     private var addPresetButton: some View {
-        Menu {
-            if availablePresets.isEmpty {
-                Text("No presets available")
-            } else {
-                ForEach(availablePresets) { preset in
-                    Button(preset.label) {
-                        onAdd(preset.name)
-                    }
-                }
+        Button {
+            if let first = availablePresets.first {
+                onAdd(first.name)
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "plus")
-                    .font(.caption.weight(.semibold))
-                Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.semibold))
-            }
-            .frame(width: 44, height: 34)
-            .foregroundStyle(.secondary)
-            .padding(.leading, 6)
+            Image(systemName: "plus")
+                .font(.caption.weight(.semibold))
+                .frame(width: 34, height: 34)
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(availablePresets.isEmpty)
+        .help(availablePresets.first.map { "Start \($0.label)" } ?? "")
         .accessibilityIdentifier("terminal.tab.add")
     }
 }
