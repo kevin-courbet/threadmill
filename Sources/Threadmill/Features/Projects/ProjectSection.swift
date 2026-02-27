@@ -5,6 +5,7 @@ struct ProjectSection: View {
     let threads: [ThreadModel]
     @Binding var selectedThreadID: String?
     let onNewThread: (Project) -> Void
+    let onCancelThreadCreation: (ThreadModel) -> Void
     let onHideThread: (ThreadModel) -> Void
     let onCloseThread: (ThreadModel) -> Void
     let onReopenThread: (ThreadModel) -> Void
@@ -27,15 +28,14 @@ struct ProjectSection: View {
                 } else {
                     ForEach(threads) { thread in
                         let isSelected = selectedThreadID == thread.id
-                        Button {
-                            selectedThreadID = thread.id
-                        } label: {
-                            ThreadRow(thread: thread)
-                                .padding(.vertical, 4)
-                                .padding(.horizontal, 8)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .buttonStyle(.plain)
+                        ThreadRow(thread: thread, onCancelCreation: onCancelThreadCreation)
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                selectedThreadID = thread.id
+                            }
                         .accessibilityIdentifier("thread.row.\(thread.id)")
                         .background(isSelected ? Color.accentColor.opacity(0.14) : .clear)
                         .overlay(alignment: .leading) {

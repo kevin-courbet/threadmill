@@ -23,6 +23,11 @@ struct SidebarView: View {
                         onNewThread: { project in
                             newThreadProjectID = preselectedProjectIDForNewThread(from: project)
                         },
+                        onCancelThreadCreation: { thread in
+                            Task {
+                                await appState.cancelThreadCreation(threadID: thread.id)
+                            }
+                        },
                         onHideThread: { thread in
                             Task {
                                 await appState.hideThread(threadID: thread.id)

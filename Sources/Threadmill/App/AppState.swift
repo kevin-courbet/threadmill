@@ -301,6 +301,23 @@ final class AppState {
         }
     }
 
+    func cancelThreadCreation(threadID: String) async {
+        guard let connectionManager else {
+            return
+        }
+
+        do {
+            _ = try await connectionManager.request(
+                method: "thread.cancel",
+                params: ["thread_id": threadID],
+                timeout: 15
+            )
+            await syncService?.syncFromDaemon()
+        } catch {
+            NSLog("threadmill-state: thread.cancel failed (%@): %@", threadID, "\(error)")
+        }
+    }
+
     func reopenThread(threadID: String) async {
         guard let connectionManager else {
             return
