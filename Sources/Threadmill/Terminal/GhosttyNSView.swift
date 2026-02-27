@@ -217,8 +217,7 @@ final class GhosttyNSView: NSView {
     }
 
     private func shouldSendText(_ text: String) -> Bool {
-        guard let first = text.utf8.first else { return false }
-        return first >= 0x20
+        GhosttyKeyInput.shouldSendText(text)
     }
 }
 
