@@ -1,5 +1,12 @@
 import SwiftUI
 
+func instantToggleTransaction() -> Transaction {
+    var transaction = Transaction()
+    transaction.animation = nil
+    transaction.disablesAnimations = true
+    return transaction
+}
+
 struct ProjectSection: View {
     let project: Project
     let threads: [ThreadModel]
@@ -33,6 +40,11 @@ struct ProjectSection: View {
             }
         }
         .padding(.vertical, 4)
+        .transaction { transaction in
+            let instantTransaction = instantToggleTransaction()
+            transaction.animation = instantTransaction.animation
+            transaction.disablesAnimations = instantTransaction.disablesAnimations
+        }
         .accessibilityIdentifier("project.section.\(project.id)")
     }
 
@@ -64,26 +76,23 @@ struct ProjectSection: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("project.section.new-thread.\(project.id)")
 
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    .frame(width: 16, height: 16)
-            }
-            .buttonStyle(.plain)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                .frame(width: 16, height: 16)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.15)) {
-                isExpanded.toggle()
-            }
+            toggleExpanded()
+        }
+    }
+
+    private func toggleExpanded() {
+        withTransaction(instantToggleTransaction()) {
+            isExpanded.toggle()
         }
     }
 
