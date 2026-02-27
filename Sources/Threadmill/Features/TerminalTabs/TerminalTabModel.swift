@@ -42,10 +42,7 @@ struct TerminalTabModel: Identifiable {
     }
 
     var isClosable: Bool {
-        if case .terminal = type {
-            return true
-        }
-        return false
+        true
     }
 
     @MainActor var isAttached: Bool { endpoint?.channelID ?? 0 > 0 }

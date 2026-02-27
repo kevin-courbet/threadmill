@@ -113,8 +113,12 @@ final class AppState {
     }
 
     var startablePresets: [Preset] {
-        let visibleTabNames = Set(terminalTabs.compactMap { $0.preset?.name })
-        return presets.filter { !visibleTabNames.contains($0.name) }
+        guard let threadID = selectedThreadID else {
+            return presets
+        }
+
+        let runningPresetNames = openPresetNames(for: threadID)
+        return presets.filter { !runningPresetNames.contains($0.name) }
     }
 
     func configure(
@@ -256,6 +260,11 @@ final class AppState {
     }
 
     func stopPreset(named preset: String) async {
+        if preset == TerminalTabModel.chatTabSelectionID {
+            selectedPreset = presets.first?.name ?? TerminalTabModel.chatTabSelectionID
+            return
+        }
+
         guard let threadID = selectedThreadID, let connectionManager else {
             return
         }
@@ -317,22 +326,13 @@ final class AppState {
             selectedEndpoint = endpoint
             if endpoint.channelID == 0, connectionManager.state.isConnected {
                 do {
-                    _ = try await connectionManager.request(
-                        method: "preset.start",
-                        params: [
-                            "thread_id": requestedThreadID,
-                            "preset": requestedPreset,
-                        ],
-                        timeout: 20
-                    )
+                    let reattachedEndpoint = try await multiplexer.attach(threadID: requestedThreadID, preset: requestedPreset)
                     guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
                         return
                     }
 
-                    _ = try await multiplexer.attach(threadID: requestedThreadID, preset: requestedPreset)
-                    guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
-                        return
-                    }
+                    attachedEndpoints[key] = reattachedEndpoint
+                    selectedEndpoint = reattachedEndpoint
                 } catch {
                     handleAttachError(error, key: key, threadID: requestedThreadID)
                     NSLog("threadmill-state: reattach failed: %@", "\(error)")

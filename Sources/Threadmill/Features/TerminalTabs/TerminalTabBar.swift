@@ -5,12 +5,7 @@ func preferredPresetToStart(from presets: [Preset]) -> Preset? {
         return nil
     }
 
-    if let defaultPresetName = Preset.defaults.first?.name,
-       let defaultPreset = presets.first(where: { $0.name == defaultPresetName }) {
-        return defaultPreset
-    }
-
-    return presets.first
+    return Preset.orderedByDefaultPriority(presets).first
 }
 
 struct TerminalTabBar: View {
@@ -42,41 +37,50 @@ struct TerminalTabBar: View {
     @ViewBuilder
     private func tabButton(for tab: TerminalTabModel) -> some View {
         let isSelected = selectedPreset == tab.selectionID
-        let showsClose = tab.isClosable && (isSelected || hoveredPresetName == tab.selectionID)
+        let isCloseButtonVisible = tab.isClosable && (isSelected || hoveredPresetName == tab.selectionID)
 
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             Button {
                 selectedPreset = tab.selectionID
             } label: {
                 Text(tab.title)
                     .font(.subheadline)
                     .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(height: 34)
-                    .padding(.leading, 12)
-                    .padding(.trailing, showsClose ? 0 : 12)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .padding(.leading, 12)
 
-            if showsClose {
-                Button {
-                    onClose(tab.selectionID)
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 16, height: 16)
-                }
-                .buttonStyle(.plain)
-                .padding(.trailing, 10)
-                .help("Stop \(tab.title)")
+            Button {
+                onClose(tab.selectionID)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, height: 16)
             }
+            .buttonStyle(.plain)
+            .opacity(isCloseButtonVisible ? 1 : 0)
+            .allowsHitTesting(isCloseButtonVisible)
+            .accessibilityHidden(!tab.isClosable)
+            .padding(.trailing, 10)
+            .help(closeButtonHelpText(for: tab))
         }
+        .frame(minWidth: 120, minHeight: 34, maxHeight: 34, alignment: .leading)
         .background(isSelected ? Color.white.opacity(0.08) : .clear)
         .onHover { hovering in
             hoveredPresetName = hovering ? tab.selectionID : nil
         }
         .accessibilityIdentifier("terminal.tab.\(tab.selectionID)")
+    }
+
+    private func closeButtonHelpText(for tab: TerminalTabModel) -> String {
+        if tab.selectionID == TerminalTabModel.chatTabSelectionID {
+            return "Close Chat"
+        }
+        return "Stop \(tab.title)"
     }
 
     private var addPresetButton: some View {

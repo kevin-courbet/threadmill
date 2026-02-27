@@ -24,13 +24,13 @@ struct Preset: Identifiable, Hashable, Codable {
     ]
 
     static func orderedByDefaultPriority(_ presets: [Preset]) -> [Preset] {
-        let defaultOrder = defaults.map(\.name)
+        let defaultOrder = defaults.map { $0.name.lowercased() }
 
         return presets
             .enumerated()
             .sorted { lhs, rhs in
-                let lhsPriority = defaultOrder.firstIndex(of: lhs.element.name) ?? Int.max
-                let rhsPriority = defaultOrder.firstIndex(of: rhs.element.name) ?? Int.max
+                let lhsPriority = defaultOrder.firstIndex(of: lhs.element.name.lowercased()) ?? Int.max
+                let rhsPriority = defaultOrder.firstIndex(of: rhs.element.name.lowercased()) ?? Int.max
 
                 if lhsPriority != rhsPriority {
                     return lhsPriority < rhsPriority

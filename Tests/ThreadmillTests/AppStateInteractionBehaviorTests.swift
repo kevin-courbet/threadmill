@@ -350,6 +350,32 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertEqual(appState.selectedPreset, "terminal")
     }
 
+    func testStartablePresetsPreferTerminalBeforeAnyPresetIsAttached() {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [
+                PresetConfig(name: "opencode", command: "opencode", cwd: nil),
+                PresetConfig(name: "terminal", command: "$SHELL", cwd: nil),
+            ]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+
+        XCTAssertEqual(appState.selectedPreset, "terminal")
+        XCTAssertEqual(appState.startablePresets.map(\.name), ["terminal", "opencode"])
+    }
+
     func testTerminalTabsAlwaysIncludeChatTab() {
         let connection = MockDaemonConnection(state: .connected)
         let database = MockDatabaseManager()
@@ -370,6 +396,99 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         } else {
             XCTFail("Expected chat tab type")
         }
+    }
+
+    func testStopPresetForChatSelectsFirstTerminalWithoutRPC() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [
+                PresetConfig(name: "terminal", command: "$SHELL", cwd: nil),
+                PresetConfig(name: "opencode", command: "opencode", cwd: nil),
+            ]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        appState.selectedPreset = TerminalTabModel.chatTabSelectionID
+
+        await appState.stopPreset(named: TerminalTabModel.chatTabSelectionID)
+
+        XCTAssertEqual(appState.selectedPreset, "terminal")
+        XCTAssertFalse(connection.requests.contains(where: { $0.method == "preset.stop" }))
+    }
+
+    func testReattachingDetachedEndpointDoesNotRestartPreset() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [
+                PresetConfig(name: "terminal", command: "$SHELL", cwd: nil),
+                PresetConfig(name: "opencode", command: "opencode", cwd: nil),
+            ]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        var nextChannelID = 1
+        connection.requestHandler = { method, _, _ in
+            switch method {
+            case "preset.start":
+                return ["ok": true]
+            case "terminal.attach":
+                defer { nextChannelID += 1 }
+                return ["channel_id": nextChannelID]
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let multiplexer = TerminalMultiplexer(connectionManager: connection, surfaceHost: MockSurfaceHost())
+        defer { multiplexer.detachAll() }
+
+        let appState = AppState()
+        appState.configure(
+            connectionManager: connection,
+            databaseManager: database,
+            syncService: sync,
+            multiplexer: multiplexer
+        )
+        appState.reloadFromDatabase()
+
+        await appState.startPreset(named: "opencode")
+
+        guard let opencodeEndpoint = appState.selectedEndpoint else {
+            return XCTFail("Expected opencode endpoint after start")
+        }
+
+        appState.selectedPreset = "terminal"
+        await appState.attachSelectedPreset()
+        let startCountBeforeOpencodeReattach = connection.requests.filter { $0.method == "preset.start" }.count
+
+        opencodeEndpoint.setChannelID(0)
+
+        appState.selectedPreset = "opencode"
+        await appState.attachSelectedPreset()
+
+        XCTAssertEqual(appState.selectedEndpoint?.preset, "opencode")
+        XCTAssertGreaterThan(appState.selectedEndpoint?.channelID ?? 0, 0)
+        XCTAssertEqual(connection.requests.filter { $0.method == "preset.start" }.count, startCountBeforeOpencodeReattach)
     }
 
     private func makeAppState(
