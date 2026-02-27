@@ -21,11 +21,6 @@ struct TerminalTabBar: View {
         }
         .frame(height: 36)
         .background(Color(nsColor: .underPageBackgroundColor))
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(Color.white.opacity(0.08))
-                .frame(height: 1)
-        }
         .accessibilityIdentifier("terminal.tab-bar")
     }
 
@@ -34,23 +29,17 @@ struct TerminalTabBar: View {
         let isSelected = selectedPreset == tab.preset.name
         let showsClose = isSelected || hoveredPresetName == tab.preset.name
 
-        HStack(spacing: 8) {
+        HStack(spacing: 4) {
             Button {
                 selectedPreset = tab.preset.name
             } label: {
-                HStack(spacing: 6) {
-                    Text(tab.preset.label)
-                        .font(.subheadline)
-                        .lineLimit(1)
-
-                    Circle()
-                        .fill(tab.isAttached ? Color.green : Color.secondary.opacity(0.45))
-                        .frame(width: 6, height: 6)
-                }
-                .frame(height: 34)
-                .padding(.leading, 12)
-                .padding(.trailing, showsClose ? 0 : 12)
-                .contentShape(Rectangle())
+                Text(tab.preset.label)
+                    .font(.subheadline)
+                    .lineLimit(1)
+                    .frame(height: 34)
+                    .padding(.leading, 12)
+                    .padding(.trailing, showsClose ? 0 : 12)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -69,13 +58,6 @@ struct TerminalTabBar: View {
             }
         }
         .background(isSelected ? Color.white.opacity(0.08) : .clear)
-        .overlay(alignment: .trailing) {
-            if tab.id != tabs.last?.id {
-                Rectangle()
-                    .fill(Color.white.opacity(0.08))
-                    .frame(width: 1)
-            }
-        }
         .onHover { hovering in
             hoveredPresetName = hovering ? tab.preset.name : nil
         }
@@ -102,10 +84,6 @@ struct TerminalTabBar: View {
             }
             .frame(width: 44, height: 34)
             .foregroundStyle(.secondary)
-            .overlay {
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            }
             .padding(.leading, 6)
         }
         .buttonStyle(.plain)

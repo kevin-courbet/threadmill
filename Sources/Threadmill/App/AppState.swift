@@ -215,7 +215,24 @@ final class AppState {
     }
 
     func startPreset(named preset: String) async {
+        guard let threadID = selectedThreadID, let connectionManager else {
+            return
+        }
         guard presets.contains(where: { $0.name == preset }) else {
+            return
+        }
+
+        do {
+            _ = try await connectionManager.request(
+                method: "preset.start",
+                params: [
+                    "thread_id": threadID,
+                    "preset": preset,
+                ],
+                timeout: 20
+            )
+        } catch {
+            NSLog("threadmill-state: preset.start failed (%@/%@): %@", threadID, preset, "\(error)")
             return
         }
 

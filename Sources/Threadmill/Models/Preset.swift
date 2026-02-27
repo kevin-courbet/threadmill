@@ -19,7 +19,7 @@ struct Preset: Identifiable, Hashable, Codable {
     }
 
     static let defaults: [Preset] = [
-        Preset(name: "editor", label: "Editor"),
-        Preset(name: "shell", label: "Shell")
+        Preset(name: "terminal", label: "Terminal"),
+        Preset(name: "opencode", label: "Opencode")
     ]
 }

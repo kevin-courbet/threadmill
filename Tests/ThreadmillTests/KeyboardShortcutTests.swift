@@ -71,7 +71,7 @@ final class KeyboardShortcutTests: XCTestCase {
             defaultBranch: "main",
             presets: [
                 PresetConfig(name: "terminal", command: "$SHELL", cwd: nil),
-                PresetConfig(name: "editor", command: "nvim", cwd: nil),
+                PresetConfig(name: "opencode", command: "opencode", cwd: nil),
                 PresetConfig(name: "logs", command: "tail -f app.log", cwd: nil),
             ]
         )
@@ -103,7 +103,7 @@ final class KeyboardShortcutTests: XCTestCase {
         XCTAssertEqual(appState.selectedPreset, "terminal")
 
         appState.nextPresetTab()
-        XCTAssertEqual(appState.selectedPreset, "editor")
+        XCTAssertEqual(appState.selectedPreset, "opencode")
 
         appState.nextPresetTab()
         XCTAssertEqual(appState.selectedPreset, "logs")

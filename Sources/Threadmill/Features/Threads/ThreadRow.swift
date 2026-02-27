@@ -11,7 +11,6 @@ struct ThreadRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            StatusIndicator(status: thread.status)
             VStack(alignment: .leading, spacing: 3) {
                 Text(thread.name)
                     .font(.subheadline.weight(.medium))
