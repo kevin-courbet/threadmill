@@ -40,11 +40,6 @@ struct ProjectSection: View {
             }
         }
         .padding(.vertical, 4)
-        .transaction { transaction in
-            let instantTransaction = instantToggleTransaction()
-            transaction.animation = instantTransaction.animation
-            transaction.disablesAnimations = instantTransaction.disablesAnimations
-        }
         .accessibilityIdentifier("project.section.\(project.id)")
     }
 
@@ -76,18 +71,20 @@ struct ProjectSection: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("project.section.new-thread.\(project.id)")
 
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                .frame(width: 16, height: 16)
+            Button {
+                toggleExpanded()
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .frame(width: 16, height: 16)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("project.section.toggle.\(project.id)")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            toggleExpanded()
-        }
     }
 
     private func toggleExpanded() {
