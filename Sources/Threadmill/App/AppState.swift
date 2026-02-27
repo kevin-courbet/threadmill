@@ -1,6 +1,17 @@
 import Foundation
 import Observation
 
+enum AppStateError: LocalizedError {
+    case connectionManagerUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .connectionManagerUnavailable:
+            "Connection to spindle is unavailable."
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class AppState {
@@ -422,8 +433,18 @@ final class AppState {
         branch: String?,
         prURL: String? = nil
     ) async throws {
+        NSLog(
+            "threadmill-state: createThread start project=%@ name=%@ source=%@ branch=%@ pr_url=%@",
+            projectID,
+            name,
+            sourceType,
+            branch ?? "<nil>",
+            prURL ?? "<nil>"
+        )
+
         guard let connectionManager else {
-            return
+            NSLog("threadmill-state: createThread aborted, connection manager unavailable")
+            throw AppStateError.connectionManagerUnavailable
         }
 
         var params: [String: Any] = [
@@ -440,8 +461,15 @@ final class AppState {
             params["pr_url"] = prURL
         }
 
-        _ = try await connectionManager.request(method: "thread.create", params: params, timeout: 30)
-        await syncService?.syncFromDaemon()
+        do {
+            _ = try await connectionManager.request(method: "thread.create", params: params, timeout: 30)
+            NSLog("threadmill-state: createThread request sent")
+            await syncService?.syncFromDaemon()
+            NSLog("threadmill-state: createThread sync complete")
+        } catch {
+            NSLog("threadmill-state: createThread failed: %@", "\(error)")
+            throw error
+        }
     }
 
     private func handleThreadStatusChanged(_ params: [String: Any]?) {
