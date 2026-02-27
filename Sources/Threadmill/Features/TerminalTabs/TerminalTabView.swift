@@ -30,6 +30,7 @@ struct TerminalTabView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.96))
         .accessibilityIdentifier("terminal.content")
         .accessibilityValue(endpoint?.preset ?? "detached")
     }
