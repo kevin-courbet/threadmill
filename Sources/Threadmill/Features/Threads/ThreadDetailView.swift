@@ -31,10 +31,14 @@ struct ThreadDetailView: View {
 
                 if thread.status == .active {
                     if appState.selectedPreset == TerminalTabModel.chatTabSelectionID {
-                        if let openCodeClient = appState.openCodeClient {
+                        if let openCodeClient = appState.openCodeClient,
+                           let chatConversationService = appState.chatConversationService
+                        {
                             ChatView(
+                                threadID: thread.id,
                                 directory: thread.worktreePath,
                                 openCodeClient: openCodeClient,
+                                chatConversationService: chatConversationService,
                                 ensureOpenCodeRunning: {
                                     try await appState.ensureOpenCodeRunning()
                                 }
@@ -44,7 +48,7 @@ struct ThreadDetailView: View {
                             ContentUnavailableView(
                                 "Chat unavailable",
                                 systemImage: "bubble.left.and.bubble.right",
-                                description: Text("OpenCode client is not configured.")
+                                description: Text("OpenCode services are not configured.")
                             )
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }

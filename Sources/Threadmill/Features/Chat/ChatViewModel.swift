@@ -4,8 +4,8 @@ import Observation
 @MainActor
 @Observable
 final class ChatViewModel {
-    var sessions: [OCSession] = []
-    var currentSession: OCSession?
+    var conversations: [ChatConversation] = []
+    var currentConversation: ChatConversation?
     var messages: [OCMessage] = []
     var isGenerating = false
     var streamingParts: [String: OCMessagePart] = [:]
@@ -13,7 +13,9 @@ final class ChatViewModel {
     var lastError: String?
 
     private let openCodeClient: any OpenCodeManaging
+    private let chatConversationService: any ChatConversationManaging
     private let ensureOpenCodeRunning: (() async throws -> Void)?
+    private var activeThreadID: String?
     private var activeDirectory: String?
     private var hasEnsuredOpenCodeRunning = false
     private var eventStreamDirectory: String?
@@ -24,9 +26,11 @@ final class ChatViewModel {
 
     init(
         openCodeClient: any OpenCodeManaging,
+        chatConversationService: any ChatConversationManaging,
         ensureOpenCodeRunning: (() async throws -> Void)? = nil
     ) {
         self.openCodeClient = openCodeClient
+        self.chatConversationService = chatConversationService
         self.ensureOpenCodeRunning = ensureOpenCodeRunning
     }
 
@@ -35,45 +39,55 @@ final class ChatViewModel {
         messageLoadTask?.cancel()
     }
 
-    func loadSessions(directory: String) async {
-        if activeDirectory != directory {
-            sessions = []
-            currentSession = nil
+    func loadConversations(threadID: String, directory: String) async {
+        if activeThreadID != threadID || activeDirectory != directory {
+            conversations = []
+            currentConversation = nil
             messages = []
             streamingParts = [:]
+            isGenerating = false
             lastError = nil
             messageLoadTask?.cancel()
             messageLoadTask = nil
             messageLoadToken = UUID()
         }
 
+        activeThreadID = threadID
         activeDirectory = directory
 
         do {
             try await ensureOpenCodeRunningIfNeeded()
             startEventStreamIfNeeded(directory: directory)
-            let loadedSessions = try await openCodeClient.listSessions(directory: directory)
-            sessions = loadedSessions.sorted { lhs, rhs in
-                (lhs.time?.updated ?? 0) > (rhs.time?.updated ?? 0)
+
+            conversations = try await chatConversationService.listConversations(threadID: threadID)
+            conversations.sort { $0.updatedAt > $1.updatedAt }
+
+            if conversations.isEmpty {
+                await createConversation(threadID: threadID, directory: directory)
+                return
             }
 
-            if let currentSession, let refreshed = sessions.first(where: { $0.id == currentSession.id }) {
-                self.currentSession = refreshed
+            if let currentConversation,
+               let refreshed = conversations.first(where: { $0.id == currentConversation.id })
+            {
+                self.currentConversation = refreshed
             } else {
-                currentSession = sessions.first
+                currentConversation = conversations.first
             }
 
-            if let currentSession {
-                await loadMessages(sessionID: currentSession.id, directory: directory)
+            if let sessionID = currentConversation?.opencodeSessionID, !sessionID.isEmpty {
+                await loadMessages(sessionID: sessionID, directory: directory)
             } else {
                 messages = []
                 streamingParts = [:]
+                isGenerating = false
             }
         } catch {
-            sessions = []
-            currentSession = nil
+            conversations = []
+            currentConversation = nil
             messages = []
             streamingParts = [:]
+            isGenerating = false
             lastError = error.localizedDescription
         }
     }
@@ -94,11 +108,12 @@ final class ChatViewModel {
             return
         }
 
-        if currentSession == nil {
-            await createSession(directory: directory)
+        if currentConversation == nil {
+            await createConversation(threadID: activeThreadID, directory: directory)
         }
 
-        guard let sessionID = currentSession?.id else {
+        guard let sessionID = currentConversation?.opencodeSessionID, !sessionID.isEmpty else {
+            lastError = "Conversation session is unavailable."
             return
         }
 
@@ -116,7 +131,8 @@ final class ChatViewModel {
 
     func abort() async {
         guard
-            let sessionID = currentSession?.id,
+            let sessionID = currentConversation?.opencodeSessionID,
+            !sessionID.isEmpty,
             let directory = activeDirectory
         else {
             return
@@ -132,31 +148,87 @@ final class ChatViewModel {
         isGenerating = false
     }
 
-    func selectSession(id: String) async {
+    func selectConversation(_ conversation: ChatConversation) async {
         guard let directory = activeDirectory else {
             return
         }
-        guard let session = sessions.first(where: { $0.id == id }) else {
+
+        guard let selected = conversations.first(where: { $0.id == conversation.id }) else {
             return
         }
 
-        currentSession = session
+        currentConversation = selected
+        messages = []
         streamingParts = [:]
-        await loadMessages(sessionID: id, directory: directory)
+        isGenerating = false
+
+        if let sessionID = selected.opencodeSessionID, !sessionID.isEmpty {
+            await loadMessages(sessionID: sessionID, directory: directory)
+        }
     }
 
-    func createSession(directory: String) async {
-        activeDirectory = directory
+    func createConversation(threadID: String? = nil, directory: String? = nil) async {
+        guard
+            let resolvedThreadID = threadID ?? activeThreadID,
+            let resolvedDirectory = directory ?? activeDirectory
+        else {
+            return
+        }
+
+        activeThreadID = resolvedThreadID
+        activeDirectory = resolvedDirectory
 
         do {
             try await ensureOpenCodeRunningIfNeeded()
-            startEventStreamIfNeeded(directory: directory)
-            let newSession = try await openCodeClient.createSession(directory: directory)
-            upsertSession(newSession)
-            currentSession = newSession
+            startEventStreamIfNeeded(directory: resolvedDirectory)
+            let newConversation = try await chatConversationService.createConversation(
+                threadID: resolvedThreadID,
+                directory: resolvedDirectory
+            )
+
+            upsertConversation(newConversation)
+            currentConversation = newConversation
             messages = []
             streamingParts = [:]
-            await loadMessages(sessionID: newSession.id, directory: directory)
+            isGenerating = false
+
+            if let sessionID = newConversation.opencodeSessionID, !sessionID.isEmpty {
+                await loadMessages(sessionID: sessionID, directory: resolvedDirectory)
+            }
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func archiveConversation(_ conversation: ChatConversation) async {
+        guard
+            let threadID = activeThreadID,
+            let directory = activeDirectory
+        else {
+            return
+        }
+
+        do {
+            try await chatConversationService.archiveConversation(id: conversation.id)
+            conversations.removeAll { $0.id == conversation.id }
+
+            let needsReplacementSelection = currentConversation?.id == conversation.id
+
+            if needsReplacementSelection {
+                currentConversation = nil
+                messages = []
+                streamingParts = [:]
+                isGenerating = false
+            }
+
+            if conversations.isEmpty {
+                await createConversation(threadID: threadID, directory: directory)
+                return
+            }
+
+            if needsReplacementSelection, let nextConversation = conversations.first {
+                await selectConversation(nextConversation)
+            }
         } catch {
             lastError = error.localizedDescription
         }
@@ -178,7 +250,11 @@ final class ChatViewModel {
                 guard !Task.isCancelled else {
                     return
                 }
-                guard self.messageLoadToken == token, self.currentSession?.id == sessionID, self.activeDirectory == directory else {
+                guard
+                    self.messageLoadToken == token,
+                    self.currentConversation?.opencodeSessionID == sessionID,
+                    self.activeDirectory == directory
+                else {
                     return
                 }
                 self.messages = loadedMessages
@@ -186,7 +262,11 @@ final class ChatViewModel {
             } catch is CancellationError {
                 return
             } catch {
-                guard self.messageLoadToken == token, self.currentSession?.id == sessionID, self.activeDirectory == directory else {
+                guard
+                    self.messageLoadToken == token,
+                    self.currentConversation?.opencodeSessionID == sessionID,
+                    self.activeDirectory == directory
+                else {
                     return
                 }
                 self.messages = []
@@ -228,7 +308,7 @@ final class ChatViewModel {
                 guard let self else {
                     return
                 }
-                self.handleEvent(event, directory: directory)
+                await self.handleEvent(event, directory: directory)
             }
         }
     }
@@ -242,29 +322,32 @@ final class ChatViewModel {
         hasEnsuredOpenCodeRunning = true
     }
 
-    private func handleEvent(_ event: OCEvent, directory: String) {
+    private func handleEvent(_ event: OCEvent, directory: String) async {
         guard activeDirectory == directory else {
             return
         }
 
         switch event {
         case let .sessionUpdated(session):
-            upsertSession(session)
-            if currentSession?.id == session.id {
-                currentSession = session
-            }
+            await applyAutoTitleIfNeeded(from: session)
 
         case let .messageUpdated(message):
-            guard message.sessionID == currentSession?.id else {
+            guard message.sessionID == currentConversation?.opencodeSessionID else {
                 return
             }
             upsertMessage(message, preserveExistingParts: true)
+
+            if message.role.caseInsensitiveCompare("assistant") == .orderedSame {
+                Task { @MainActor [weak self] in
+                    await self?.refreshConversationTitleIfNeeded(sessionID: message.sessionID, directory: directory)
+                }
+            }
 
         case let .messagePartUpdated(update):
             applyPartUpdate(update)
 
         case let .sessionStatus(statusEvent):
-            guard statusEvent.sessionID == currentSession?.id else {
+            guard statusEvent.sessionID == currentConversation?.opencodeSessionID else {
                 return
             }
 
@@ -284,7 +367,7 @@ final class ChatViewModel {
     }
 
     private func applyPartUpdate(_ update: OCMessagePartUpdate) {
-        guard let sessionID = currentSession?.id else {
+        guard let sessionID = currentConversation?.opencodeSessionID else {
             return
         }
 
@@ -354,12 +437,13 @@ final class ChatViewModel {
         )
     }
 
-    private func upsertSession(_ session: OCSession) {
-        if let index = sessions.firstIndex(where: { $0.id == session.id }) {
-            sessions[index] = session
+    private func upsertConversation(_ conversation: ChatConversation) {
+        if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
+            conversations[index] = conversation
         } else {
-            sessions.insert(session, at: 0)
+            conversations.append(conversation)
         }
+        conversations.sort { $0.updatedAt > $1.updatedAt }
     }
 
     private func upsertMessage(_ message: OCMessage, preserveExistingParts: Bool) {
@@ -371,6 +455,57 @@ final class ChatViewModel {
         }
     }
 
+    private func refreshConversationTitleIfNeeded(sessionID: String, directory: String) async {
+        guard shouldAutoTitleConversation(forSessionID: sessionID) else {
+            return
+        }
+
+        do {
+            let session = try await openCodeClient.getSession(id: sessionID, directory: directory)
+            await applyAutoTitleIfNeeded(from: session)
+        } catch {
+            return
+        }
+    }
+
+    private func applyAutoTitleIfNeeded(from session: OCSession) async {
+        let generatedTitle = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !generatedTitle.isEmpty else {
+            return
+        }
+
+        guard let index = conversations.firstIndex(where: { $0.opencodeSessionID == session.id }) else {
+            return
+        }
+
+        let currentTitle = conversations[index].title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard currentTitle.isEmpty else {
+            return
+        }
+
+        var updatedConversation = conversations[index]
+        updatedConversation.updateTitle(generatedTitle)
+        conversations[index] = updatedConversation
+        conversations.sort { $0.updatedAt > $1.updatedAt }
+
+        if currentConversation?.id == updatedConversation.id {
+            currentConversation = updatedConversation
+        }
+
+        do {
+            try await chatConversationService.updateTitle(conversationID: updatedConversation.id, title: generatedTitle)
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    private func shouldAutoTitleConversation(forSessionID sessionID: String) -> Bool {
+        guard let conversation = conversations.first(where: { $0.opencodeSessionID == sessionID }) else {
+            return false
+        }
+
+        return conversation.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 }
 
 private extension OCMessage {

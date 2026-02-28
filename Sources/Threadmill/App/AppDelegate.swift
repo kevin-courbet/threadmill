@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let openCodeClient = OpenCodeClient()
 
     private var databaseManager: DatabaseManager?
+    private var chatConversationService: ChatConversationService?
     private var syncService: SyncService?
     private var multiplexer: TerminalMultiplexer?
     private weak var appState: AppState?
@@ -34,10 +35,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 databaseManager: databaseManager,
                 appState: appState
             )
+            let chatConversationService = ChatConversationService(
+                databaseManager: databaseManager,
+                openCodeClient: openCodeClient
+            )
 
             self.databaseManager = databaseManager
             self.multiplexer = multiplexer
             self.syncService = syncService
+            self.chatConversationService = chatConversationService
             self.appState = appState
 
             appState.configure(
@@ -45,7 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 databaseManager: databaseManager,
                 syncService: syncService,
                 multiplexer: multiplexer,
-                openCodeClient: openCodeClient
+                openCodeClient: openCodeClient,
+                chatConversationService: chatConversationService
             )
             appState.reloadFromDatabase()
 

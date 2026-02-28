@@ -2,11 +2,7 @@ import SwiftUI
 
 struct ChatInputView: View {
     @Binding var text: String
-    let sessions: [OCSession]
-    let currentSessionID: String?
     let isGenerating: Bool
-    let onSelectSession: (String) -> Void
-    let onCreateSession: () -> Void
     let onSend: () -> Void
     let onAbort: () -> Void
 
@@ -21,54 +17,9 @@ struct ChatInputView: View {
         min(140, max(44, measuredEditorHeight))
     }
 
-    private var currentSessionLabel: String {
-        guard let session = sessions.first(where: { $0.id == currentSessionID }) ?? sessions.first else {
-            return "No sessions"
-        }
-        return displayName(for: session)
-    }
-
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                Menu {
-                    if sessions.isEmpty {
-                        Text("No sessions")
-                    } else {
-                        ForEach(sessions) { session in
-                            Button(displayName(for: session)) {
-                                onSelectSession(session.id)
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(currentSessionLabel)
-                            .lineLimit(1)
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .font(.system(size: 12, weight: .medium))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                .menuStyle(.borderlessButton)
-                .disabled(sessions.isEmpty || isGenerating)
-
-                Button {
-                    onCreateSession()
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .semibold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(isGenerating)
-
                 Spacer(minLength: 0)
 
                 if isGenerating {
@@ -160,16 +111,6 @@ struct ChatInputView: View {
     private var measurementText: String {
         let value = text.isEmpty ? " " : text
         return value + "\n"
-    }
-
-    private func displayName(for session: OCSession) -> String {
-        if !session.title.isEmpty {
-            return session.title
-        }
-        if let slug = session.slug, !slug.isEmpty {
-            return slug
-        }
-        return session.id
     }
 }
 

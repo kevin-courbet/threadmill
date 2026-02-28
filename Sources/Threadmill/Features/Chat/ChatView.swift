@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ChatView: View {
+    let threadID: String
     let directory: String
 
     @State private var viewModel: ChatViewModel
@@ -12,18 +13,28 @@ struct ChatView: View {
     @State private var shouldRebaseBottomDistance = false
     @State private var jumpRequestToken = 0
     @State private var hasAppeared = false
+    @State private var hoveredConversationID: String?
 
     init(
+        threadID: String,
         directory: String,
         openCodeClient: any OpenCodeManaging,
+        chatConversationService: any ChatConversationManaging,
         ensureOpenCodeRunning: (() async throws -> Void)? = nil
     ) {
+        self.threadID = threadID
         self.directory = directory
-        _viewModel = State(initialValue: ChatViewModel(openCodeClient: openCodeClient, ensureOpenCodeRunning: ensureOpenCodeRunning))
+        _viewModel = State(initialValue: ChatViewModel(
+            openCodeClient: openCodeClient,
+            chatConversationService: chatConversationService,
+            ensureOpenCodeRunning: ensureOpenCodeRunning
+        ))
     }
 
     var body: some View {
         VStack(spacing: 0) {
+            conversationTabBar
+
             ZStack(alignment: .bottomTrailing) {
                 messageList
 
@@ -59,19 +70,7 @@ struct ChatView: View {
 
             ChatInputView(
                 text: $draftText,
-                sessions: viewModel.sessions,
-                currentSessionID: viewModel.currentSession?.id,
                 isGenerating: viewModel.isGenerating,
-                onSelectSession: { sessionID in
-                    Task {
-                        await viewModel.selectSession(id: sessionID)
-                    }
-                },
-                onCreateSession: {
-                    Task {
-                        await viewModel.createSession(directory: directory)
-                    }
-                },
                 onSend: sendPrompt,
                 onAbort: {
                     Task {
@@ -84,11 +83,112 @@ struct ChatView: View {
             .padding(.top, 8)
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .task(id: directory) {
-            await viewModel.loadSessions(directory: directory)
+        .task(id: "\(threadID)::\(directory)") {
+            await viewModel.loadConversations(threadID: threadID, directory: directory)
             jumpRequestToken += 1
             shouldRebaseBottomDistance = true
         }
+        .onChange(of: viewModel.currentConversation?.id) { _, _ in
+            jumpRequestToken += 1
+            shouldRebaseBottomDistance = true
+            hasBottomDistanceBaseline = false
+            isNearBottom = true
+        }
+    }
+
+    private var conversationTabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(viewModel.conversations.enumerated()), id: \.element.id) { index, conversation in
+                conversationTab(conversation, index: index)
+            }
+
+            Button {
+                Task {
+                    await viewModel.createConversation(threadID: threadID, directory: directory)
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("New conversation")
+            .accessibilityIdentifier("chat.tab.add")
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 30)
+        .background(Color(nsColor: .underPageBackgroundColor))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color(nsColor: .separatorColor).opacity(0.28))
+                .frame(height: 0.5)
+        }
+        .accessibilityIdentifier("chat.tab-bar")
+    }
+
+    private func conversationTab(_ conversation: ChatConversation, index: Int) -> some View {
+        let isSelected = viewModel.currentConversation?.id == conversation.id
+        let isCloseVisible = isSelected || hoveredConversationID == conversation.id
+        let title = conversationTitle(conversation, index: index)
+
+        return HStack(spacing: 6) {
+            Button {
+                Task {
+                    await viewModel.selectConversation(conversation)
+                }
+            } label: {
+                Text(title)
+                    .font(.subheadline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.leading, 10)
+            .help(title)
+
+            Button {
+                Task {
+                    await viewModel.archiveConversation(conversation)
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 15, height: 15)
+            }
+            .buttonStyle(.plain)
+            .opacity(isCloseVisible ? 1 : 0)
+            .allowsHitTesting(isCloseVisible)
+            .padding(.trailing, 8)
+            .help("Archive conversation")
+            .accessibilityIdentifier("chat.tab.close.\(conversation.id)")
+        }
+        .frame(minWidth: 110, maxWidth: 220, minHeight: 28, maxHeight: 28, alignment: .leading)
+        .background(isSelected ? Color.white.opacity(0.08) : .clear)
+        .onHover { hovering in
+            hoveredConversationID = hovering ? conversation.id : nil
+        }
+        .accessibilityIdentifier("chat.tab.\(conversation.id)")
+    }
+
+    private func conversationTitle(_ conversation: ChatConversation, index: Int) -> String {
+        let title = conversation.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !title.isEmpty {
+            return title
+        }
+
+        if index == 0 {
+            return "New chat"
+        }
+
+        return "Chat \(index + 1)"
     }
 
     private var messageList: some View {
