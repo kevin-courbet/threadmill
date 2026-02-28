@@ -39,4 +39,22 @@ final class ThreadTabStateManagerTests: XCTestCase {
         XCTAssertEqual(restored.terminalSessionIDs(threadID: "thread-1"), ["terminal", "logs"])
         XCTAssertEqual(restored.selectedMode(threadID: "thread-2"), "chat")
     }
+
+    func testRestoringStaleTerminalSessionSelectionFallsBackToFirstKnownTerminalSession() {
+        let suiteName = "ThreadTabStateManagerTests-\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            return XCTFail("Expected isolated UserDefaults suite")
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let storageKey = "thread.tab-state.tests"
+        let manager = ThreadTabStateManager(defaults: defaults, storageKey: storageKey)
+
+        manager.setSelectedSessionID("stale-session", modeID: "terminal", threadID: "thread-1")
+        manager.setTerminalSessionIDs(["terminal", "logs"], threadID: "thread-1")
+
+        let restored = ThreadTabStateManager(defaults: defaults, storageKey: storageKey)
+
+        XCTAssertEqual(restored.selectedSessionID(modeID: "terminal", threadID: "thread-1"), "terminal")
+    }
 }
