@@ -137,12 +137,6 @@ struct SidebarView: View {
         ) {
             NewThreadSheet(preselectedProjectID: newThreadProjectID)
         }
-        .onChange(of: appState.selectedThreadID) { _, _ in
-            appState.selectedPreset = appState.presets.first?.name
-            Task {
-                await appState.attachSelectedPreset()
-            }
-        }
     }
 }
 

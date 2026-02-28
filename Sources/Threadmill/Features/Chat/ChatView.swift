@@ -3,6 +3,10 @@ import SwiftUI
 struct ChatView: View {
     let threadID: String
     let directory: String
+    let selectedConversationID: String?
+    let reloadToken: Int
+    let showsConversationTabBar: Bool
+    let onConversationStateChange: (([ChatConversation], ChatConversation?) -> Void)?
 
     @State private var viewModel: ChatViewModel
     @State private var draftText = ""
@@ -20,10 +24,18 @@ struct ChatView: View {
         directory: String,
         openCodeClient: any OpenCodeManaging,
         chatConversationService: any ChatConversationManaging,
-        ensureOpenCodeRunning: (() async throws -> Void)? = nil
+        ensureOpenCodeRunning: (() async throws -> Void)? = nil,
+        selectedConversationID: String? = nil,
+        reloadToken: Int = 0,
+        showsConversationTabBar: Bool = true,
+        onConversationStateChange: (([ChatConversation], ChatConversation?) -> Void)? = nil
     ) {
         self.threadID = threadID
         self.directory = directory
+        self.selectedConversationID = selectedConversationID
+        self.reloadToken = reloadToken
+        self.showsConversationTabBar = showsConversationTabBar
+        self.onConversationStateChange = onConversationStateChange
         _viewModel = State(initialValue: ChatViewModel(
             openCodeClient: openCodeClient,
             chatConversationService: chatConversationService,
@@ -33,7 +45,9 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            conversationTabBar
+            if showsConversationTabBar {
+                conversationTabBar
+            }
 
             ZStack(alignment: .bottomTrailing) {
                 messageList
@@ -83,17 +97,48 @@ struct ChatView: View {
             .padding(.top, 8)
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .task(id: "\(threadID)::\(directory)") {
+        .task(id: "\(threadID)::\(directory)::\(reloadToken)") {
             await viewModel.loadConversations(threadID: threadID, directory: directory)
+            await applySelectedConversationIfNeeded()
+            publishConversationState()
             jumpRequestToken += 1
             shouldRebaseBottomDistance = true
         }
         .onChange(of: viewModel.currentConversation?.id) { _, _ in
+            publishConversationState()
             jumpRequestToken += 1
             shouldRebaseBottomDistance = true
             hasBottomDistanceBaseline = false
             isNearBottom = true
         }
+        .onChange(of: viewModel.conversations) { _, _ in
+            publishConversationState()
+        }
+        .onChange(of: selectedConversationID) { _, _ in
+            Task {
+                await applySelectedConversationIfNeeded()
+            }
+        }
+    }
+
+    private func publishConversationState() {
+        onConversationStateChange?(viewModel.conversations, viewModel.currentConversation)
+    }
+
+    private func applySelectedConversationIfNeeded() async {
+        guard let selectedConversationID else {
+            return
+        }
+
+        guard viewModel.currentConversation?.id != selectedConversationID else {
+            return
+        }
+
+        guard let conversation = viewModel.conversations.first(where: { $0.id == selectedConversationID }) else {
+            return
+        }
+
+        await viewModel.selectConversation(conversation)
     }
 
     private var conversationTabBar: some View {
