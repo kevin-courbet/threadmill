@@ -208,26 +208,36 @@ struct ThreadDetailView: View {
     @ViewBuilder
     private var terminalModeContent: some View {
         if terminalSessionIDs.isEmpty {
-            VStack(spacing: 12) {
+            VStack(spacing: 8) {
+                Image(systemName: "terminal.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.tertiary)
+
                 Text("No terminal sessions")
-                    .font(.headline)
-                Text("Start a preset to open a terminal session.")
-                    .font(.subheadline)
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
 
-                Menu {
-                    ForEach(appState.presets) { preset in
-                        Button(preset.label) {
-                            addTerminalSession(preset: preset.name)
-                        }
-                    }
-                } label: {
-                    Label("New Terminal", systemImage: "plus")
-                } primaryAction: {
+                Button("New Terminal") {
                     addDefaultTerminalSession()
                 }
-                .menuStyle(.borderlessButton)
                 .buttonStyle(.borderedProminent)
+
+                if appState.presets.count > 1 {
+                    VStack(spacing: 4) {
+                        Text("Or start a preset")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+
+                        ForEach(appState.presets) { preset in
+                            Button(preset.label) {
+                                addTerminalSession(preset: preset.name)
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.system(size: 11))
+                        }
+                    }
+                    .padding(.top, 2)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
