@@ -1,31 +1,11 @@
 import Foundation
 import Combine
 
-struct FileBrowserEntry: Identifiable, Hashable, Codable {
-    let name: String
-    let path: String
-    let isDirectory: Bool
-    let size: UInt64
-
-    var id: String { path }
-}
-
-struct FileReadPayload: Codable {
-    let content: String
-    let size: UInt64
-}
-
 struct OpenFileInfo: Identifiable, Equatable {
     let id: UUID
     let name: String
     let path: String
     let content: String
-}
-
-@MainActor
-protocol FileBrowsing: AnyObject {
-    func listDirectory(path: String) async throws -> [FileBrowserEntry]
-    func readFile(path: String) async throws -> FileReadPayload
 }
 
 enum FileServiceError: LocalizedError {
@@ -97,6 +77,8 @@ final class FileBrowserViewModel: ObservableObject {
 
     private let fileService: any FileBrowsing
     private var directoryEntriesByPath: [String: [FileBrowserEntry]] = [:]
+    private var lastDirectoryErrorPath: String?
+    private var lastFileReadErrorPath: String?
 
     init(rootPath: String, fileService: any FileBrowsing) {
         self.currentPath = rootPath
@@ -148,8 +130,10 @@ final class FileBrowserViewModel: ObservableObject {
             directoryEntriesByPath[path] = entries
             currentPath = path
             lastErrorMessage = nil
+            lastDirectoryErrorPath = nil
         } catch {
             lastErrorMessage = error.localizedDescription
+            lastDirectoryErrorPath = path
         }
     }
 
@@ -194,9 +178,25 @@ final class FileBrowserViewModel: ObservableObject {
             openFiles.append(openFile)
             selectedFileId = openFile.id
             lastErrorMessage = nil
+            lastFileReadErrorPath = nil
         } catch {
             lastErrorMessage = error.localizedDescription
+            lastFileReadErrorPath = path
         }
+    }
+
+    func retryLastListDirectory() async {
+        guard let path = lastDirectoryErrorPath else {
+            return
+        }
+        await listDirectory(path: path)
+    }
+
+    func retryLastOpenFile() async {
+        guard let path = lastFileReadErrorPath else {
+            return
+        }
+        await openFile(path: path)
     }
 
     func selectFile(id: UUID) {

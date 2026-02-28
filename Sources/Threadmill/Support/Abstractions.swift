@@ -1,6 +1,26 @@
 import Foundation
 import GhosttyKit
 
+struct FileBrowserEntry: Identifiable, Hashable, Codable {
+    let name: String
+    let path: String
+    let isDirectory: Bool
+    let size: UInt64
+
+    var id: String { path }
+}
+
+struct FileReadPayload: Codable {
+    let content: String
+    let size: UInt64
+}
+
+@MainActor
+protocol FileBrowsing: AnyObject {
+    func listDirectory(path: String) async throws -> [FileBrowserEntry]
+    func readFile(path: String) async throws -> FileReadPayload
+}
+
 @MainActor
 protocol ConnectionManaging: AnyObject {
     var state: ConnectionStatus { get }
