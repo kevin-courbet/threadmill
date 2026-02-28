@@ -48,6 +48,7 @@ let package = Package(
                 .linkedFramework("Metal"),
                 .linkedFramework("QuartzCore"),
                 .linkedFramework("UniformTypeIdentifiers"),
+                .linkedFramework("WebKit"),
                 .linkedLibrary("z"),
                 .linkedLibrary("c++"),
             ]

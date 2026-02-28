@@ -20,6 +20,9 @@ protocol DatabaseManaging: AnyObject {
     func conversation(id: String) throws -> ChatConversation?
     func listConversations(threadID: String) throws -> [ChatConversation]
     func activeConversations(threadID: String) throws -> [ChatConversation]
+    func saveBrowserSession(_ session: BrowserSession) throws
+    func deleteBrowserSession(id: String) throws
+    func listBrowserSessions(threadID: String) throws -> [BrowserSession]
 }
 
 @MainActor

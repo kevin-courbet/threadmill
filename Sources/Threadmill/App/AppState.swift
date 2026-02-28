@@ -45,7 +45,7 @@ final class AppState {
     private(set) var openCodeClient: (any OpenCodeManaging)?
     private(set) var chatConversationService: (any ChatConversationManaging)?
 
-    private var databaseManager: (any DatabaseManaging)?
+    private(set) var databaseManager: (any DatabaseManaging)?
     private var syncService: (any SyncServicing)?
     private var multiplexer: (any TerminalMultiplexing)?
     private var connectionManager: (any ConnectionManaging)?

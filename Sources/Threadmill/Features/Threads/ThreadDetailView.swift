@@ -115,19 +115,21 @@ struct ThreadDetailView: View {
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 360)
 
-                SessionTabsScrollView(
-                    tabs: sessionTabs,
-                    selectedTabID: selectedSessionID,
-                    onSelect: handleSessionSelection,
-                    onClose: handleSessionClose,
-                    onCloseAllLeft: handleCloseAllLeft,
-                    onCloseAllRight: handleCloseAllRight,
-                    onCloseOthers: handleCloseOthers,
-                    onAddDefault: handleDefaultSessionCreation,
-                    addMenuItems: addMenuItems,
-                    addButtonHelp: addButtonHelpText,
-                    addButtonAccessibilityID: addButtonAccessibilityID
-                )
+                if showsModeSessionTabs {
+                    SessionTabsScrollView(
+                        tabs: sessionTabs,
+                        selectedTabID: selectedSessionID,
+                        onSelect: handleSessionSelection,
+                        onClose: handleSessionClose,
+                        onCloseAllLeft: handleCloseAllLeft,
+                        onCloseAllRight: handleCloseAllRight,
+                        onCloseOthers: handleCloseOthers,
+                        onAddDefault: handleDefaultSessionCreation,
+                        addMenuItems: addMenuItems,
+                        addButtonHelp: addButtonHelpText,
+                        addButtonAccessibilityID: addButtonAccessibilityID
+                    )
+                }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -179,12 +181,18 @@ struct ThreadDetailView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case TabItem.browser.id:
-            ContentUnavailableView(
-                "Browser coming soon",
-                systemImage: "globe",
-                description: Text("This mode will be implemented in phase 4.")
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if let databaseManager = appState.databaseManager {
+                BrowserView(thread: thread, databaseManager: databaseManager)
+                    .id(thread.id)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ContentUnavailableView(
+                    "Browser unavailable",
+                    systemImage: "globe",
+                    description: Text("Database services are not configured.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
 
         default:
             EmptyView()
@@ -312,6 +320,10 @@ struct ThreadDetailView: View {
 
     private var visibleModeIDs: [String] {
         visibleModeTabs.map(\.id)
+    }
+
+    private var showsModeSessionTabs: Bool {
+        selectedTab == TabItem.chat.id || selectedTab == TabItem.terminal.id
     }
 
     private var sessionTabs: [SessionTabItem] {

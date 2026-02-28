@@ -72,6 +72,7 @@ final class MockDatabaseManager: DatabaseManaging {
     var projects: [Project] = []
     var threads: [ThreadModel] = []
     var conversations: [ChatConversation] = []
+    var browserSessions: [BrowserSession] = []
     var updateStatusResult = true
     var updatedStatuses: [(threadID: String, status: ThreadStatus)] = []
 
@@ -115,6 +116,29 @@ final class MockDatabaseManager: DatabaseManaging {
         conversations
             .filter { $0.threadID == threadID && !$0.isArchived }
             .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    func saveBrowserSession(_ session: BrowserSession) throws {
+        if let index = browserSessions.firstIndex(where: { $0.id == session.id }) {
+            browserSessions[index] = session
+        } else {
+            browserSessions.append(session)
+        }
+    }
+
+    func deleteBrowserSession(id: String) throws {
+        browserSessions.removeAll { $0.id == id }
+    }
+
+    func listBrowserSessions(threadID: String) throws -> [BrowserSession] {
+        browserSessions
+            .filter { $0.threadID == threadID }
+            .sorted {
+                if $0.order == $1.order {
+                    return $0.createdAt < $1.createdAt
+                }
+                return $0.order < $1.order
+            }
     }
 }
 

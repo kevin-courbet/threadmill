@@ -86,6 +86,24 @@ final class DatabaseManager: DatabaseManaging {
         }
     }
 
+    func saveBrowserSession(_ session: BrowserSession) throws {
+        try dbQueue.write { db in
+            try session.save(db)
+        }
+    }
+
+    func deleteBrowserSession(id: String) throws {
+        try dbQueue.write { db in
+            _ = try BrowserSession.deleteOne(db, key: id)
+        }
+    }
+
+    func listBrowserSessions(threadID: String) throws -> [BrowserSession] {
+        try dbQueue.read { db in
+            try BrowserSession.listForThread(threadID, in: db)
+        }
+    }
+
     func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel]) throws {
         try dbQueue.write { db in
             try Project.deleteAll(db)
@@ -157,6 +175,18 @@ final class DatabaseManager: DatabaseManaging {
                 table.column("isArchived", .boolean).notNull().defaults(to: false)
             }
             try db.create(index: "idx_chatConversation_threadID", on: "chatConversation", columns: ["threadID"])
+        }
+
+        migrator.registerMigration("v5_browser_session") { db in
+            try db.create(table: "browserSession") { table in
+                table.column("id", .text).notNull().primaryKey()
+                table.column("threadID", .text).notNull()
+                table.column("url", .text).notNull().defaults(to: "")
+                table.column("title", .text).notNull().defaults(to: "")
+                table.column("order", .integer).notNull()
+                table.column("createdAt", .datetime).notNull()
+            }
+            try db.create(index: "idx_browserSession_threadID", on: "browserSession", columns: ["threadID"])
         }
 
         try migrator.migrate(dbQueue)
