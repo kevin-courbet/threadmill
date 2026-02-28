@@ -74,36 +74,24 @@ struct TerminalTabBar: View {
     }
 
     private var addPresetButton: some View {
-        return HStack(spacing: 0) {
-            Button {
-                onAdd("terminal")
-            } label: {
-                Image(systemName: "plus")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 30, height: 34)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("terminal.tab.add.default")
-
-            Menu {
-                ForEach(availablePresets) { preset in
-                    Button(preset.label) {
-                        onAdd(preset.name)
-                    }
+        Menu {
+            ForEach(availablePresets) { preset in
+                Button(preset.label) {
+                    onAdd(preset.name)
                 }
-            } label: {
-                Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.semibold))
-                    .frame(width: 14, height: 34)
-                    .contentShape(Rectangle())
             }
-            .menuStyle(.borderlessButton)
-            .accessibilityIdentifier("terminal.tab.add.menu")
+        } label: {
+            Image(systemName: "plus")
+                .font(.caption.weight(.semibold))
+                .frame(width: 30, height: 34)
+                .contentShape(Rectangle())
+        } primaryAction: {
+            onAdd("terminal")
         }
+        .menuStyle(.borderlessButton)
         .foregroundStyle(.secondary)
         .padding(.leading, 6)
-        .help("Start Terminal")
+        .help("Start Terminal (click) or choose preset (hold)")
         .accessibilityIdentifier("terminal.tab.add")
     }
 }

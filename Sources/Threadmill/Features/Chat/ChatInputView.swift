@@ -1,4 +1,96 @@
 import SwiftUI
+import AppKit
+
+// MARK: - NSTextView wrapper: Enter sends, Shift+Enter inserts newline
+
+struct ChatTextEditor: NSViewRepresentable {
+    @Binding var text: String
+    var onSubmit: () -> Void
+    var isFocused: Binding<Bool>?
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = false
+        scrollView.hasHorizontalScroller = false
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+
+        let textView = SubmitTextView()
+        textView.delegate = context.coordinator
+        textView.onSubmit = onSubmit
+        textView.isRichText = false
+        textView.allowsUndo = true
+        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
+        textView.textColor = .labelColor
+        textView.drawsBackground = false
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.textContainerInset = NSSize(width: 5, height: 5)
+        textView.textContainer?.widthTracksTextView = true
+        textView.setAccessibilityIdentifier("chat.input.text")
+
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? SubmitTextView else { return }
+        if textView.string != text {
+            textView.string = text
+        }
+        textView.onSubmit = onSubmit
+    }
+
+    class Coordinator: NSObject, NSTextViewDelegate {
+        let parent: ChatTextEditor
+        init(_ parent: ChatTextEditor) { self.parent = parent }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            parent.text = textView.string
+        }
+
+        func textDidBeginEditing(_ notification: Notification) {
+            parent.isFocused?.wrappedValue = true
+        }
+
+        func textDidEndEditing(_ notification: Notification) {
+            parent.isFocused?.wrappedValue = false
+        }
+    }
+}
+
+/// NSTextView subclass that sends on Enter and inserts newline on Shift+Enter
+private class SubmitTextView: NSTextView {
+    var onSubmit: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        let isReturn = event.keyCode == 36 // Return key
+        let isShift = event.modifierFlags.contains(.shift)
+
+        if isReturn && !isShift {
+            // Enter without shift → submit
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            onSubmit?()
+            return
+        }
+
+        if isReturn && isShift {
+            // Shift+Enter → insert newline
+            insertNewline(nil)
+            return
+        }
+
+        super.keyDown(with: event)
+    }
+}
+
+// MARK: - ChatInputView
 
 struct ChatInputView: View {
     @Binding var text: String
@@ -6,7 +98,7 @@ struct ChatInputView: View {
     let onSend: () -> Void
     let onAbort: () -> Void
 
-    @FocusState private var inputFocused: Bool
+    @State private var inputFocused: Bool = false
     @State private var measuredEditorHeight: CGFloat = 44
 
     private var canSend: Bool {
@@ -46,7 +138,6 @@ struct ChatInputView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(!canSend)
-                    .keyboardShortcut(.return, modifiers: .command)
                     .accessibilityIdentifier("chat.input.send")
                 }
             }
@@ -62,14 +153,12 @@ struct ChatInputView: View {
                             .allowsHitTesting(false)
                     }
 
-                    TextEditor(text: $text)
-                        .font(.body)
-                        .focused($inputFocused)
-                        .scrollContentBackground(.hidden)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 4)
-                        .frame(height: editorHeight)
-                        .accessibilityIdentifier("chat.input.text")
+                    ChatTextEditor(
+                        text: $text,
+                        onSubmit: { if canSend { onSend() } },
+                        isFocused: $inputFocused
+                    )
+                    .frame(height: editorHeight)
 
                     Text(measurementText)
                         .font(.body)
