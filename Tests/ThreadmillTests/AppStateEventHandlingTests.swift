@@ -88,6 +88,7 @@ final class AppStateEventHandlingTests: XCTestCase {
 
     func testAttachPermanentTmuxErrorStopsRetry() async {
         let (connection, _, _, multiplexer, appState) = makeConfiguredAppStateWithDoubles()
+        appState.projects = [makeProject(id: "project-1")]
         appState.threads = [makeThread(id: "thread-1", status: .active)]
         appState.selectedThreadID = "thread-1"
         appState.selectedPreset = "terminal"
@@ -111,6 +112,7 @@ final class AppStateEventHandlingTests: XCTestCase {
 
     func testThreadProgressFailureCancelsPendingAttach() async {
         let (connection, _, _, multiplexer, appState) = makeConfiguredAppStateWithDoubles()
+        appState.projects = [makeProject(id: "project-1")]
         appState.threads = [makeThread(id: "thread-1", status: .active)]
         appState.selectedThreadID = "thread-1"
         appState.selectedPreset = "terminal"
@@ -202,6 +204,7 @@ final class AppStateEventHandlingTests: XCTestCase {
             syncService: syncService,
             multiplexer: multiplexer
         )
+        appState.projects = [makeProject(id: "project-1")]
 
         let preset = Preset.defaults.first?.name ?? "terminal"
         appState.threads = [
@@ -242,6 +245,7 @@ final class AppStateEventHandlingTests: XCTestCase {
             syncService: sync,
             multiplexer: multiplexer
         )
+        appState.projects = [makeProject(id: "project-1")]
         return (connection, database, sync, multiplexer, appState)
     }
 
@@ -256,6 +260,16 @@ final class AppStateEventHandlingTests: XCTestCase {
             sourceType: "branch",
             createdAt: Date(),
             tmuxSession: ""
+        )
+    }
+
+    private func makeProject(id: String) -> Project {
+        Project(
+            id: id,
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [PresetConfig(name: "terminal", command: "$SHELL", cwd: nil)]
         )
     }
 }

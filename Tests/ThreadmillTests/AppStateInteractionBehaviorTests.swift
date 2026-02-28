@@ -323,6 +323,63 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertTrue(connection.requests.contains(where: { $0.method == "preset.start" }))
     }
 
+    func testThreadScopedPresetActionsIgnoreStaleThreadSelection() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [
+                PresetConfig(name: "terminal", command: "$SHELL", cwd: nil),
+                PresetConfig(name: "opencode", command: "opencode", cwd: nil),
+            ]
+        )
+        let thread1 = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        let thread2 = makeThread(id: "thread-2", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread1, thread2]
+
+        connection.requestHandler = { method, _, _ in
+            if method == "preset.start" || method == "preset.stop" {
+                return ["ok": true]
+            }
+            throw TestError.missingStub
+        }
+        multiplexer.attachHandler = { threadID, preset in
+            RelayEndpoint(
+                channelID: 1,
+                threadID: threadID,
+                preset: preset,
+                connectionManager: connection,
+                surfaceHost: MockSurfaceHost()
+            )
+        }
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        appState.selectedThreadID = thread2.id
+
+        let startStopCountBefore = connection.requests
+            .filter { $0.method == "preset.start" || $0.method == "preset.stop" }
+            .count
+        let attachCountBefore = multiplexer.attachCallCount
+
+        await appState.startPreset(threadID: thread1.id, preset: "opencode")
+        await appState.attachPreset(threadID: thread1.id, preset: "opencode")
+        await appState.stopPreset(threadID: thread1.id, preset: "opencode")
+
+        XCTAssertEqual(
+            connection.requests.filter { $0.method == "preset.start" || $0.method == "preset.stop" }.count,
+            startStopCountBefore
+        )
+        XCTAssertEqual(multiplexer.attachCallCount, attachCountBefore)
+        XCTAssertNotEqual(appState.selectedPreset, "opencode")
+    }
+
     func testReloadSelectsTerminalAsDefaultPresetEvenWhenConfigOrderDiffers() {
         let connection = MockDaemonConnection(state: .connected)
         let database = MockDatabaseManager()
@@ -489,6 +546,27 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertEqual(appState.selectedEndpoint?.preset, "opencode")
         XCTAssertGreaterThan(appState.selectedEndpoint?.channelID ?? 0, 0)
         XCTAssertEqual(connection.requests.filter { $0.method == "preset.start" }.count, startCountBeforeOpencodeReattach)
+    }
+
+    func testAttachSelectedPresetSkipsUnknownPresetWithoutRPC() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = makeProject(id: "project-1")
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        connection.requests.removeAll()
+        appState.selectedPreset = "stale-preset"
+
+        await appState.attachSelectedPreset()
+
+        XCTAssertFalse(connection.requests.contains(where: { $0.method == "preset.start" }))
+        XCTAssertNil(appState.selectedEndpoint)
     }
 
     private func makeAppState(

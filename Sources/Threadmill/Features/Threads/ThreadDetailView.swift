@@ -453,6 +453,8 @@ struct ThreadDetailView: View {
         selectedTab = normalizedModeID(tabStateManager.selectedMode(threadID: thread.id))
 
         var persistedTerminalSessions = tabStateManager.terminalSessionIDs(threadID: thread.id)
+        let availablePresetNames = Set(appState.presets.map(\.name))
+        persistedTerminalSessions = persistedTerminalSessions.filter { availablePresetNames.contains($0) }
         if persistedTerminalSessions.isEmpty, let defaultTerminalPresetName {
             persistedTerminalSessions = [defaultTerminalPresetName]
         }
@@ -664,12 +666,13 @@ struct ThreadDetailView: View {
         guard let thread = appState.selectedThread else {
             return
         }
-        tabStateManager.setTerminalSessionIDs(terminalSessionIDs, threadID: thread.id)
+        let threadID = thread.id
+        tabStateManager.setTerminalSessionIDs(terminalSessionIDs, threadID: threadID)
 
         Task {
-            await appState.startPreset(named: preset)
+            await appState.startPreset(threadID: threadID, preset: preset)
             await MainActor.run {
-                attachSelectedTerminalIfNeeded()
+                attachSelectedTerminalIfNeeded(threadID: threadID)
             }
         }
     }
@@ -688,15 +691,16 @@ struct ThreadDetailView: View {
         guard let thread = appState.selectedThread else {
             return
         }
-        tabStateManager.setTerminalSessionIDs(terminalSessionIDs, threadID: thread.id)
+        let threadID = thread.id
+        tabStateManager.setTerminalSessionIDs(terminalSessionIDs, threadID: threadID)
 
         Task {
             for sessionID in sessionIDs {
-                await appState.stopPreset(named: sessionID)
+                await appState.stopPreset(threadID: threadID, preset: sessionID)
             }
             await MainActor.run {
                 if selectedTab == TabItem.terminal.id {
-                    attachSelectedTerminalIfNeeded()
+                    attachSelectedTerminalIfNeeded(threadID: threadID)
                 }
             }
         }
@@ -753,14 +757,17 @@ struct ThreadDetailView: View {
         }
     }
 
-    private func attachSelectedTerminalIfNeeded() {
+    private func attachSelectedTerminalIfNeeded(threadID: String? = nil) {
         guard let selectedTerminalSessionID else {
             return
         }
 
-        appState.selectedPreset = selectedTerminalSessionID
+        guard let threadID = threadID ?? appState.selectedThreadID else {
+            return
+        }
+
         Task {
-            await appState.attachSelectedPreset()
+            await appState.attachPreset(threadID: threadID, preset: selectedTerminalSessionID)
         }
     }
 
