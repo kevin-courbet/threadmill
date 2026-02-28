@@ -43,6 +43,13 @@ A named terminal workflow.
 - Started/stopped/restarted over RPC.
 - Parsed from `.threadmill.yml` with `command` (current canonical format) and optional `cwd`.
 
+### Mode
+
+The detail view's active tab. One of: `chat`, `terminal`, `files`, `browser`.
+
+- Persisted per thread via `ThreadTabStateManager` (@AppStorage JSON).
+- Each mode has independent session selection.
+
 ## System Architecture
 
 ```
@@ -51,12 +58,45 @@ macOS (Threadmill)                              beast / WSL2 (Spindle)
 SwiftUI + AppKit                                Rust daemon (tokio)
 GRDB cache                                      state_store (threads.json)
 GhosttyKit terminal surface                     git + tmux orchestration
+WKWebView browser                               file service (list/read/git_status)
 WebSocket client                                WebSocket server
 
            single SSH tunnel + single WebSocket connection
 ```
 
 All JSON-RPC requests, daemon events, and terminal binary frames share this single WebSocket.
+
+## UI Architecture
+
+### Mode Switcher
+
+Segmented `Picker` in toolbar with four modes:
+- **Chat**: opencode serve conversations via HTTP API
+- **Terminal**: remote terminals via Spindle pipe-pane relay
+- **Files**: remote file browser via Spindle file.list/read/git_status RPCs
+- **Browser**: WKWebView tabs for dev servers (localhost + port offset)
+
+Tab visibility controlled by `@AppStorage` booleans. Keyboard shortcuts: ⌘1-4 (by visible index), ⌃Tab/⌃⇧Tab (cycle).
+
+### Session Tabs
+
+Each mode (chat, terminal) has a horizontal session tab bar in the toolbar. Capsule-styled buttons with close (xmark), nav arrows, and "+" with Menu/primaryAction for preset/agent picker. Context menus: Close, Close All Left/Right, Close Others.
+
+### Terminal Multi-Session
+
+All terminal sessions kept alive in ZStack with opacity/allowsHitTesting toggle. No recreation on tab switch — preserves terminal state.
+
+### Chat Multi-Session
+
+`ChatConversation` records persisted in GRDB per thread. Each conversation maps to an opencode serve session. Multiple conversations shown as session tabs.
+
+### Browser
+
+WKWebView with internal tab bar (separate from mode session tabs). BrowserSession persisted in GRDB. URL bar, back/forward/reload, loading progress. Default URL: `localhost:{3000 + portOffset}`.
+
+### File Browser
+
+HSplitView: tree sidebar (30%) + content viewer (70%). Tree loaded via `file.list` RPC. Files opened via `file.read` RPC. Content displayed with syntax highlighting (regex-based, Catppuccin palette), line numbers, monospaced font. Git status coloring via `file.git_status` RPC.
 
 ## Supervision (Implemented)
 
@@ -85,6 +125,7 @@ JSON-RPC 2.0 methods currently routed by `rpc_router.rs`:
 - `thread.create`, `thread.list`, `thread.close`, `thread.reopen`, `thread.hide`
 - `terminal.attach`, `terminal.detach`, `terminal.resize`
 - `preset.start`, `preset.stop`, `preset.restart`
+- `file.list`, `file.read`, `file.git_status`
 
 Daemon events currently emitted:
 
@@ -156,6 +197,30 @@ Preset entries contain:
 - `id`, `projectId`, `name`, `branch`, `worktreePath`
 - `status`, `sourceType`, `createdAt`, `tmuxSession`
 - `portOffset` (`port_offset` column)
+
+### ChatConversation model
+
+`Sources/Threadmill/Models/ChatConversation.swift`:
+
+- `id` (UUID), `threadID`, `opencodeSessionID`
+- `title`, `createdAt`, `updatedAt`
+- `isArchived`
+
+### BrowserSession model
+
+`Sources/Threadmill/Models/BrowserSession.swift`:
+
+- `id` (UUID), `threadID`
+- `url`, `title`, `order`
+- `createdAt`
+
+### GRDB Migrations
+
+- v1: base tables (project, thread)
+- v2: presets column
+- v3: port_offset column
+- v4: chat_conversation table
+- v5: browser_session table
 
 ## Project Config (`.threadmill.yml`)
 
@@ -238,6 +303,8 @@ Default endpoint is `ws://127.0.0.1:19990` and can be overridden with `THREADMIL
 | Mac app | Swift + SwiftUI + AppKit |
 | Mac cache | GRDB / SQLite |
 | Terminal rendering | GhosttyKit (libghostty) |
+| Browser rendering | WKWebView |
+| Syntax highlighting | Regex-based NSAttributedString (Catppuccin palette) |
 | Transport | SSH tunnel + WebSocket |
 | Protocol | JSON-RPC 2.0 + binary frames |
 | Daemon runtime | Rust + tokio + tokio-tungstenite |
@@ -270,7 +337,8 @@ Default endpoint is `ws://127.0.0.1:19990` and can be overridden with `THREADMIL
 - [x] Multiple preset tabs per thread
 - [x] `preset.start` / `preset.stop` / `preset.restart`
 - [x] Preset process event stream (`preset.process_event`)
-- [ ] Scrollback replay on reconnect via `tmux capture-pane`
+- [x] Scrollback replay on reconnect via `tmux capture-pane`
+- [x] Pre-registration frame buffering for scrollback race
 
 ### M3: Lifecycle and Hooks
 - [x] `.threadmill.yml` parsing
@@ -280,9 +348,35 @@ Default endpoint is `ws://127.0.0.1:19990` and can be overridden with `THREADMIL
 - [ ] PR URL -> branch extraction workflow
 - [x] Port offset management
 - [x] `threadmill-cli`
-- [ ] Keyboard shortcut coverage
+- [x] Keyboard shortcut coverage
+
+### M4: Mode Switcher + Multi-Session UI
+- [x] Segmented mode picker (chat/terminal/files/browser) with icons
+- [x] Session tabs in toolbar (capsule-styled, context menus, nav arrows)
+- [x] Terminal multi-session (ZStack keep-alive)
+- [x] Chat multi-session (GRDB conversations + opencode serve)
+- [x] Per-thread tab state persistence (@AppStorage JSON)
+- [x] Hidden title bar + unified toolbar
+- [x] WheelScrollHandler for tab bar horizontal scroll
+- [x] Menu + primaryAction "+" button for preset picker
+
+### M5: Browser + File Browser
+- [x] WKWebView browser with internal tab bar
+- [x] Browser session GRDB persistence
+- [x] URL bar, back/forward/reload, loading progress
+- [x] File browser: tree + content viewer (HSplitView)
+- [x] `file.list` RPC with path authorization + TOCTOU hardening
+- [x] `file.read` RPC (5MB cap, UTF-8 only)
+- [x] `file.git_status` RPC (porcelain v1 parsing)
+- [x] Syntax highlighting (regex-based, Catppuccin palette)
+- [x] Line number gutter
+- [x] File type icons (SF Symbol-based)
+- [x] Git status coloring in file tree
 
 ### Planned (Post-MVP)
 - [ ] Menu bar quick actions
 - [ ] User-facing notifications for crashes/failures
 - [ ] Hidden-thread TTL and disk-usage controls
+- [ ] Split terminal panes
+- [ ] File search palette (Cmd+P)
+- [ ] Command palette (Cmd+Shift+P)

@@ -33,10 +33,11 @@ Everything below is split into implemented vs planned.
 
 ### 3) Terminal Presets
 
-- [x] Presets render as tabs in thread view
+- [x] Presets render as terminal sessions in thread view
 - [x] Presets map to tmux windows
 - [x] Start/stop/restart over RPC
 - [x] Process events streamed (`preset.process_event`)
+- [x] Multi-session terminals (ZStack keep-alive, tab switching preserves state)
 
 Current preset format:
 
@@ -84,20 +85,70 @@ ports:
 - [x] tmux persistence survives app disconnects and daemon restarts
 - [x] Daemon state persisted in `threads.json` and reconciled at startup
 - [x] Scrollback replay on reconnect via `tmux capture-pane`
+- [x] Pre-registration frame buffering (binary frames before attach response)
 
-### 8) Keyboard Shortcuts
+### 8) Mode Switcher (aizen-inspired)
 
-- [x] Cmd+1..9 select thread by index
-- [x] Cmd+T new thread sheet
-- [x] Cmd+W close selected thread
-- [x] Cmd+]/[ next/prev preset tab
-- [x] Cmd+Shift+R restart current preset
-- [x] Cmd+Shift+K toggle connection
+- [x] Segmented picker: Chat / Terminal / Files / Browser
+- [x] Icons + labels in each segment (message, terminal, folder, globe)
+- [x] @AppStorage visibility toggles per mode
+- [x] Keyboard shortcuts: ⌘1-4 (by visible index), ⌃Tab/⌃⇧Tab (cycle)
+- [x] Hidden title bar + unified toolbar style
+- [x] Per-thread mode + session state persistence
+
+### 9) Session Tabs
+
+- [x] Capsule-styled horizontal session tabs in toolbar
+- [x] Navigation arrows (chevron.left/right) with bounce effect
+- [x] "+" button with Menu/primaryAction for preset/agent picker
+- [x] Close button (xmark.circle.fill) inside each tab
+- [x] Context menus: Close, Close All Left/Right, Close Others
+- [x] Mouse wheel vertical→horizontal scroll conversion
+- [x] Thread-scoped preset APIs (race-safe across thread switches)
+
+### 10) Chat (opencode serve)
+
+- [x] Multi-conversation per thread (GRDB-persisted)
+- [x] opencode serve HTTP API integration
+- [x] Thinking/COT display
+- [x] Enter=send, Shift+Enter=newline
+- [x] Session tabs for multiple conversations
+- [x] Stale session guards on thread switch
+
+### 11) Browser
+
+- [x] WKWebView with internal tab bar
+- [x] GRDB-persisted browser sessions per thread
+- [x] URL bar, back/forward/reload, loading progress
+- [x] Safari user-agent, JS enabled, developer extras, isInspectable
+- [x] Default URL: localhost + port offset (dev server)
+- [x] New-tab requests (target=_blank) handled
+
+### 12) File Browser
+
+- [x] HSplitView: tree sidebar (30%) + content viewer (70%)
+- [x] Spindle RPCs: file.list, file.read, file.git_status
+- [x] Recursive directory tree with lazy loading
+- [x] File type icons (SF Symbol-based, extension-mapped)
+- [x] Git status coloring (yellow=modified, green=added, blue=untracked, red=deleted)
+- [x] Syntax highlighting (regex-based, Catppuccin palette)
+- [x] Line number gutter
+- [x] File tabs with shared TabContainer/TabLabel/TabCloseButton
+- [x] Sidebar toggle, nav arrows for file tabs
+- [x] Path authorization + TOCTOU hardening in Spindle
+- [x] Error states with retry actions
+
+### 13) Keyboard Shortcuts
+
+- [x] ⌘1..4 select mode by visible index
+- [x] ⌃Tab/⌃⇧Tab cycle modes
+- [x] ⌘T new thread sheet
+- [x] ⌘W close selected thread
 
 ## Architecture Split
 
-- **Threadmill (macOS)**: UI, selection state, local GRDB cache, terminal surface hosting
-- **Spindle (beast)**: JSON-RPC server, git/tmux orchestration, state persistence, hook execution
+- **Threadmill (macOS)**: UI, selection state, local GRDB cache, terminal surface hosting, browser, file viewer
+- **Spindle (beast)**: JSON-RPC server, git/tmux orchestration, state persistence, hook execution, file service
 - **Protocol**: shared JSON-RPC schema + runtime events
 - **threadmill-cli (beast)**: local command interface to daemon WebSocket
 
@@ -126,6 +177,19 @@ ports:
 - [x] `threadmill-cli`
 - [x] PR URL to branch flow in app UX
 - [x] Keyboard shortcut coverage
+
+### M4
+- [x] Mode switcher (chat/terminal/files/browser)
+- [x] Multi-session tabs (capsule-styled, aizen-inspired)
+- [x] Terminal multi-session (ZStack keep-alive)
+- [x] Chat multi-session (GRDB + opencode serve)
+- [x] Per-thread tab state persistence
+
+### M5
+- [x] Browser view (WKWebView + GRDB sessions)
+- [x] File browser (Spindle RPCs + tree + syntax highlighting)
+- [x] file.list / file.read / file.git_status RPCs
+- [x] Git status coloring in file tree
 
 ## Non-Goals
 

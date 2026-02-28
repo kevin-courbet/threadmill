@@ -1,5 +1,5 @@
 ---
-updated: 2026-02-24
+updated: 2026-03-01
 ---
 
 # Validation Process
@@ -21,15 +21,23 @@ updated: 2026-02-24
 
 ## Test Suites
 
-- Swift unit tests (14 tests):
-  - `TerminalMultiplexer`
-  - `AppState` events
+- Swift unit tests (~90 tests):
+  - `TerminalMultiplexer` (pre-registration buffer)
+  - `AppState` events, attach behavior, project management
   - `RelayEndpoint` bounds
   - `ConnectionManager` reconnect behavior
-- Spindle integration tests cover:
+  - `ThreadTabStateManager` mode switching + persistence
+  - `BrowserSessionManager` session lifecycle
+  - `FileBrowserViewModel` directory listing, error states
+  - `ChatConversation` GRDB persistence
+  - `ChatViewModel` opencode integration
+  - Source-level structural tests (window chrome, tab styling, syntax highlighting)
+- Spindle integration tests (~35 tests) cover:
   - project/thread/terminal/preset lifecycle
+  - file.list/file.read/file.git_status with path authorization
   - sync protocol behavior
   - binary frame routing
+  - CLI commands
 - UI e2e tests cover full app flow with a mock daemon; opt-in and requires Accessibility permission.
 
 ## Adding New Tests

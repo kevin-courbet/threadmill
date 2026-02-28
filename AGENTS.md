@@ -40,13 +40,26 @@ Threadmill.app (SwiftUI)   ◄─ SSH tunnel + WS ─►   Spindle daemon (Rust/
 ├── GRDB (cache only)                               ├── WebSocket JSON-RPC server
 ├── GhosttyKit (Metal GPU terminal)                  ├── Git/tmux orchestration
 ├── WebSocket client                                 ├── .threadmill.yml config
-└── PTY shim relay (threadmill-relay)                ├── threads.json state store
+├── WKWebView browser                               ├── threads.json state store
+└── PTY shim relay (threadmill-relay)                ├── File service (list/read/git_status)
                                                      └── threadmill-cli (agent CLI)
 ```
 
 **Daemon is truth.** GRDB on Mac is a rendering cache. On every connect, Mac syncs from daemon.
 
 **Single WebSocket.** All JSON-RPC requests, events, and terminal binary frames share one connection over one SSH tunnel. No per-tab connections.
+
+---
+
+## UI Architecture
+
+The detail view uses a **mode switcher** (segmented picker) with four modes:
+- **Chat** — opencode serve conversations, multi-session tabs, GRDB-persisted
+- **Terminal** — remote terminals via Spindle, multi-session ZStack (kept alive), preset-based
+- **Files** — remote file browser via Spindle RPCs, tree + content viewer with syntax highlighting
+- **Browser** — WKWebView tabs, GRDB-persisted, default URL = localhost + port offset
+
+Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Window uses `.hiddenTitleBar` + `.windowToolbarStyle(.unified)`.
 
 ---
 
@@ -60,39 +73,61 @@ Threadmill.app (SwiftUI)   ◄─ SSH tunnel + WS ─►   Spindle daemon (Rust/
 | `Taskfile.yml` | go-task runner for build/test/run/validate |
 | `protocol/threadmill-rpc.schema.json` | JSON-RPC schema (source of truth for types) |
 | **Sources/Threadmill/** | |
-| `App/ThreadmillApp.swift` | SwiftUI @main entry, window config, dark mode |
+| `App/ThreadmillApp.swift` | SwiftUI @main entry, hiddenTitleBar, unified toolbar, dark mode |
 | `App/AppDelegate.swift` | NSApplicationDelegateAdaptor, bootstrap connection + sync |
-| `App/AppState.swift` | Central @Observable state — event handling, attach flow, thread/project actions |
+| `App/AppState.swift` | Central @Observable state — event handling, attach flow, thread/project/file actions |
 | `Connection/WebSocketClient.swift` | URLSessionWebSocketTask JSON-RPC + binary frames |
 | `Connection/SSHTunnelManager.swift` | SSH tunnel child process lifecycle |
 | `Transport/ConnectionManager.swift` | Connection state machine, reconnect with backoff, DI-friendly |
-| `Transport/TerminalMultiplexer.swift` | channel_id → RelayEndpoint dispatch |
+| `Transport/TerminalMultiplexer.swift` | channel_id → RelayEndpoint dispatch + preRegistrationBuffer |
 | `Transport/RelayEndpoint.swift` | Per-terminal Unix socket + bounded frame buffer |
 | `Terminal/GhosttySurfaceHost.swift` | ghostty_app lifecycle, surface registry, callbacks |
 | `Terminal/GhosttyTerminalView.swift` | NSViewRepresentable, endpoint swap on thread switch |
 | `Terminal/GhosttyNSView.swift` | Raw NSView for Metal surface hosting |
-| `Database/DatabaseManager.swift` | GRDB setup + migrations (v1 base, v2 presets, v3 port_offset) |
+| `Database/DatabaseManager.swift` | GRDB setup + migrations (v1 base → v5 browser_session) |
 | `Database/SyncService.swift` | project.list + thread.list sync from daemon |
+| `Database/ChatConversationService.swift` | GRDB CRUD for chat conversations per thread |
 | `Models/Project.swift` | Project + PresetConfig (includes presets from daemon) |
 | `Models/Thread.swift` | ThreadModel with portOffset |
 | `Models/Preset.swift` | Preset enum + defaults |
 | `Models/ThreadStatus.swift` | Status enum (creating/active/closing/closed/hidden/failed) |
-| `Support/Abstractions.swift` | DI protocols: ConnectionManaging, DatabaseManaging, etc. |
+| `Models/TabItem.swift` | Mode switcher tabs (chat/terminal/files/browser) with icons |
+| `Models/ChatConversation.swift` | GRDB record for chat sessions per thread |
+| `Models/BrowserSession.swift` | GRDB record for browser tabs per thread |
+| `Support/Abstractions.swift` | DI protocols: ConnectionManaging, DatabaseManaging, FileBrowsing, etc. |
 | `Features/Projects/SidebarView.swift` | Sidebar with project sections |
 | `Features/Projects/ProjectSection.swift` | Per-project disclosure group + thread rows |
 | `Features/Projects/AddProjectSheet.swift` | Open existing project on beast |
 | `Features/Projects/CloneRepoSheet.swift` | Clone repo by URL |
-| `Features/Threads/ThreadDetailView.swift` | Compact header + terminal view |
+| `Features/Threads/ThreadDetailView.swift` | Mode switcher + session tabs + content switching |
 | `Features/Threads/ThreadRow.swift` | Sidebar row with status + branch |
 | `Features/Threads/NewThreadSheet.swift` | Create thread with project preselection |
-| `Features/TerminalTabs/TerminalTabBar.swift` | Preset tab bar (dynamic from project config) |
-| `Features/TerminalTabs/TerminalTabView.swift` | Terminal or loading spinner |
-| `Features/TerminalTabs/TerminalTabModel.swift` | Tab model with isAttached state |
+| `Features/Threads/ThreadTabStateManager.swift` | Persists selected mode + session IDs per thread (@AppStorage JSON) |
+| `Features/Chat/ChatView.swift` | Chat conversation UI with opencode serve integration |
+| `Features/Chat/ChatViewModel.swift` | Chat VM — messages, tool calls, thinking display |
+| `Features/Chat/ChatInputView.swift` | Composer (Enter=send, Shift+Enter=newline) |
+| `Features/Browser/BrowserView.swift` | Browser with internal tab bar, WKWebView |
+| `Features/Browser/BrowserControlBar.swift` | URL field, back/forward/reload, progress bar |
+| `Features/Browser/BrowserSessionManager.swift` | GRDB-backed browser session management |
+| `Features/Browser/WebViewWrapper.swift` | WKWebView NSViewRepresentable with KVO + delegates |
+| `Features/Files/FileBrowserView.swift` | HSplitView: tree sidebar + content viewer |
+| `Features/Files/FileBrowserViewModel.swift` | File operations via Spindle RPCs, git status |
+| `Features/Files/FileTreeView.swift` | Recursive directory tree with git status coloring |
+| `Features/Files/FileContentTabView.swift` | Open file tabs with shared tab components |
+| `Features/Files/CodeEditorView.swift` | NSTextView-based editor with syntax highlighting |
+| `Features/Files/SyntaxHighlighter.swift` | Regex-based syntax coloring (Catppuccin palette) |
+| `Features/Files/LineNumberGutter.swift` | NSRulerView line number gutter |
+| `Features/Files/LanguageDetection.swift` | File extension → language mapping |
 | `Views/ContentView.swift` | NavigationSplitView, sidebar width |
+| `Views/Components/SessionTabsScrollView.swift` | Capsule session tabs with arrows, +, context menus |
+| `Views/Components/TabContainer.swift` | Reusable tab container (top accent border, separator) |
+| `Views/Components/TabLabel.swift` | Tab label with icon + title slots |
+| `Views/Components/TabCloseButton.swift` | xmark close button with hover states |
+| `Views/Components/FileIconView.swift` | SF Symbol file type icons by extension |
 | `Views/Components/ConnectionStatusView.swift` | Colored dot (green/yellow/red) |
 | **Sources/threadmill-relay/** | |
 | `main.c` | ~30-line C PTY bridge: stdin/stdout ↔ Unix socket |
-| **Tests/ThreadmillTests/** | Unit tests with mock doubles |
+| **Tests/ThreadmillTests/** | ~90 unit tests with mock doubles |
 | **Tests/ThreadmillUITests/** | UI e2e harness with MockSpindleServer (opt-in) |
 
 ### Spindle (on beast) — Rust daemon
@@ -111,8 +146,9 @@ Access via `ssh beast`. Code at `/home/wsl/dev/spindle/`.
 | `src/services/thread.rs` | thread.create/close/hide/reopen/list + env var setup |
 | `src/services/terminal.rs` | terminal.attach/detach/resize, channel allocation, pipe-pane relay |
 | `src/services/preset.rs` | preset.start/stop/restart, process monitoring, config-driven commands |
+| `src/services/file.rs` | file.list/file.read/file.git_status, path authorization, TOCTOU hardening |
 | `src/bin/threadmill-cli.rs` | CLI for agent-side automation (clap) |
-| `tests/` | Integration tests (project, thread, terminal, preset, sync, binary, CLI) |
+| `tests/` | Integration tests (project, thread, terminal, preset, file, sync, binary, CLI) |
 
 ### Spindle daemon management
 
@@ -140,6 +176,9 @@ ssh beast "journalctl --user -u spindle -f"      # tail logs
 | PTY shim relay | Bridges ghostty (expects local process) to remote terminal over WebSocket |
 | `.threadmill.yml` in project repo | Versioned config, shared with team |
 | Port offset allocation | Multiple dev servers per project don't conflict |
+| Mode switcher (aizen pattern) | Chat/Terminal/Files/Browser modes with session tabs per mode |
+| GRDB for conversations + browser | Local persistence for chat/browser state across app restarts |
+| Regex syntax highlighting | No external tree-sitter deps; lightweight Catppuccin-themed coloring |
 
 ---
 
@@ -155,7 +194,7 @@ Binary frames: `[u16be channel_id][raw terminal bytes]`. Not JSON. See `docs/age
 
 ## Protocol Quick Reference
 
-**RPC methods** (Mac → Spindle): `ping`, `project.{list,add,clone,remove,branches}`, `thread.{create,list,close,hide,reopen}`, `terminal.{attach,detach,resize}`, `preset.{start,stop,restart}`, `state.snapshot`
+**RPC methods** (Mac → Spindle): `ping`, `project.{list,add,clone,remove,branches}`, `thread.{create,list,close,hide,reopen}`, `terminal.{attach,detach,resize}`, `preset.{start,stop,restart}`, `file.{list,read,git_status}`, `state.snapshot`
 
 **Events** (Spindle → Mac): `thread.progress`, `thread.status_changed`, `thread.created`, `preset.process_event`, `project.added`, `project.removed`, `project.clone_progress`, `state.delta`
 

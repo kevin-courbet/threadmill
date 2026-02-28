@@ -1,5 +1,5 @@
 ---
-updated: 2026-02-26
+updated: 2026-03-01
 ---
 
 # Communication Protocol
@@ -69,11 +69,11 @@ User/App                   Threadmill                     Spindle
 Ghostty <-> threadmill-relay <-> RelayEndpoint <-> WebSocket <-> Spindle <-> tmux pane
 
 Output path:
-tmux pipe-pane -> [u16 channel_id][bytes] -> RelayEndpoint -> unix socket -> relay -> Ghostty
+tmux pipe-pane -O -> [u16 channel_id][bytes] -> RelayEndpoint -> unix socket -> relay -> Ghostty
 
 Input path:
 Ghostty keystrokes -> relay -> unix socket -> RelayEndpoint
--> [u16 channel_id][bytes] -> Spindle -> pane tty
+-> [u16 channel_id][bytes] -> Spindle -> pipe-pane -I -> tmux pane
 ```
 
 ### Project clone (project.clone -> clone_progress -> project appears)
@@ -166,6 +166,21 @@ Server notification (event):
 {"thread_id":"<uuid>","preset":"terminal","event":"started|exited|crashed","exit_code":1}
 ```
 
+`FileBrowserEntry`
+```json
+{"name":"foo.rs","path":"/full/path/foo.rs","isDirectory":false,"size":1234}
+```
+
+`FileReadPayload`
+```json
+{"content":"file contents as string","size":1234}
+```
+
+`FileGitStatusResult`
+```json
+{"entries":{"src/main.rs":"modified","new_file.txt":"untracked"}}
+```
+
 ## RPC Methods (exactly dispatched in `rpc_router.rs`)
 
 `ping`
@@ -244,6 +259,24 @@ Server notification (event):
 - Params: `{"thread_id":"<uuid>","preset":"<name>"}`
 - Result: `{"ok":true}`
 
+`file.list`
+- Params: `{"path":"<absolute path>"}`
+- Result: `{"entries":[FileBrowserEntry]}`
+- Path must be within a known project/worktree root
+- Sorted: directories first, then alphabetical case-insensitive
+- TOCTOU-hardened with O_NOFOLLOW + fd validation
+
+`file.read`
+- Params: `{"path":"<absolute path>"}`
+- Result: `{"content":"<utf-8 string>","size":<u64>}`
+- Max 5MB, UTF-8 only (binary files return error)
+- Path authorization same as file.list
+
+`file.git_status`
+- Params: `{"path":"<absolute worktree path>"}`
+- Result: `{"entries":{"relative/path":"modified|added|deleted|renamed|untracked|conflicted"}}`
+- Runs `git status --porcelain=v1 -uall` in the worktree
+
 ## Events (Spindle -> Threadmill)
 
 `thread.progress`
@@ -290,9 +323,11 @@ Server notification (event):
 ## Binary Frame Format
 
 - Bytes: `[channel_id_be_u16][payload_bytes...]`
-- Client -> daemon: relay input payload for attached tmux pane.
-- Daemon -> client: tmux pane output payload.
+- Client -> daemon: relay input payload for attached tmux pane via pipe-pane -I.
+- Daemon -> client: tmux pane output payload via pipe-pane -O.
 - Channel IDs are ephemeral per WebSocket connection and must be reacquired after reconnect via `terminal.attach`.
+- Pre-registration buffering: binary frames arriving before `terminal.attach` response are buffered by `TerminalMultiplexer` and flushed when the endpoint is registered.
+- Scrollback replay: on attach, Spindle sends `tmux capture-pane` output with CRLF line endings (bare LF converted to CRLF for correct terminal rendering).
 
 ## Error Codes and Behavior
 
