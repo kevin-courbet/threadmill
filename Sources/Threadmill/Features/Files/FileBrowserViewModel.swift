@@ -69,7 +69,7 @@ final class FileService: FileBrowsing {
 @MainActor
 final class FileBrowserViewModel: ObservableObject {
     let rootPath: String
-    @Published private(set) var currentPath: String
+    let currentPath: String
     @Published var openFiles: [OpenFileInfo] = []
     @Published var selectedFileId: UUID?
     @Published var expandedPaths: Set<String> = []

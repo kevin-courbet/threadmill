@@ -205,11 +205,24 @@ final class AppState {
             return
         }
 
+        let availablePresetNames = Set(presets.map(\.name))
+        guard availablePresetNames.contains(preset) else {
+            selectedPreset = presets.first?.name
+            selectedEndpoint = nil
+            return
+        }
+
         await attachPreset(threadID: selectedThread.id, preset: preset)
     }
 
     func attachPreset(threadID: String, preset: String) async {
         guard selectedThreadID == threadID else {
+            return
+        }
+
+        guard presets.contains(where: { $0.name == preset }) else {
+            selectedPreset = presets.first?.name
+            selectedEndpoint = nil
             return
         }
 

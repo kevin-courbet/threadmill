@@ -42,7 +42,20 @@ final class ThreadTabStateManager {
     }
 
     func selectedSessionID(modeID: String, threadID: String) -> String? {
-        threadStates[threadID]?.selectedSessionIDs[modeID]
+        guard let state = threadStates[threadID] else {
+            return nil
+        }
+
+        let selectedSessionID = state.selectedSessionIDs[modeID]
+        guard modeID == TabItem.terminal.id else {
+            return selectedSessionID
+        }
+
+        if let selectedSessionID, state.terminalSessionIDs.contains(selectedSessionID) {
+            return selectedSessionID
+        }
+
+        return state.terminalSessionIDs.first
     }
 
     func setSelectedSessionID(_ sessionID: String?, modeID: String, threadID: String) {
