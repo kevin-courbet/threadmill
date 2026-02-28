@@ -108,7 +108,7 @@ struct ThreadDetailView: View {
             HStack(spacing: 10) {
                 Picker("Mode", selection: $selectedTab) {
                     ForEach(visibleModeTabs) { tab in
-                        Label(tab.title, systemImage: tab.icon)
+                        Label(LocalizedStringKey(tab.localizedKey), systemImage: tab.icon)
                             .tag(tab.id)
                     }
                 }

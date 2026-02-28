@@ -15,10 +15,21 @@ struct FileReadPayload: Codable {
     let size: UInt64
 }
 
+enum FileGitStatus: String, Codable {
+    case modified
+    case staged
+    case added
+    case untracked
+    case deleted
+    case renamed
+    case conflicted
+}
+
 @MainActor
 protocol FileBrowsing: AnyObject {
     func listDirectory(path: String) async throws -> [FileBrowserEntry]
     func readFile(path: String) async throws -> FileReadPayload
+    func gitStatus(path: String) async throws -> [String: FileGitStatus]
 }
 
 @MainActor

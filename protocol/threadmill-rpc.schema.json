@@ -524,6 +524,32 @@
           "minimum": 0
         }
       }
+    },
+    "FileGitStatus": {
+      "type": "string",
+      "enum": [
+        "modified",
+        "staged",
+        "added",
+        "untracked",
+        "deleted",
+        "renamed",
+        "conflicted"
+      ]
+    },
+    "FileGitStatusResult": {
+      "type": "object",
+      "required": [
+        "entries"
+      ],
+      "properties": {
+        "entries": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/FileGitStatus"
+          }
+        }
+      }
     }
   },
   "methods": {
@@ -711,6 +737,23 @@
       },
       "result": {
         "$ref": "#/$defs/FileReadResult"
+      }
+    },
+    "file.git_status": {
+      "description": "Read git status for a known worktree root",
+      "params": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "result": {
+        "$ref": "#/$defs/FileGitStatusResult"
       }
     },
     "thread.create": {

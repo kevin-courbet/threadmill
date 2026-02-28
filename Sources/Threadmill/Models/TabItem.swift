@@ -9,7 +9,7 @@ struct TabItem: Identifiable, Hashable, Codable {
         LocalizedStringKey(localizedKey)
     }
 
-    static let chat = TabItem(id: "chat", localizedKey: "Chat", icon: "bubble.left.and.bubble.right")
+    static let chat = TabItem(id: "chat", localizedKey: "Chat", icon: "message")
     static let terminal = TabItem(id: "terminal", localizedKey: "Terminal", icon: "terminal")
     static let files = TabItem(id: "files", localizedKey: "Files", icon: "folder")
     static let browser = TabItem(id: "browser", localizedKey: "Browser", icon: "globe")

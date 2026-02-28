@@ -15,6 +15,8 @@ struct ThreadmillApp: App {
                     appDelegate.bootstrap(appState: appState)
                 }
         }
+        .windowStyle(.hiddenTitleBar)
+        .windowToolbarStyle(.unified)
         .defaultSize(width: 1200, height: 800)
         .windowResizability(.contentMinSize)
     }

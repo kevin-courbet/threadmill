@@ -85,6 +85,8 @@ struct FileTreeView: View {
             Text(entry.name)
                 .font(.subheadline)
                 .lineLimit(1)
+                .foregroundStyle(gitColor(for: entry.path))
+                .opacity(gitOpacity(for: entry.path))
 
             Spacer(minLength: 0)
         }
@@ -105,6 +107,28 @@ struct FileTreeView: View {
                 }
             }
         }
+    }
+
+    private func gitColor(for path: String) -> Color {
+        switch viewModel.gitStatus(for: path) {
+        case .modified:
+            return .yellow
+        case .staged, .added:
+            return .green
+        case .untracked:
+            return .blue
+        case .deleted, .conflicted:
+            return .red
+        case .renamed:
+            return .purple
+        case nil:
+            return .primary
+        }
+    }
+
+    private func gitOpacity(for path: String) -> Double {
+        let _ = path
+        return 1.0
     }
 
 }

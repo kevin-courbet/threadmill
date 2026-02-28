@@ -70,6 +70,35 @@ final class FileBrowserViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.lastErrorMessage, MockFileBrowserServiceError.listFailed.localizedDescription)
         XCTAssertTrue(viewModel.entries(for: rootPath).isEmpty)
     }
+
+    func testInitLoadsGitStatusForRootPath() async {
+        let service = MockFileBrowserService()
+        let rootPath = "/tmp/threadmill-worktree"
+        service.gitStatusResponses[rootPath] = [
+            "README.md": .modified,
+            "Sources/main.swift": .added,
+        ]
+
+        let viewModel = FileBrowserViewModel(rootPath: rootPath, fileService: service)
+        await Task.yield()
+
+        XCTAssertEqual(service.gitStatusPaths, [rootPath])
+        XCTAssertEqual(viewModel.gitFileStatus["README.md"], .modified)
+        XCTAssertEqual(viewModel.gitFileStatus["Sources/main.swift"], .added)
+    }
+
+    func testListDirectoryRefreshesGitStatus() async {
+        let service = MockFileBrowserService()
+        let rootPath = "/tmp/threadmill-worktree"
+        service.listResponses[rootPath] = []
+        service.gitStatusResponses[rootPath] = ["README.md": .modified]
+
+        let viewModel = FileBrowserViewModel(rootPath: rootPath, fileService: service)
+        await viewModel.listDirectory(path: rootPath)
+
+        XCTAssertEqual(service.gitStatusPaths.last, rootPath)
+        XCTAssertEqual(viewModel.gitFileStatus["README.md"], .modified)
+    }
 }
 
 @MainActor
@@ -77,6 +106,9 @@ private final class MockFileBrowserService: FileBrowsing {
     var listResponses: [String: [FileBrowserEntry]] = [:]
     var listErrors: [String: Error] = [:]
     var listedPaths: [String] = []
+    var gitStatusResponses: [String: [String: FileGitStatus]] = [:]
+    var gitStatusErrors: [String: Error] = [:]
+    var gitStatusPaths: [String] = []
 
     func listDirectory(path: String) async throws -> [FileBrowserEntry] {
         listedPaths.append(path)
@@ -88,6 +120,14 @@ private final class MockFileBrowserService: FileBrowsing {
 
     func readFile(path _: String) async throws -> FileReadPayload {
         FileReadPayload(content: "", size: 0)
+    }
+
+    func gitStatus(path: String) async throws -> [String: FileGitStatus] {
+        gitStatusPaths.append(path)
+        if let error = gitStatusErrors[path] {
+            throw error
+        }
+        return gitStatusResponses[path] ?? [:]
     }
 }
 

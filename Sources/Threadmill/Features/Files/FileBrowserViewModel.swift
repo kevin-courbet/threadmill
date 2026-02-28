@@ -28,6 +28,10 @@ final class FileService: FileBrowsing {
         let entries: [FileBrowserEntry]
     }
 
+    private struct GitStatusResponse: Decodable {
+        let entries: [String: FileGitStatus]
+    }
+
     private let connectionManager: any ConnectionManaging
 
     init(connectionManager: any ConnectionManaging) {
@@ -52,6 +56,15 @@ final class FileService: FileBrowsing {
         return try decode(result, method: "file.read", as: FileReadPayload.self)
     }
 
+    func gitStatus(path: String) async throws -> [String: FileGitStatus] {
+        let result = try await connectionManager.request(
+            method: "file.git_status",
+            params: ["path": path],
+            timeout: 20
+        )
+        return try decode(result, method: "file.git_status", as: GitStatusResponse.self).entries
+    }
+
     private func decode<T: Decodable>(_ value: Any, method: String, as type: T.Type) throws -> T {
         guard JSONSerialization.isValidJSONObject(value) else {
             throw FileServiceError.invalidResponse(method: method)
@@ -73,18 +86,28 @@ final class FileBrowserViewModel: ObservableObject {
     @Published var openFiles: [OpenFileInfo] = []
     @Published var selectedFileId: UUID?
     @Published var expandedPaths: Set<String> = []
+    @Published var gitFileStatus: [String: FileGitStatus] = [:]
     @Published private(set) var lastErrorMessage: String?
     @Published private(set) var loadingDirectories: Set<String> = []
+    @Published private(set) var isOpeningFile = false
 
     private let fileService: any FileBrowsing
     private var directoryEntriesByPath: [String: [FileBrowserEntry]] = [:]
     private var lastDirectoryErrorPath: String?
     private var lastFileReadErrorPath: String?
+    private var initialGitStatusTask: Task<Void, Never>?
 
     init(rootPath: String, fileService: any FileBrowsing) {
         self.rootPath = rootPath
         self.currentPath = rootPath
         self.fileService = fileService
+
+        initialGitStatusTask = Task { [weak self] in
+            await self?.loadGitStatus()
+            await MainActor.run {
+                self?.initialGitStatusTask = nil
+            }
+        }
     }
 
     var selectedOpenFile: OpenFileInfo? {
@@ -124,6 +147,10 @@ final class FileBrowserViewModel: ObservableObject {
     }
 
     func listDirectory(path: String) async {
+        if let initialGitStatusTask {
+            await initialGitStatusTask.value
+        }
+
         loadingDirectories.insert(path)
         defer { loadingDirectories.remove(path) }
 
@@ -132,11 +159,42 @@ final class FileBrowserViewModel: ObservableObject {
             directoryEntriesByPath[path] = entries
             lastErrorMessage = nil
             lastDirectoryErrorPath = nil
+            await loadGitStatus()
         } catch {
             directoryEntriesByPath[path] = []
             lastErrorMessage = error.localizedDescription
             lastDirectoryErrorPath = path
         }
+    }
+
+    func loadGitStatus() async {
+        do {
+            gitFileStatus = try await fileService.gitStatus(path: rootPath)
+        } catch {
+            gitFileStatus = [:]
+        }
+    }
+
+    func gitStatus(for absolutePath: String) -> FileGitStatus? {
+        let rootURL = URL(fileURLWithPath: rootPath)
+        let fileURL = URL(fileURLWithPath: absolutePath)
+        guard let relativePath = relativePath(from: rootURL, to: fileURL) else {
+            return nil
+        }
+
+        return gitFileStatus[relativePath]
+    }
+
+    private func relativePath(from rootURL: URL, to fileURL: URL) -> String? {
+        let root = rootURL.standardizedFileURL.path
+        let file = fileURL.standardizedFileURL.path
+
+        guard file == root || file.hasPrefix(root + "/") else {
+            return nil
+        }
+
+        let relative = String(file.dropFirst(root.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return relative.isEmpty ? "." : relative
     }
 
     func entries(for path: String) -> [FileBrowserEntry] {
@@ -160,7 +218,10 @@ final class FileBrowserViewModel: ObservableObject {
         expandedPaths.insert(entry.path)
         if directoryEntriesByPath[entry.path] == nil {
             await listDirectory(path: entry.path)
+            return
         }
+
+        await loadGitStatus()
     }
 
     func openFile(path: String) async {
@@ -168,6 +229,9 @@ final class FileBrowserViewModel: ObservableObject {
             selectedFileId = existing.id
             return
         }
+
+        isOpeningFile = true
+        defer { isOpeningFile = false }
 
         do {
             let payload = try await fileService.readFile(path: path)

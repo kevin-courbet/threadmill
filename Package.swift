@@ -17,7 +17,7 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0")
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
     ],
     targets: [
         .binaryTarget(
@@ -32,7 +32,7 @@ let package = Package(
             name: "Threadmill",
             dependencies: [
                 "GhosttyKit",
-                .product(name: "GRDB", package: "GRDB.swift")
+                .product(name: "GRDB", package: "GRDB.swift"),
             ],
             path: "Sources/Threadmill",
             resources: [

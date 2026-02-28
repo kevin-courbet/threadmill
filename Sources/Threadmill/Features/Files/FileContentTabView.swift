@@ -76,12 +76,27 @@ struct FileContentTabView: View {
     @ViewBuilder
     private var contentArea: some View {
         if let selectedFile = viewModel.selectedOpenFile {
-            ScrollView {
-                Text(selectedFile.content)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .textSelection(.enabled)
-                    .padding(12)
+            if selectedFile.content.isEmpty {
+                ContentUnavailableView(
+                    "File is empty",
+                    systemImage: "doc.text",
+                    description: Text("\(selectedFile.name) has no content.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ReadOnlyCodeEditor(
+                    content: selectedFile.content,
+                    filePath: selectedFile.path
+                )
+                .id(selectedFile.id)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        } else if viewModel.isOpeningFile {
+            VStack(spacing: 10) {
+                ProgressView()
+                Text("Loading file...")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let errorMessage = viewModel.lastErrorMessage {
@@ -116,6 +131,18 @@ struct FileContentTabView: View {
 
     private func tabIconButton(systemName: String, frameSize: CGFloat = 24, action: @escaping () -> Void) -> some View {
         TabBarIconButton(systemName: systemName, frameSize: frameSize, action: action)
+    }
+}
+
+private struct ReadOnlyCodeEditor: View {
+    let content: String
+    let filePath: String
+
+    var body: some View {
+        CodeEditorView(
+            text: content,
+            language: LanguageDetection.language(for: filePath)
+        )
     }
 }
 

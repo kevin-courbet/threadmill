@@ -3,11 +3,14 @@ import Observation
 
 enum AppStateError: LocalizedError {
     case connectionManagerUnavailable
+    case invalidGitStatusResponse
 
     var errorDescription: String? {
         switch self {
         case .connectionManagerUnavailable:
             "Connection to spindle is unavailable."
+        case .invalidGitStatusResponse:
+            "Invalid response for file.git_status."
         }
     }
 }
@@ -524,6 +527,34 @@ final class AppState {
             return URL(fileURLWithPath: path).appendingPathComponent(name).path
         }
         .sorted()
+    }
+
+    func gitStatus(path: String) async throws -> [String: FileGitStatus] {
+        guard let connectionManager else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+
+        let result = try await connectionManager.request(
+            method: "file.git_status",
+            params: ["path": path],
+            timeout: 20
+        )
+
+        guard
+            let payload = result as? [String: Any],
+            let entries = payload["entries"] as? [String: String]
+        else {
+            throw AppStateError.invalidGitStatusResponse
+        }
+
+        var parsed: [String: FileGitStatus] = [:]
+        for (key, value) in entries {
+            guard let status = FileGitStatus(rawValue: value) else {
+                continue
+            }
+            parsed[key] = status
+        }
+        return parsed
     }
 
     func addProject(path: String) async throws {
