@@ -14,28 +14,16 @@ struct FileContentTabView: View {
     }
 
     private var tabBar: some View {
-        HStack(spacing: 6) {
-            Button {
+        HStack(spacing: 4) {
+            tabIconButton(systemName: showTree ? "sidebar.trailing" : "sidebar.leading", frameSize: 36) {
                 showTree.toggle()
-            } label: {
-                Image(systemName: showTree ? "sidebar.leading" : "sidebar.right")
-                    .font(.caption)
-                    .frame(width: 24, height: 24)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
 
-            Button {
+            tabIconButton(systemName: "chevron.left") {
                 viewModel.selectPreviousFile()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 18, height: 24)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .disabled(!viewModel.canSelectPreviousFile)
-            .opacity(viewModel.canSelectPreviousFile ? 1 : 0.35)
+            .disabled(!viewModel.canSelectPreviousFile || viewModel.openFiles.count <= 1)
+            .opacity((viewModel.canSelectPreviousFile && viewModel.openFiles.count > 1) ? 1 : 0.35)
 
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -57,20 +45,13 @@ struct FileContentTabView: View {
                 }
             }
 
-            Button {
+            tabIconButton(systemName: "chevron.right") {
                 viewModel.selectNextFile()
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 18, height: 24)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .disabled(!viewModel.canSelectNextFile)
-            .opacity(viewModel.canSelectNextFile ? 1 : 0.35)
+            .disabled(!viewModel.canSelectNextFile || viewModel.openFiles.count <= 1)
+            .opacity((viewModel.canSelectNextFile && viewModel.openFiles.count > 1) ? 1 : 0.35)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 6)
         .frame(height: 36)
         .background(Color(nsColor: .underPageBackgroundColor))
     }
@@ -78,15 +59,17 @@ struct FileContentTabView: View {
     private func tab(for file: OpenFileInfo) -> some View {
         let isSelected = file.id == viewModel.selectedFileId
 
-        return TabContainer(isSelected: isSelected) {
+        return TabContainer(isSelected: isSelected, style: .topBorder) {
             viewModel.selectFile(id: file.id)
         } content: {
             HStack(spacing: 6) {
+                FileIconView(fileName: file.name, size: 14)
                 TabLabel(title: file.name, icon: nil)
                 TabCloseButton {
                     viewModel.closeFile(id: file.id)
                 }
             }
+            .frame(minWidth: 120, maxWidth: 260)
         }
     }
 
@@ -116,12 +99,45 @@ struct FileContentTabView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ContentUnavailableView(
-                "No file selected",
-                systemImage: "doc",
-                description: Text("Open a file from the tree to preview it.")
-            )
+            VStack(spacing: 8) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.tertiary)
+                Text("No files open")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                Text("Select a file from the tree to open")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    private func tabIconButton(systemName: String, frameSize: CGFloat = 24, action: @escaping () -> Void) -> some View {
+        TabBarIconButton(systemName: systemName, frameSize: frameSize, action: action)
+    }
+}
+
+private struct TabBarIconButton: View {
+    let systemName: String
+    let frameSize: CGFloat
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: frameSize, height: frameSize)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(isHovered ? Color(nsColor: .separatorColor).opacity(0.35) : .clear)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .onHover { isHovered = $0 }
     }
 }

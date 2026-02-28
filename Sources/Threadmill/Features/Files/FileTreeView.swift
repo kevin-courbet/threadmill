@@ -79,8 +79,7 @@ struct FileTreeView: View {
             }
             .frame(width: 10)
 
-            Image(systemName: iconName(for: entry))
-                .foregroundStyle(.secondary)
+            FileIconView(fileName: entry.name, isDirectory: entry.isDirectory, size: 12)
                 .frame(width: 14)
 
             Text(entry.name)
@@ -108,19 +107,4 @@ struct FileTreeView: View {
         }
     }
 
-    private func iconName(for entry: FileBrowserEntry) -> String {
-        if entry.isDirectory {
-            return "folder"
-        }
-
-        switch URL(fileURLWithPath: entry.name).pathExtension.lowercased() {
-        case "swift": return "swift"
-        case "rs": return "r.square"
-        case "md": return "doc.plaintext"
-        case "json", "yml", "yaml", "toml": return "curlybraces"
-        case "sh", "zsh", "bash": return "terminal"
-        case "png", "jpg", "jpeg", "gif", "webp": return "photo"
-        default: return "doc.text"
-        }
-    }
 }

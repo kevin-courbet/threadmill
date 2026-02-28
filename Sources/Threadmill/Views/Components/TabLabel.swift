@@ -8,12 +8,12 @@ struct TabLabel: View {
         HStack(spacing: 6) {
             if let icon, !icon.isEmpty {
                 Image(systemName: icon)
-                    .font(.caption)
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
             }
 
             Text(title)
-                .font(.subheadline)
+                .font(.system(size: 12))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)

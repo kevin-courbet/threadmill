@@ -28,7 +28,7 @@ struct BrowserView: View {
             Divider()
 
             ZStack {
-                if let activeSession = manager.activeSession {
+                if let activeSession = manager.activeSession, !activeSession.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     WebViewWrapper(
                         url: activeSession.url,
                         onNavigationStateChange: { canGoBack, canGoForward, isLoading, loadingProgress in
@@ -47,11 +47,17 @@ struct BrowserView: View {
                     )
                     .id(activeSession.id)
                 } else {
-                    ContentUnavailableView(
-                        "No browser tabs",
-                        systemImage: "globe",
-                        description: Text("Create a tab to open the thread dev server.")
-                    )
+                    VStack(spacing: 8) {
+                        Image(systemName: "globe")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.tertiary)
+                        Text("No page loaded")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                        Text("Enter a URL or open a new tab")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                    }
                 }
 
                 if let loadError = manager.loadError {
@@ -80,8 +86,8 @@ struct BrowserView: View {
     }
 
     private var tabBar: some View {
-        HStack(spacing: 6) {
-            arrowButton(systemName: "chevron.left", isDisabled: previousSessionID == nil) {
+        HStack(spacing: 4) {
+            tabBarIconButton(systemName: "chevron.left", isDisabled: previousSessionID == nil) {
                 if let previousSessionID {
                     manager.selectSession(previousSessionID)
                 }
@@ -112,27 +118,19 @@ struct BrowserView: View {
                 }
             }
 
-            arrowButton(systemName: "chevron.right", isDisabled: nextSessionID == nil) {
+            tabBarIconButton(systemName: "chevron.right", isDisabled: nextSessionID == nil) {
                 if let nextSessionID {
                     manager.selectSession(nextSessionID)
                 }
             }
 
-            Button {
+            tabBarIconButton(systemName: "plus") {
                 manager.createSession()
-            } label: {
-                Image(systemName: "plus")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
             .help("New browser tab")
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .frame(height: 34)
+        .frame(height: 36)
         .background(Color(nsColor: .underPageBackgroundColor))
     }
 
@@ -140,7 +138,7 @@ struct BrowserView: View {
         let isSelected = manager.activeSessionId == session.id
         let isCloseVisible = isSelected || hoveredTabID == session.id
 
-        return TabContainer(isSelected: isSelected) {
+        return TabContainer(isSelected: isSelected, style: .topBorder) {
             manager.selectSession(session.id)
         } content: {
             HStack(spacing: 6) {
@@ -159,17 +157,8 @@ struct BrowserView: View {
         }
     }
 
-    private func arrowButton(systemName: String, isDisabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.caption.weight(.semibold))
-                .frame(width: 18, height: 24)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .disabled(isDisabled)
-        .opacity(isDisabled ? 0.35 : 1)
+    private func tabBarIconButton(systemName: String, isDisabled: Bool = false, action: @escaping () -> Void) -> some View {
+        BrowserTabBarIconButton(systemName: systemName, isDisabled: isDisabled, action: action)
     }
 
     private var selectedIndex: Int? {
@@ -209,5 +198,30 @@ struct BrowserView: View {
         }
 
         return "New tab"
+    }
+}
+
+private struct BrowserTabBarIconButton: View {
+    let systemName: String
+    let isDisabled: Bool
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 24, height: 24)
+                .background(
+                    Circle()
+                        .fill(isHovered ? Color(nsColor: .separatorColor).opacity(0.5) : .clear)
+                )
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.35 : 1)
+        .onHover { isHovered = $0 }
     }
 }
