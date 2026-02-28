@@ -175,6 +175,7 @@ struct ThreadDetailView: View {
         case TabItem.files.id:
             if let fileService = appState.fileService {
                 FileBrowserView(rootPath: thread.worktreePath, fileService: fileService)
+                    .id(thread.id)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ContentUnavailableView(
@@ -448,6 +449,7 @@ struct ThreadDetailView: View {
     }
 
     private func restoreThreadState(_ thread: ThreadModel) async {
+        let expectedThreadID = thread.id
         selectedTab = normalizedModeID(tabStateManager.selectedMode(threadID: thread.id))
 
         var persistedTerminalSessions = tabStateManager.terminalSessionIDs(threadID: thread.id)
@@ -467,7 +469,14 @@ struct ThreadDetailView: View {
 
         selectedChatConversationID = tabStateManager.selectedSessionID(modeID: TabItem.chat.id, threadID: thread.id)
         await refreshChatConversations(for: thread)
+        guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
+            return
+        }
+
         await refreshChatAgents(for: thread)
+        guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
+            return
+        }
 
         if selectedTab == TabItem.terminal.id {
             attachSelectedTerminalIfNeeded()
@@ -475,15 +484,31 @@ struct ThreadDetailView: View {
     }
 
     private func refreshChatConversations(for thread: ThreadModel) async {
+        let expectedThreadID = thread.id
+
         guard let chatConversationService = appState.chatConversationService else {
+            guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
+                return
+            }
             chatConversations = []
             return
         }
 
         do {
-            chatConversations = try await chatConversationService.activeConversations(threadID: thread.id)
+            let conversations = try await chatConversationService.activeConversations(threadID: thread.id)
+            guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
+                return
+            }
+            chatConversations = conversations
         } catch {
+            guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
+                return
+            }
             chatConversations = []
+        }
+
+        guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
+            return
         }
 
         if let selectedChatConversationID,
@@ -497,14 +522,26 @@ struct ThreadDetailView: View {
     }
 
     private func refreshChatAgents(for thread: ThreadModel) async {
+        let expectedThreadID = thread.id
+
         guard let openCodeClient = appState.openCodeClient else {
+            guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
+                return
+            }
             chatAgents = []
             return
         }
 
         do {
-            chatAgents = try await openCodeClient.getAgents(directory: thread.worktreePath)
+            let agents = try await openCodeClient.getAgents(directory: thread.worktreePath)
+            guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
+                return
+            }
+            chatAgents = agents
         } catch {
+            guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
+                return
+            }
             chatAgents = []
         }
     }
