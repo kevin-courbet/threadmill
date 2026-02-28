@@ -470,6 +470,60 @@
           "type": "boolean"
         }
       }
+    },
+    "FileEntry": {
+      "type": "object",
+      "required": [
+        "name",
+        "path",
+        "isDirectory",
+        "size"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "isDirectory": {
+          "type": "boolean"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "FileListResult": {
+      "type": "object",
+      "required": [
+        "entries"
+      ],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FileEntry"
+          }
+        }
+      }
+    },
+    "FileReadResult": {
+      "type": "object",
+      "required": [
+        "content",
+        "size"
+      ],
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
     }
   },
   "methods": {
@@ -623,6 +677,40 @@
         "items": {
           "$ref": "#/$defs/DirectoryEntry"
         }
+      }
+    },
+    "file.list": {
+      "description": "List files and directories within an allowed root",
+      "params": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "result": {
+        "$ref": "#/$defs/FileListResult"
+      }
+    },
+    "file.read": {
+      "description": "Read UTF-8 text file contents within an allowed root",
+      "params": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "result": {
+        "$ref": "#/$defs/FileReadResult"
       }
     },
     "thread.create": {

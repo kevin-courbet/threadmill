@@ -173,12 +173,17 @@ struct ThreadDetailView: View {
             terminalModeContent
 
         case TabItem.files.id:
-            ContentUnavailableView(
-                "File Browser coming soon",
-                systemImage: "folder",
-                description: Text("This mode will be implemented in phase 5.")
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if let fileService = appState.fileService {
+                FileBrowserView(rootPath: thread.worktreePath, fileService: fileService)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ContentUnavailableView(
+                    "File browser unavailable",
+                    systemImage: "folder",
+                    description: Text("Connection to spindle is unavailable.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
 
         case TabItem.browser.id:
             if let databaseManager = appState.databaseManager {

@@ -44,6 +44,7 @@ final class AppState {
     var selectedEndpoint: RelayEndpoint?
     private(set) var openCodeClient: (any OpenCodeManaging)?
     private(set) var chatConversationService: (any ChatConversationManaging)?
+    private(set) var fileService: (any FileBrowsing)?
 
     private(set) var databaseManager: (any DatabaseManaging)?
     private var syncService: (any SyncServicing)?
@@ -119,7 +120,8 @@ final class AppState {
         syncService: any SyncServicing,
         multiplexer: any TerminalMultiplexing,
         openCodeClient: any OpenCodeManaging = OpenCodeClient(),
-        chatConversationService: (any ChatConversationManaging)? = nil
+        chatConversationService: (any ChatConversationManaging)? = nil,
+        fileService: (any FileBrowsing)? = nil
     ) {
         self.connectionManager = connectionManager
         self.databaseManager = databaseManager
@@ -127,6 +129,7 @@ final class AppState {
         self.multiplexer = multiplexer
         self.openCodeClient = openCodeClient
         self.chatConversationService = chatConversationService
+        self.fileService = fileService ?? FileService(connectionManager: connectionManager)
     }
 
     func ensureValidSelection() {

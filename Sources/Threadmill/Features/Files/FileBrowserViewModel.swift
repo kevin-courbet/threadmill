@@ -1,0 +1,242 @@
+import Foundation
+import Combine
+
+struct FileBrowserEntry: Identifiable, Hashable, Codable {
+    let name: String
+    let path: String
+    let isDirectory: Bool
+    let size: UInt64
+
+    var id: String { path }
+}
+
+struct FileReadPayload: Codable {
+    let content: String
+    let size: UInt64
+}
+
+struct OpenFileInfo: Identifiable, Equatable {
+    let id: UUID
+    let name: String
+    let path: String
+    let content: String
+}
+
+@MainActor
+protocol FileBrowsing: AnyObject {
+    func listDirectory(path: String) async throws -> [FileBrowserEntry]
+    func readFile(path: String) async throws -> FileReadPayload
+}
+
+enum FileServiceError: LocalizedError {
+    case invalidResponse(method: String)
+    case decodeFailed(method: String)
+
+    var errorDescription: String? {
+        switch self {
+        case let .invalidResponse(method):
+            return "Invalid response for \(method)."
+        case let .decodeFailed(method):
+            return "Failed to decode \(method) response."
+        }
+    }
+}
+
+@MainActor
+final class FileService: FileBrowsing {
+    private struct ListResponse: Decodable {
+        let entries: [FileBrowserEntry]
+    }
+
+    private let connectionManager: any ConnectionManaging
+
+    init(connectionManager: any ConnectionManaging) {
+        self.connectionManager = connectionManager
+    }
+
+    func listDirectory(path: String) async throws -> [FileBrowserEntry] {
+        let result = try await connectionManager.request(
+            method: "file.list",
+            params: ["path": path],
+            timeout: 20
+        )
+        return try decode(result, method: "file.list", as: ListResponse.self).entries
+    }
+
+    func readFile(path: String) async throws -> FileReadPayload {
+        let result = try await connectionManager.request(
+            method: "file.read",
+            params: ["path": path],
+            timeout: 20
+        )
+        return try decode(result, method: "file.read", as: FileReadPayload.self)
+    }
+
+    private func decode<T: Decodable>(_ value: Any, method: String, as type: T.Type) throws -> T {
+        guard JSONSerialization.isValidJSONObject(value) else {
+            throw FileServiceError.invalidResponse(method: method)
+        }
+
+        let data = try JSONSerialization.data(withJSONObject: value)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw FileServiceError.decodeFailed(method: method)
+        }
+    }
+}
+
+@MainActor
+final class FileBrowserViewModel: ObservableObject {
+    @Published var currentPath: String
+    @Published var openFiles: [OpenFileInfo] = []
+    @Published var selectedFileId: UUID?
+    @Published var expandedPaths: Set<String> = []
+    @Published private(set) var lastErrorMessage: String?
+    @Published private(set) var loadingDirectories: Set<String> = []
+
+    private let fileService: any FileBrowsing
+    private var directoryEntriesByPath: [String: [FileBrowserEntry]] = [:]
+
+    init(rootPath: String, fileService: any FileBrowsing) {
+        self.currentPath = rootPath
+        self.fileService = fileService
+    }
+
+    var selectedOpenFile: OpenFileInfo? {
+        guard let selectedFileId else {
+            return nil
+        }
+        return openFiles.first(where: { $0.id == selectedFileId })
+    }
+
+    var canSelectPreviousFile: Bool {
+        guard
+            let selectedFileId,
+            let index = openFiles.firstIndex(where: { $0.id == selectedFileId })
+        else {
+            return false
+        }
+
+        return index > 0
+    }
+
+    var canSelectNextFile: Bool {
+        guard
+            let selectedFileId,
+            let index = openFiles.firstIndex(where: { $0.id == selectedFileId })
+        else {
+            return false
+        }
+
+        return index + 1 < openFiles.count
+    }
+
+    func loadInitialDirectoryIfNeeded() async {
+        guard directoryEntriesByPath[currentPath] == nil else {
+            return
+        }
+        await listDirectory(path: currentPath)
+    }
+
+    func listDirectory(path: String) async {
+        loadingDirectories.insert(path)
+        defer { loadingDirectories.remove(path) }
+
+        do {
+            let entries = try await fileService.listDirectory(path: path)
+            directoryEntriesByPath[path] = entries
+            currentPath = path
+            lastErrorMessage = nil
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    func entries(for path: String) -> [FileBrowserEntry] {
+        directoryEntriesByPath[path] ?? []
+    }
+
+    func isDirectoryLoading(_ path: String) -> Bool {
+        loadingDirectories.contains(path)
+    }
+
+    func toggleDirectory(_ entry: FileBrowserEntry) async {
+        guard entry.isDirectory else {
+            return
+        }
+
+        if expandedPaths.contains(entry.path) {
+            expandedPaths.remove(entry.path)
+            return
+        }
+
+        expandedPaths.insert(entry.path)
+        if directoryEntriesByPath[entry.path] == nil {
+            await listDirectory(path: entry.path)
+        }
+    }
+
+    func openFile(path: String) async {
+        if let existing = openFiles.first(where: { $0.path == path }) {
+            selectedFileId = existing.id
+            return
+        }
+
+        do {
+            let payload = try await fileService.readFile(path: path)
+            let openFile = OpenFileInfo(
+                id: UUID(),
+                name: URL(fileURLWithPath: path).lastPathComponent,
+                path: path,
+                content: payload.content
+            )
+            openFiles.append(openFile)
+            selectedFileId = openFile.id
+            lastErrorMessage = nil
+        } catch {
+            lastErrorMessage = error.localizedDescription
+        }
+    }
+
+    func selectFile(id: UUID) {
+        selectedFileId = id
+    }
+
+    func closeFile(id: UUID) {
+        guard let index = openFiles.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        openFiles.remove(at: index)
+        if selectedFileId == id {
+            selectedFileId = openFiles.indices.contains(index)
+                ? openFiles[index].id
+                : openFiles.last?.id
+        }
+    }
+
+    func selectPreviousFile() {
+        guard
+            let selectedFileId,
+            let index = openFiles.firstIndex(where: { $0.id == selectedFileId }),
+            index > 0
+        else {
+            return
+        }
+
+        self.selectedFileId = openFiles[index - 1].id
+    }
+
+    func selectNextFile() {
+        guard
+            let selectedFileId,
+            let index = openFiles.firstIndex(where: { $0.id == selectedFileId }),
+            index + 1 < openFiles.count
+        else {
+            return
+        }
+
+        self.selectedFileId = openFiles[index + 1].id
+    }
+}
