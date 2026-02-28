@@ -90,6 +90,32 @@ final class TerminalMultiplexerTests: XCTestCase {
         multiplexer.detachAll()
     }
 
+    func testPreRegistrationFramesBufferedAndFlushedOnAttach() async throws {
+        // Spindle sends scrollback replay binary frames BEFORE the
+        // terminal.attach RPC response arrives. The multiplexer must
+        // buffer these and flush them once the endpoint is registered.
+        let connection = MockDaemonConnection(state: .connected)
+        connection.requestHandler = { method, _, _ in
+            if method == "terminal.attach" {
+                return ["channel_id": 42]
+            }
+            return NSNull()
+        }
+
+        let multiplexer = TerminalMultiplexer(connectionManager: connection, surfaceHost: MockSurfaceHost())
+
+        // Simulate scrollback replay arriving before attach completes
+        let scrollbackFrame = makeFrame(channelID: 42, payload: Array("scrollback data".utf8))
+        multiplexer.handleBinaryFrame(scrollbackFrame)
+
+        // Attach registers the endpoint and flushes buffered frames
+        let endpoint = try await multiplexer.attach(threadID: "thread-1", preset: "terminal")
+
+        XCTAssertEqual(endpoint.channelID, 42)
+        XCTAssertEqual(endpoint.bufferedFrameCount, 1)
+        multiplexer.detachAll()
+    }
+
     func testAttachSameThreadPresetTwiceReusesEndpoint() async throws {
         var channelID: UInt16 = 41
         let connection = MockDaemonConnection(state: .connected)

@@ -10,6 +10,11 @@ final class TerminalMultiplexer: TerminalMultiplexing {
     private var endpointsByChannel: [UInt16: RelayEndpoint] = [:]
     private var endpointsByAttachment: [AttachmentKey: RelayEndpoint] = [:]
 
+    // Buffer for binary frames that arrive before endpoint registration
+    // (e.g. scrollback replay sent before terminal.attach RPC response)
+    private var preRegistrationBuffer: [UInt16: [Data]] = [:]
+    private let maxBufferedFramesPerChannel = 100
+
     private let connectionManager: any ConnectionManaging
     private let surfaceHost: any SurfaceHosting
 
@@ -78,7 +83,17 @@ final class TerminalMultiplexer: TerminalMultiplexing {
         }
 
         let channelID = (UInt16(data[0]) << 8) | UInt16(data[1])
-        endpointsByChannel[channelID]?.handleBinaryFrame(data)
+        if let endpoint = endpointsByChannel[channelID] {
+            endpoint.handleBinaryFrame(data)
+        } else {
+            // Buffer frames that arrive before endpoint registration
+            // (spindle sends scrollback replay before the RPC response)
+            var buffer = preRegistrationBuffer[channelID] ?? []
+            if buffer.count < maxBufferedFramesPerChannel {
+                buffer.append(data)
+                preRegistrationBuffer[channelID] = buffer
+            }
+        }
     }
 
     func reattachAll() async {
@@ -98,6 +113,7 @@ final class TerminalMultiplexer: TerminalMultiplexing {
                 let channelID = try await requestAttachChannel(threadID: endpoint.threadID, preset: endpoint.preset)
                 endpoint.setChannelID(channelID)
                 remapped[channelID] = endpoint
+                flushPreRegistrationBuffer(channelID: channelID, to: endpoint)
                 await endpoint.replayResizeIfAvailable()
             } catch {
                 NSLog("threadmill-mux: reattach failed for %@/%@: %@", endpoint.threadID, endpoint.preset, "\(error)")
@@ -121,7 +137,17 @@ final class TerminalMultiplexer: TerminalMultiplexing {
 
         endpoint.setChannelID(channelID)
         endpointsByChannel[channelID] = endpoint
+        flushPreRegistrationBuffer(channelID: channelID, to: endpoint)
         await endpoint.replayResizeIfAvailable()
+    }
+
+    private func flushPreRegistrationBuffer(channelID: UInt16, to endpoint: RelayEndpoint) {
+        guard let frames = preRegistrationBuffer.removeValue(forKey: channelID) else {
+            return
+        }
+        for frame in frames {
+            endpoint.handleBinaryFrame(frame)
+        }
     }
 
     private func detach(endpoint: RelayEndpoint, sendDetachRPC: Bool) {
