@@ -16,6 +16,20 @@ protocol DatabaseManaging: AnyObject {
     func allThreads() throws -> [ThreadModel]
     func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel]) throws
     func updateThreadStatus(threadID: String, status: ThreadStatus) throws -> Bool
+    func saveConversation(_ conversation: ChatConversation) throws
+    func conversation(id: String) throws -> ChatConversation?
+    func listConversations(threadID: String) throws -> [ChatConversation]
+    func activeConversations(threadID: String) throws -> [ChatConversation]
+}
+
+@MainActor
+protocol ChatConversationManaging: AnyObject {
+    func createConversation(threadID: String, directory: String) async throws -> ChatConversation
+    func listConversations(threadID: String) async throws -> [ChatConversation]
+    func activeConversations(threadID: String) async throws -> [ChatConversation]
+    func archiveConversation(id: String) async throws
+    func updateTitle(conversationID: String, title: String) async throws
+    func verifySession(conversation: ChatConversation) async throws -> Bool
 }
 
 @MainActor

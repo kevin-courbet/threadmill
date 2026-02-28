@@ -71,6 +71,7 @@ final class MockSyncService: SyncServicing {
 final class MockDatabaseManager: DatabaseManaging {
     var projects: [Project] = []
     var threads: [ThreadModel] = []
+    var conversations: [ChatConversation] = []
     var updateStatusResult = true
     var updatedStatuses: [(threadID: String, status: ThreadStatus)] = []
 
@@ -90,6 +91,77 @@ final class MockDatabaseManager: DatabaseManaging {
     func updateThreadStatus(threadID: String, status: ThreadStatus) throws -> Bool {
         updatedStatuses.append((threadID, status))
         return updateStatusResult
+    }
+
+    func saveConversation(_ conversation: ChatConversation) throws {
+        if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
+            conversations[index] = conversation
+        } else {
+            conversations.append(conversation)
+        }
+    }
+
+    func conversation(id: String) throws -> ChatConversation? {
+        conversations.first(where: { $0.id == id })
+    }
+
+    func listConversations(threadID: String) throws -> [ChatConversation] {
+        conversations
+            .filter { $0.threadID == threadID }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    func activeConversations(threadID: String) throws -> [ChatConversation] {
+        conversations
+            .filter { $0.threadID == threadID && !$0.isArchived }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+}
+
+@MainActor
+final class MockChatConversationService: ChatConversationManaging {
+    var createConversationResult: Result<ChatConversation, Error> = .failure(TestError.missingStub)
+    var listConversationsResult: Result<[ChatConversation], Error> = .success([])
+    var activeConversationsResult: Result<[ChatConversation], Error> = .success([])
+    var archiveConversationResult: Result<Void, Error> = .success(())
+    var updateTitleResult: Result<Void, Error> = .success(())
+    var verifySessionResult: Result<Bool, Error> = .success(true)
+
+    private(set) var createdConversations: [(threadID: String, directory: String)] = []
+    private(set) var listedThreadIDs: [String] = []
+    private(set) var activeThreadIDs: [String] = []
+    private(set) var archivedConversationIDs: [String] = []
+    private(set) var updatedTitles: [(id: String, title: String)] = []
+    private(set) var verifiedConversationIDs: [String] = []
+
+    func createConversation(threadID: String, directory: String) async throws -> ChatConversation {
+        createdConversations.append((threadID, directory))
+        return try createConversationResult.get()
+    }
+
+    func listConversations(threadID: String) async throws -> [ChatConversation] {
+        listedThreadIDs.append(threadID)
+        return try listConversationsResult.get()
+    }
+
+    func activeConversations(threadID: String) async throws -> [ChatConversation] {
+        activeThreadIDs.append(threadID)
+        return try activeConversationsResult.get()
+    }
+
+    func archiveConversation(id: String) async throws {
+        archivedConversationIDs.append(id)
+        _ = try archiveConversationResult.get()
+    }
+
+    func updateTitle(conversationID: String, title: String) async throws {
+        updatedTitles.append((conversationID, title))
+        _ = try updateTitleResult.get()
+    }
+
+    func verifySession(conversation: ChatConversation) async throws -> Bool {
+        verifiedConversationIDs.append(conversation.id)
+        return try verifySessionResult.get()
     }
 }
 

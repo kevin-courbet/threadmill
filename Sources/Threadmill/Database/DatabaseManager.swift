@@ -62,6 +62,30 @@ final class DatabaseManager: DatabaseManaging {
         }
     }
 
+    func saveConversation(_ conversation: ChatConversation) throws {
+        try dbQueue.write { db in
+            try conversation.save(db)
+        }
+    }
+
+    func conversation(id: String) throws -> ChatConversation? {
+        try dbQueue.read { db in
+            try ChatConversation.fetchOne(db, key: id)
+        }
+    }
+
+    func listConversations(threadID: String) throws -> [ChatConversation] {
+        try dbQueue.read { db in
+            try ChatConversation.listForThread(threadID, in: db)
+        }
+    }
+
+    func activeConversations(threadID: String) throws -> [ChatConversation] {
+        try dbQueue.read { db in
+            try ChatConversation.activeForThread(threadID, in: db)
+        }
+    }
+
     func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel]) throws {
         try dbQueue.write { db in
             try Project.deleteAll(db)
@@ -120,6 +144,19 @@ final class DatabaseManager: DatabaseManaging {
             try db.alter(table: "threads") { table in
                 table.add(column: "port_offset", .integer)
             }
+        }
+
+        migrator.registerMigration("v4_chat_conversation") { db in
+            try db.create(table: "chatConversation") { table in
+                table.column("id", .text).notNull().primaryKey()
+                table.column("threadID", .text).notNull()
+                table.column("opencodeSessionID", .text)
+                table.column("title", .text).notNull().defaults(to: "")
+                table.column("createdAt", .double).notNull()
+                table.column("updatedAt", .double).notNull()
+                table.column("isArchived", .boolean).notNull().defaults(to: false)
+            }
+            try db.create(index: "idx_chatConversation_threadID", on: "chatConversation", columns: ["threadID"])
         }
 
         try migrator.migrate(dbQueue)
