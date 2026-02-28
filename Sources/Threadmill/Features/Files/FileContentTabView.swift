@@ -101,6 +101,20 @@ struct FileContentTabView: View {
                     .padding(12)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let errorMessage = viewModel.lastErrorMessage {
+            VStack(spacing: 10) {
+                ContentUnavailableView(
+                    "Unable to open file",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(errorMessage)
+                )
+                Button("Retry") {
+                    Task {
+                        await viewModel.retryLastOpenFile()
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ContentUnavailableView(
                 "No file selected",

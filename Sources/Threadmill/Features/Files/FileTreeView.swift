@@ -6,7 +6,7 @@ struct FileTreeView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                treeRows(for: viewModel.currentPath, level: 0)
+                treeRows(for: viewModel.rootPath, level: 0)
             }
             .padding(.vertical, 6)
         }
@@ -28,6 +28,21 @@ struct FileTreeView: View {
                                 .foregroundStyle(.secondary)
                         }
                         .padding(.leading, CGFloat(level) * 16 + 10)
+                        .padding(.vertical, 4)
+                    } else if level == 0, let errorMessage = viewModel.lastErrorMessage {
+                        VStack(spacing: 10) {
+                            ContentUnavailableView(
+                                "Unable to load files",
+                                systemImage: "exclamationmark.triangle",
+                                description: Text(errorMessage)
+                            )
+                            Button("Retry") {
+                                Task {
+                                    await viewModel.retryLastListDirectory()
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 10)
                         .padding(.vertical, 4)
                     } else if level == 0 {
                         Text("No files")

@@ -68,7 +68,8 @@ final class FileService: FileBrowsing {
 
 @MainActor
 final class FileBrowserViewModel: ObservableObject {
-    @Published var currentPath: String
+    let rootPath: String
+    @Published private(set) var currentPath: String
     @Published var openFiles: [OpenFileInfo] = []
     @Published var selectedFileId: UUID?
     @Published var expandedPaths: Set<String> = []
@@ -81,6 +82,7 @@ final class FileBrowserViewModel: ObservableObject {
     private var lastFileReadErrorPath: String?
 
     init(rootPath: String, fileService: any FileBrowsing) {
+        self.rootPath = rootPath
         self.currentPath = rootPath
         self.fileService = fileService
     }
@@ -115,10 +117,10 @@ final class FileBrowserViewModel: ObservableObject {
     }
 
     func loadInitialDirectoryIfNeeded() async {
-        guard directoryEntriesByPath[currentPath] == nil else {
+        guard directoryEntriesByPath[rootPath] == nil else {
             return
         }
-        await listDirectory(path: currentPath)
+        await listDirectory(path: rootPath)
     }
 
     func listDirectory(path: String) async {
@@ -128,10 +130,10 @@ final class FileBrowserViewModel: ObservableObject {
         do {
             let entries = try await fileService.listDirectory(path: path)
             directoryEntriesByPath[path] = entries
-            currentPath = path
             lastErrorMessage = nil
             lastDirectoryErrorPath = nil
         } catch {
+            directoryEntriesByPath[path] = []
             lastErrorMessage = error.localizedDescription
             lastDirectoryErrorPath = path
         }
