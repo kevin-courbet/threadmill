@@ -2,7 +2,11 @@ import SwiftUI
 
 struct FileBrowserView: View {
     @AppStorage("fileBrowserShowTree") private var showTree = true
+    @AppStorage("fileBrowserTreeWidth") private var treeWidth: Double = 250
     @StateObject private var viewModel: FileBrowserViewModel
+
+    private let minTreeWidth: CGFloat = 150
+    private let maxTreeWidth: CGFloat = 400
 
     init(rootPath: String, fileService: any FileBrowsing) {
         _viewModel = StateObject(
@@ -13,20 +17,100 @@ struct FileBrowserView: View {
     var body: some View {
         Group {
             if showTree {
-                HSplitView {
-                    FileTreeView(viewModel: viewModel)
-                        .frame(minWidth: 150, idealWidth: 280, maxWidth: 400)
+                HStack(spacing: 0) {
+                    VStack(spacing: 0) {
+                        FileTreeHeader(rootPath: viewModel.rootPath)
+                        Divider()
+                        FileTreeView(viewModel: viewModel)
+                    }
+                    .frame(width: CGFloat(treeWidth))
 
-                    FileContentTabView(viewModel: viewModel, showTree: $showTree)
-                        .frame(minWidth: 300, maxWidth: .infinity, maxHeight: .infinity)
+                    FileBrowserDivider(
+                        treeWidth: $treeWidth,
+                        minWidth: minTreeWidth,
+                        maxWidth: maxTreeWidth
+                    )
+
+                    VStack(spacing: 0) {
+                        FileTabBar(viewModel: viewModel, showTree: $showTree)
+                        Divider()
+                        FileContentArea(viewModel: viewModel)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
-                FileContentTabView(viewModel: viewModel, showTree: $showTree)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 0) {
+                    FileTabBar(viewModel: viewModel, showTree: $showTree)
+                    Divider()
+                    FileContentArea(viewModel: viewModel)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .task {
             await viewModel.loadInitialDirectoryIfNeeded()
         }
+    }
+}
+
+/// Tree header matching the tab bar height for visual alignment.
+private struct FileTreeHeader: View {
+    let rootPath: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "folder.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+            Text(rootPath.split(separator: "/").last.map(String.init) ?? rootPath)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 36)
+        .background(Color(nsColor: .underPageBackgroundColor))
+    }
+}
+
+/// Draggable divider that stays within the content area (does not bleed into toolbar).
+private struct FileBrowserDivider: View {
+    @Binding var treeWidth: Double
+    let minWidth: CGFloat
+    let maxWidth: CGFloat
+
+    @State private var isDragging = false
+    @State private var dragStartWidth: Double = 0
+
+    var body: some View {
+        Rectangle()
+            .fill(Color(NSColor.separatorColor))
+            .frame(width: 1)
+            .contentShape(Rectangle().inset(by: -3))
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.resizeLeftRight.push()
+                } else if !isDragging {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture(coordinateSpace: .global)
+                    .onChanged { value in
+                        if !isDragging {
+                            isDragging = true
+                            dragStartWidth = treeWidth
+                        }
+                        let proposed = dragStartWidth + Double(value.translation.width)
+                        treeWidth = min(max(proposed, Double(minWidth)), Double(maxWidth))
+                    }
+                    .onEnded { _ in
+                        isDragging = false
+                        NSCursor.pop()
+                    }
+            )
     }
 }

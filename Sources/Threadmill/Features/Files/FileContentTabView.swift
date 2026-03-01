@@ -1,19 +1,11 @@
 import SwiftUI
 
-struct FileContentTabView: View {
+/// Full-width tab bar for file browser — spans across tree and content.
+struct FileTabBar: View {
     @ObservedObject var viewModel: FileBrowserViewModel
     @Binding var showTree: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            tabBar
-            Divider()
-            contentArea
-        }
-        .background(Color(nsColor: .textBackgroundColor))
-    }
-
-    private var tabBar: some View {
         HStack(spacing: 4) {
             tabIconButton(systemName: showTree ? "sidebar.trailing" : "sidebar.leading", frameSize: 36) {
                 showTree.toggle()
@@ -73,64 +65,86 @@ struct FileContentTabView: View {
         }
     }
 
-    @ViewBuilder
-    private var contentArea: some View {
-        if let selectedFile = viewModel.selectedOpenFile {
-            if selectedFile.content.isEmpty {
-                ContentUnavailableView(
-                    "File is empty",
-                    systemImage: "doc.text",
-                    description: Text("\(selectedFile.name) has no content.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ReadOnlyCodeEditor(
-                    content: selectedFile.content,
-                    filePath: selectedFile.path
-                )
-                .id(selectedFile.id)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        } else if viewModel.isOpeningFile {
-            VStack(spacing: 10) {
-                ProgressView()
-                Text("Loading file...")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let errorMessage = viewModel.lastErrorMessage {
-            VStack(spacing: 10) {
-                ContentUnavailableView(
-                    "Unable to open file",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(errorMessage)
-                )
-                Button("Retry") {
-                    Task {
-                        await viewModel.retryLastOpenFile()
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            VStack(spacing: 8) {
-                Image(systemName: "doc.text")
-                    .font(.system(size: 48))
-                    .foregroundStyle(.tertiary)
-                Text("No files open")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                Text("Select a file from the tree to open")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
     private func tabIconButton(systemName: String, frameSize: CGFloat = 24, action: @escaping () -> Void) -> some View {
         TabBarIconButton(systemName: systemName, frameSize: frameSize, action: action)
+    }
+}
+
+/// Content area for file browser — displays selected file or empty/error states.
+struct FileContentArea: View {
+    @ObservedObject var viewModel: FileBrowserViewModel
+
+    var body: some View {
+        Group {
+            if let selectedFile = viewModel.selectedOpenFile {
+                if selectedFile.content.isEmpty {
+                    ContentUnavailableView(
+                        "File is empty",
+                        systemImage: "doc.text",
+                        description: Text("\(selectedFile.name) has no content.")
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ReadOnlyCodeEditor(
+                        content: selectedFile.content,
+                        filePath: selectedFile.path
+                    )
+                    .id(selectedFile.id)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } else if viewModel.isOpeningFile {
+                VStack(spacing: 10) {
+                    ProgressView()
+                    Text("Loading file...")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage = viewModel.lastErrorMessage {
+                VStack(spacing: 10) {
+                    ContentUnavailableView(
+                        "Unable to open file",
+                        systemImage: "exclamationmark.triangle",
+                        description: Text(errorMessage)
+                    )
+                    Button("Retry") {
+                        Task {
+                            await viewModel.retryLastOpenFile()
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.tertiary)
+                    Text("No files open")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                    Text("Select a file from the tree to open")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(Color(nsColor: .textBackgroundColor))
+    }
+}
+
+/// Legacy wrapper — kept for backward compatibility with existing call sites.
+struct FileContentTabView: View {
+    @ObservedObject var viewModel: FileBrowserViewModel
+    @Binding var showTree: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            FileTabBar(viewModel: viewModel, showTree: $showTree)
+            Divider()
+            FileContentArea(viewModel: viewModel)
+        }
+        .background(Color(nsColor: .textBackgroundColor))
     }
 }
 
