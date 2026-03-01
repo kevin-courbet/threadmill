@@ -48,4 +48,43 @@ final class ThreadDetailViewSourceTests: XCTestCase {
 
         XCTAssertTrue(source.contains("FileBrowserView(rootPath: thread.worktreePath, fileService: fileService)\n                    .id(thread.id)"))
     }
+
+    func testThreadDetailToolbarUsesNativeToolbarItemsAndNoCustomToolbarRow() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
+        let source = try String(contentsOf: sourcePath, encoding: .utf8)
+
+        XCTAssertTrue(source.contains(".toolbar {"))
+        XCTAssertTrue(source.contains("ToolbarItem(placement: .automatic)"))
+        XCTAssertFalse(source.contains("private var toolbarRow: some View"))
+    }
+
+    func testThreadDetailViewUsesUnifiedToolbarWithoutNestedNavigationStack() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
+        let source = try String(contentsOf: sourcePath, encoding: .utf8)
+
+        XCTAssertFalse(source.contains("NavigationStack {"))
+        XCTAssertFalse(source.contains(".navigationTitle(thread.branch)"))
+        XCTAssertFalse(source.contains(".toolbarTitleDisplayMode(.inline)"))
+        XCTAssertFalse(source.contains(".toolbarBackground(.visible, for: .windowToolbar)"))
+        XCTAssertFalse(source.contains("ToolbarTitleVisibilityModifier"))
+    }
+
+    func testContentViewDoesNotDefineEmptyToolbar() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Views/ContentView.swift")
+        let source = try String(contentsOf: sourcePath, encoding: .utf8)
+
+        XCTAssertFalse(source.contains(".toolbar {}"))
+    }
 }

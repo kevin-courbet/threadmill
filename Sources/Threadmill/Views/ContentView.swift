@@ -34,7 +34,6 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .toolbar {}
         .sheet(isPresented: Bindable(appState).isNewThreadSheetPresented) {
             NewThreadSheet()
         }

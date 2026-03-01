@@ -29,8 +29,6 @@ struct ThreadDetailView: View {
     var body: some View {
         if let thread = appState.selectedThread {
             VStack(spacing: 0) {
-                toolbarRow
-
                 if thread.status == .active {
                     activeModeContent(thread: thread)
                 } else {
@@ -38,6 +36,17 @@ struct ThreadDetailView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    modePicker
+                }
+
+                if showsModeSessionTabs {
+                    ToolbarItem(placement: .automatic) {
+                        modeSessionTabs
+                    }
+                }
+            }
             .overlay(alignment: .bottomLeading) {
                 if isUITestMode {
                     automationControls(thread: thread)
@@ -103,40 +112,31 @@ struct ThreadDetailView: View {
         }
     }
 
-    private var toolbarRow: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Picker("Mode", selection: $selectedTab) {
-                    ForEach(visibleModeTabs) { tab in
-                        Label(LocalizedStringKey(tab.localizedKey), systemImage: tab.icon)
-                            .tag(tab.id)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 360)
-
-                if showsModeSessionTabs {
-                    SessionTabsScrollView(
-                        tabs: sessionTabs,
-                        selectedTabID: selectedSessionID,
-                        onSelect: handleSessionSelection,
-                        onClose: handleSessionClose,
-                        onCloseAllLeft: handleCloseAllLeft,
-                        onCloseAllRight: handleCloseAllRight,
-                        onCloseOthers: handleCloseOthers,
-                        onAddDefault: handleDefaultSessionCreation,
-                        addMenuItems: addMenuItems,
-                        addButtonHelp: addButtonHelpText,
-                        addButtonAccessibilityID: addButtonAccessibilityID
-                    )
-                }
+    private var modePicker: some View {
+        Picker("Mode", selection: $selectedTab) {
+            ForEach(visibleModeTabs) { tab in
+                Label(LocalizedStringKey(tab.localizedKey), systemImage: tab.icon)
+                    .tag(tab.id)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-
-            Divider()
         }
-        .background(Color(nsColor: .underPageBackgroundColor))
+        .pickerStyle(.segmented)
+        .animation(.easeInOut(duration: 0.2), value: selectedTab)
+    }
+
+    private var modeSessionTabs: some View {
+        SessionTabsScrollView(
+            tabs: sessionTabs,
+            selectedTabID: selectedSessionID,
+            onSelect: handleSessionSelection,
+            onClose: handleSessionClose,
+            onCloseAllLeft: handleCloseAllLeft,
+            onCloseAllRight: handleCloseAllRight,
+            onCloseOthers: handleCloseOthers,
+            onAddDefault: handleDefaultSessionCreation,
+            addMenuItems: addMenuItems,
+            addButtonHelp: addButtonHelpText,
+            addButtonAccessibilityID: addButtonAccessibilityID
+        )
     }
 
     @ViewBuilder
