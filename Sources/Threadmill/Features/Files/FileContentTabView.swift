@@ -1,4 +1,5 @@
 import SwiftUI
+import CodeEditLanguages
 
 /// Full-width tab bar for file browser — spans across tree and content.
 struct FileTabBar: View {
@@ -74,62 +75,60 @@ struct FileTabBar: View {
 struct FileContentArea: View {
     @ObservedObject var viewModel: FileBrowserViewModel
 
+    @ViewBuilder
     var body: some View {
-        Group {
-            if let selectedFile = viewModel.selectedOpenFile {
-                if selectedFile.content.isEmpty {
-                    ContentUnavailableView(
-                        "File is empty",
-                        systemImage: "doc.text",
-                        description: Text("\(selectedFile.name) has no content.")
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ReadOnlyCodeEditor(
-                        content: selectedFile.content,
-                        filePath: selectedFile.path
-                    )
-                    .id(selectedFile.id)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            } else if viewModel.isOpeningFile {
-                VStack(spacing: 10) {
-                    ProgressView()
-                    Text("Loading file...")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let errorMessage = viewModel.lastErrorMessage {
-                VStack(spacing: 10) {
-                    ContentUnavailableView(
-                        "Unable to open file",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(errorMessage)
-                    )
-                    Button("Retry") {
-                        Task {
-                            await viewModel.retryLastOpenFile()
-                        }
-                    }
-                }
+        if let selectedFile = viewModel.selectedOpenFile {
+            if selectedFile.content.isEmpty {
+                ContentUnavailableView(
+                    "File is empty",
+                    systemImage: "doc.text",
+                    description: Text("\(selectedFile.name) has no content.")
+                )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "doc.text")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.tertiary)
-                    Text("No files open")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                    Text("Select a file from the tree to open")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                }
+                ReadOnlyCodeEditor(
+                    content: selectedFile.content,
+                    filePath: selectedFile.path
+                )
+                .id(selectedFile.id)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        } else if viewModel.isOpeningFile {
+            VStack(spacing: 10) {
+                ProgressView()
+                Text("Loading file...")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let errorMessage = viewModel.lastErrorMessage {
+            VStack(spacing: 10) {
+                ContentUnavailableView(
+                    "Unable to open file",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(errorMessage)
+                )
+                Button("Retry") {
+                    Task {
+                        await viewModel.retryLastOpenFile()
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(spacing: 8) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.tertiary)
+                Text("No files open")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                Text("Select a file from the tree to open")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color(nsColor: .textBackgroundColor))
     }
 }
 
@@ -154,7 +153,7 @@ private struct ReadOnlyCodeEditor: View {
 
     var body: some View {
         CodeEditorView(
-            text: content,
+            content: content,
             language: LanguageDetection.language(for: filePath)
         )
     }

@@ -18,6 +18,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
+        .package(path: "Packages/CodeEditSourceEditor"),
+        .package(path: "Packages/CodeEditLanguages"),
     ],
     targets: [
         .binaryTarget(
@@ -33,6 +35,8 @@ let package = Package(
             dependencies: [
                 "GhosttyKit",
                 .product(name: "GRDB", package: "GRDB.swift"),
+                "CodeEditSourceEditor",
+                "CodeEditLanguages",
             ],
             path: "Sources/Threadmill",
             resources: [
