@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-01
+updated: 2026-03-02
 ---
 
 # Communication Protocol
@@ -153,7 +153,7 @@ Server notification (event):
 
 `Thread`
 ```json
-{"id":"<uuid>","project_id":"<uuid>","name":"feat-x","branch":"feat-x","worktree_path":"/home/wsl/dev/.threadmill/repo/feat-x","status":"creating|active|closing|closed|hidden|failed","source_type":"new_feature|existing_branch|pull_request","created_at":"RFC3339","tmux_session":"tm_xxx","port_offset":20}
+{"id":"<uuid>","project_id":"<uuid>","name":"feat-x","branch":"feat-x","worktree_path":"/home/wsl/dev/.threadmill/repo/feat-x","status":"creating|active|closing|closed|hidden|failed","source_type":"new_feature|existing_branch|pull_request|main_checkout","created_at":"RFC3339","tmux_session":"tm_xxx","port_offset":20}
 ```
 
 `ThreadProgress`
@@ -216,7 +216,7 @@ Server notification (event):
 - Result: `[{"name":"...","is_dir":true,"is_git_repo":true}, ...]` (`is_git_repo` only for directories)
 
 `thread.create`
-- Params: `{"project_id":"<uuid>","name":"<thread name>","source_type":"new_feature|existing_branch|pull_request","branch":"<optional branch>"}`
+- Params: `{"project_id":"<uuid>","name":"<thread name>","source_type":"new_feature|existing_branch|pull_request|main_checkout","branch":"<optional branch>"}`
 - Result: `Thread` (returned before async workflow completes)
 
 `thread.list`

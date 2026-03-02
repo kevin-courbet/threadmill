@@ -133,7 +133,8 @@
       "enum": [
         "new_feature",
         "existing_branch",
-        "pull_request"
+        "pull_request",
+        "main_checkout"
       ]
     },
     "ThreadStatus": {
