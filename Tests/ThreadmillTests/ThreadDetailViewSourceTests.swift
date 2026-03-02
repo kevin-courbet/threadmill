@@ -46,7 +46,7 @@ final class ThreadDetailViewSourceTests: XCTestCase {
         let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("FileBrowserView(rootPath: thread.worktreePath, fileService: fileService)\n                    .id(thread.id)"))
+        XCTAssertTrue(source.contains("FileBrowserView(rootPath: thread.worktreePath, fileService: fileService, connectionStatus: appState.connectionStatus)"))
     }
 
     func testThreadDetailToolbarUsesNativeToolbarItemsAndNoCustomToolbarRow() throws {

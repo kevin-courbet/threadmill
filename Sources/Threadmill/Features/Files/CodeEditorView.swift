@@ -30,6 +30,9 @@ struct CodeEditorView: View {
                     font: .monospacedSystemFont(ofSize: editorFontSize, weight: .regular),
                     wrapLines: editorWrapLines
                 ),
+                behavior: .init(
+                    isEditable: isEditable
+                ),
                 peripherals: .init(
                     showGutter: true,
                     showMinimap: false
@@ -37,7 +40,6 @@ struct CodeEditorView: View {
             ),
             state: $editorState
         )
-        .disabled(!isEditable)
         .clipped()
         .onChange(of: content) { _, newValue in
             if text != newValue {

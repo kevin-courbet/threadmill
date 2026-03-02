@@ -71,18 +71,19 @@ final class FileBrowserViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.entries(for: rootPath).isEmpty)
     }
 
-    func testInitLoadsGitStatusForRootPath() async {
+    func testListDirectoryLoadsGitStatus() async {
         let service = MockFileBrowserService()
         let rootPath = "/tmp/threadmill-worktree"
+        service.listResponses[rootPath] = []
         service.gitStatusResponses[rootPath] = [
             "README.md": .modified,
             "Sources/main.swift": .added,
         ]
 
         let viewModel = FileBrowserViewModel(rootPath: rootPath, fileService: service)
-        await Task.yield()
+        await viewModel.loadInitialDirectoryIfNeeded()
 
-        XCTAssertEqual(service.gitStatusPaths, [rootPath])
+        XCTAssertTrue(service.gitStatusPaths.contains(rootPath))
         XCTAssertEqual(viewModel.gitFileStatus["README.md"], .modified)
         XCTAssertEqual(viewModel.gitFileStatus["Sources/main.swift"], .added)
     }

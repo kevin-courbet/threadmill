@@ -5,13 +5,16 @@ struct FileBrowserView: View {
     @AppStorage("fileBrowserTreeWidth") private var treeWidth: Double = 250
     @StateObject private var viewModel: FileBrowserViewModel
 
+    let connectionStatus: ConnectionStatus
+
     private let minTreeWidth: CGFloat = 150
     private let maxTreeWidth: CGFloat = 400
 
-    init(rootPath: String, fileService: any FileBrowsing) {
+    init(rootPath: String, fileService: any FileBrowsing, connectionStatus: ConnectionStatus) {
         _viewModel = StateObject(
             wrappedValue: FileBrowserViewModel(rootPath: rootPath, fileService: fileService)
         )
+        self.connectionStatus = connectionStatus
     }
 
     var body: some View {
@@ -49,6 +52,13 @@ struct FileBrowserView: View {
         }
         .task {
             await viewModel.loadInitialDirectoryIfNeeded()
+        }
+        .onChange(of: connectionStatus) { _, newStatus in
+            if newStatus.isConnected {
+                Task {
+                    await viewModel.reloadAfterConnect()
+                }
+            }
         }
     }
 }

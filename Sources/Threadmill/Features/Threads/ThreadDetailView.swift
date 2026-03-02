@@ -174,7 +174,7 @@ struct ThreadDetailView: View {
 
         case TabItem.files.id:
             if let fileService = appState.fileService {
-                FileBrowserView(rootPath: thread.worktreePath, fileService: fileService)
+                FileBrowserView(rootPath: thread.worktreePath, fileService: fileService, connectionStatus: appState.connectionStatus)
                     .id(thread.id)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {

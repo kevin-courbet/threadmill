@@ -23,6 +23,9 @@ final class SSHTunnelManager: ObservableObject, TunnelManaging {
     var onExit: ((Int32) -> Void)?
 
     private var process: Process?
+    /// When true, the tunnel port was already open before we started — our SSH process
+    /// is redundant and its termination should NOT trigger a reconnect.
+    private var usingPreExistingTunnel = false
 
     private let opencodePort = 4101
 
@@ -34,6 +37,16 @@ final class SSHTunnelManager: ObservableObject, TunnelManaging {
 
     func start() async throws {
         if isRunning {
+            return
+        }
+
+        usingPreExistingTunnel = false
+
+        // If the port is already open (previous tunnel or ControlMaster), just use it.
+        if isPortOpen(localPort) {
+            NSLog("threadmill-tunnel: port %d already open, reusing existing tunnel", localPort)
+            isRunning = true
+            usingPreExistingTunnel = true
             return
         }
 
@@ -58,6 +71,10 @@ final class SSHTunnelManager: ObservableObject, TunnelManaging {
                 }
                 self.isRunning = false
                 self.process = nil
+                // Don't trigger reconnect if we were piggybacking on a pre-existing tunnel
+                guard !self.usingPreExistingTunnel else {
+                    return
+                }
                 self.onExit?(process.terminationStatus)
             }
         }
@@ -71,10 +88,19 @@ final class SSHTunnelManager: ObservableObject, TunnelManaging {
         // code 0 after the master sets up forwarding — that's success.
         for _ in 0..<50 {
             try await Task.sleep(nanoseconds: 200_000_000) // 200ms
-            if isPortOpen(localPort) { return }
+            if isPortOpen(localPort) {
+                // If our process already exited but port is open, we're piggybacking
+                if !process.isRunning {
+                    usingPreExistingTunnel = true
+                }
+                return
+            }
             if !process.isRunning {
                 // Process exited — check if port is open (ControlMaster case)
-                if isPortOpen(localPort) { return }
+                if isPortOpen(localPort) {
+                    usingPreExistingTunnel = true
+                    return
+                }
                 self.isRunning = false
                 self.process = nil
                 throw SSHTunnelError.failedToStart(host: host)

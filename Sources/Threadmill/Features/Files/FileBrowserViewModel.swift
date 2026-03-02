@@ -95,19 +95,13 @@ final class FileBrowserViewModel: ObservableObject {
     private var directoryEntriesByPath: [String: [FileBrowserEntry]] = [:]
     private var lastDirectoryErrorPath: String?
     private var lastFileReadErrorPath: String?
-    private var initialGitStatusTask: Task<Void, Never>?
 
     init(rootPath: String, fileService: any FileBrowsing) {
         self.rootPath = rootPath
         self.currentPath = rootPath
         self.fileService = fileService
 
-        initialGitStatusTask = Task { [weak self] in
-            await self?.loadGitStatus()
-            await MainActor.run {
-                self?.initialGitStatusTask = nil
-            }
-        }
+        // Git status is loaded by listDirectory, no need to fire eagerly
     }
 
     var selectedOpenFile: OpenFileInfo? {
@@ -146,11 +140,16 @@ final class FileBrowserViewModel: ObservableObject {
         await listDirectory(path: rootPath)
     }
 
-    func listDirectory(path: String) async {
-        if let initialGitStatusTask {
-            await initialGitStatusTask.value
+    /// Retry loading root directory after connection is established.
+    func reloadAfterConnect() async {
+        if directoryEntriesByPath[rootPath] == nil || lastErrorMessage != nil {
+            lastErrorMessage = nil
+            directoryEntriesByPath.removeValue(forKey: rootPath)
+            await listDirectory(path: rootPath)
         }
+    }
 
+    func listDirectory(path: String) async {
         loadingDirectories.insert(path)
         defer { loadingDirectories.remove(path) }
 
