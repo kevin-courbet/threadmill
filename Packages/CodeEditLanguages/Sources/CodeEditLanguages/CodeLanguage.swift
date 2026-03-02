@@ -81,7 +81,7 @@ public struct CodeLanguage {
 
     internal func queryURL(for highlights: String = "highlights") -> URL? {
         return resourceURL?
-            .appendingPathComponent("Resources/tree-sitter-\(tsName)/\(highlights).scm")
+            .appendingPathComponent("tree-sitter-\(tsName)/\(highlights).scm")
     }
 
     /// Gets the TSLanguage from `tree-sitter`

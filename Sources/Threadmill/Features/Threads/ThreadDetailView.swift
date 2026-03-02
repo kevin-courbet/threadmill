@@ -47,9 +47,7 @@ struct ThreadDetailView: View {
                     }
                 }
 
-                ToolbarItem(placement: .automatic) {
-                    ConnectionStatusView(status: appState.connectionStatus)
-                }
+
             }
             .overlay(alignment: .bottomLeading) {
                 if isUITestMode {
