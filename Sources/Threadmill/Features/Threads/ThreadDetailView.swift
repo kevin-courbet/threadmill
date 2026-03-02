@@ -46,6 +46,10 @@ struct ThreadDetailView: View {
                         modeSessionTabs
                     }
                 }
+
+                ToolbarItem(placement: .automatic) {
+                    ConnectionStatusView(status: appState.connectionStatus)
+                }
             }
             .overlay(alignment: .bottomLeading) {
                 if isUITestMode {

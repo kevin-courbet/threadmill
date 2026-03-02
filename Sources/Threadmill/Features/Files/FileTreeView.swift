@@ -86,7 +86,6 @@ struct FileTreeView: View {
                 .font(.subheadline)
                 .lineLimit(1)
                 .foregroundStyle(gitColor(for: entry.path))
-                .opacity(gitOpacity(for: entry.path))
 
             Spacer(minLength: 0)
         }
@@ -124,11 +123,6 @@ struct FileTreeView: View {
         case nil:
             return .primary
         }
-    }
-
-    private func gitOpacity(for path: String) -> Double {
-        let _ = path
-        return 1.0
     }
 
 }
