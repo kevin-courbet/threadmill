@@ -24,16 +24,14 @@ struct ProjectSection: View {
             header
 
             if isExpanded {
-                mainBranchRow
-
-                if threads.isEmpty {
+                if displayedThreads.isEmpty {
                     Text("No threads yet")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .padding(.leading, 38)
                         .padding(.vertical, 3)
                 } else {
-                    ForEach(threads) { thread in
+                    ForEach(displayedThreads) { thread in
                         threadRow(thread)
                     }
                 }
@@ -101,20 +99,15 @@ struct ProjectSection: View {
         }
     }
 
-    private var mainBranchRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "arrow.triangle.branch")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 14)
-            Text(project.defaultBranch)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 0)
+    private var displayedThreads: [ThreadModel] {
+        threads.sorted {
+            let lhsRank = $0.sourceType == "main_checkout" ? 0 : 1
+            let rhsRank = $1.sourceType == "main_checkout" ? 0 : 1
+            if lhsRank != rhsRank {
+                return lhsRank < rhsRank
+            }
+            return $0.createdAt > $1.createdAt
         }
-        .padding(.leading, 32)
-        .padding(.trailing, 8)
-        .padding(.vertical, 3)
     }
 
     @ViewBuilder
