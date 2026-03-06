@@ -30,6 +30,7 @@ struct RepoSection: View {
         } header: {
             header
         }
+        .listSectionSeparator(.hidden)
         .accessibilityIdentifier("repo.section.\(repo.id)")
     }
 

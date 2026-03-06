@@ -30,6 +30,7 @@ struct ProjectSection: View {
         } header: {
             header
         }
+        .listSectionSeparator(.hidden)
         .accessibilityIdentifier("project.section.\(project.id)")
     }
 
