@@ -22,15 +22,17 @@ struct RepoSection: View {
                     .foregroundStyle(.secondary)
                     .padding(.leading, 38)
                     .padding(.vertical, 3)
+                    .listRowSeparator(.hidden)
             } else {
                 ForEach(displayedThreads) { thread in
                     threadRow(thread)
+                        .listRowSeparator(.hidden)
                 }
             }
         } header: {
             header
         }
-        .listSectionSeparator(.hidden)
+        .listSectionSeparator(.hidden, edges: .all)
         .accessibilityIdentifier("repo.section.\(repo.id)")
     }
 
