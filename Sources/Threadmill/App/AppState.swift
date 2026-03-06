@@ -1150,6 +1150,8 @@ final class AppState {
                 return
             }
 
+            await self.refreshSystemStats()
+
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(nanoseconds: self.statsRefreshIntervalNanoseconds)

@@ -36,10 +36,11 @@ struct ConnectionStatusView: View {
                     .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
             }
             .help(text)
-        .padding(.horizontal, 6)
-        .accessibilityElement(children: .ignore)
-        .accessibilityIdentifier("connection.status")
-        .accessibilityLabel("Connection")
-        .accessibilityValue(status.label)
+            .padding(.leading, 12)
+            .padding(.trailing, 8)
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("connection.status")
+            .accessibilityLabel("Connection")
+            .accessibilityValue(status.label)
     }
 }

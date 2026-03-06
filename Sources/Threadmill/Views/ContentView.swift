@@ -34,14 +34,6 @@ struct ContentView: View {
                 )
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                HStack(spacing: 4) {
-                    ConnectionStatusView(status: appState.connectionStatus)
-                    SystemStatsBar(status: appState.connectionStatus)
-                }
-            }
-        }
         .navigationSplitViewStyle(.balanced)
         .sheet(isPresented: Bindable(appState).isNewThreadSheetPresented) {
             if let repo = appState.repos.first {
