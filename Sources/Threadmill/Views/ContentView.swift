@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppState.self) private var appState
+    @Environment(GitHubAuthManager.self) private var gitHubAuthManager
     @State private var showingAddRepoSheet = false
 
     var body: some View {
@@ -35,7 +36,10 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                ConnectionStatusView(status: appState.connectionStatus)
+                HStack(spacing: 4) {
+                    ConnectionStatusView(status: appState.connectionStatus)
+                    SystemStatsBar(status: appState.connectionStatus)
+                }
             }
         }
         .navigationSplitViewStyle(.balanced)
@@ -45,11 +49,24 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showingAddRepoSheet) {
-            AddRepoSheet()
+            AddRepoSheet(authManager: gitHubAuthManager)
         }
-        .background {
-            keyboardShortcuts
+        .alert(
+            "Unable to Open New Thread",
+            isPresented: Binding(
+                get: { appState.alertMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        appState.alertMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(appState.alertMessage ?? "")
         }
+        .background { keyboardShortcuts }
     }
 
     @ViewBuilder

@@ -67,4 +67,40 @@ final class AppStateAttachAfterConnectTests: XCTestCase {
         }
         XCTAssertTrue(attached, "selectedEndpoint should be set after connectionStatus changes to .connected")
     }
+
+    func testShutdownStopsStatsPolling() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        connection.requestHandler = { method, _, _ in
+            if method == "system.stats" {
+                return [:]
+            }
+            throw TestError.missingStub
+        }
+
+        let appState = AppState(statsPollingEnabled: true, statsRefreshInterval: 0.05)
+        appState.configure(
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
+            databaseManager: database,
+            syncService: sync,
+            multiplexer: multiplexer
+        )
+
+        appState.connectionStatus = .connected
+
+        let didPoll = await waitForCondition(timeout: 1.0) {
+            connection.requests.contains { $0.method == "system.stats" }
+        }
+        XCTAssertTrue(didPoll)
+
+        let requestCountBeforeShutdown = connection.requests.filter { $0.method == "system.stats" }.count
+        appState.shutdown()
+
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(connection.requests.filter { $0.method == "system.stats" }.count, requestCountBeforeShutdown)
+    }
 }

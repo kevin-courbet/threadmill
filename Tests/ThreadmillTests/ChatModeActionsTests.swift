@@ -1,0 +1,220 @@
+import SwiftUI
+import XCTest
+@testable import Threadmill
+
+@MainActor
+final class ChatModeActionsTests: XCTestCase {
+    func testCreateChatConversationSelectsNewConversationAndPassesAgentAndModel() async {
+        let appState = AppState()
+        let database = MockDatabaseManager()
+        let connection = MockDaemonConnection()
+        let syncService = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+        let chatConversationService = MockChatConversationService()
+        let openCodeClient = MockOpenCodeClient()
+
+        let pool = makeSingleRemoteConnectionPool(connection: connection)
+        appState.configure(
+            connectionPool: pool,
+            databaseManager: database,
+            syncService: syncService,
+            multiplexer: multiplexer,
+            openCodeClient: openCodeClient,
+            chatConversationService: chatConversationService
+        )
+
+        let thread = ThreadModel(
+            id: "thread-1",
+            projectId: "project-1",
+            name: "feature/chat",
+            branch: "feature/chat",
+            worktreePath: "/tmp/worktree",
+            status: .active,
+            sourceType: "new_feature",
+            createdAt: Date(),
+            tmuxSession: "tm_thread-1",
+            portOffset: nil
+        )
+        appState.threads = [thread]
+        appState.selectedThreadID = thread.id
+
+        let expectedModel = OCMessageModel(providerID: "anthropic", modelID: "claude-sonnet")
+        let modelKey = ChatModelSelectionStore.key(threadID: thread.id)
+        UserDefaults.standard.set(expectedModel.storageID, forKey: modelKey)
+        defer {
+            UserDefaults.standard.removeObject(forKey: modelKey)
+        }
+
+        var createdConversation = ChatConversation(threadID: thread.id)
+        createdConversation.id = "conversation-1"
+        chatConversationService.createConversationResult = .success(createdConversation)
+
+        var selectedConversationID: String?
+        var reloadToken = 0
+        let tabStateManager = ThreadTabStateManager()
+
+        ChatModeActions.createChatConversation(
+            appState: appState,
+            selectedChatConversationIDBinding: Binding(
+                get: { selectedConversationID },
+                set: { selectedConversationID = $0 }
+            ),
+            chatReloadToken: Binding(
+                get: { reloadToken },
+                set: { reloadToken = $0 }
+            ),
+            tabStateManager: tabStateManager,
+            agentID: "reviewer"
+        )
+
+        let didSelectConversation = await waitForCondition {
+            selectedConversationID == "conversation-1" && reloadToken == 1
+        }
+
+        XCTAssertTrue(didSelectConversation)
+        XCTAssertEqual(chatConversationService.createdConversations.first?.agentID, "reviewer")
+        XCTAssertEqual(chatConversationService.createdConversations.first?.model, expectedModel)
+    }
+
+    func testCreateChatConversationSurfacesErrorAndLeavesSelectionUnchanged() async {
+        let appState = AppState()
+        let database = MockDatabaseManager()
+        let connection = MockDaemonConnection()
+        let syncService = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+        let chatConversationService = MockChatConversationService()
+        let openCodeClient = MockOpenCodeClient()
+
+        let pool = makeSingleRemoteConnectionPool(connection: connection)
+        appState.configure(
+            connectionPool: pool,
+            databaseManager: database,
+            syncService: syncService,
+            multiplexer: multiplexer,
+            openCodeClient: openCodeClient,
+            chatConversationService: chatConversationService
+        )
+
+        let thread = ThreadModel(
+            id: "thread-1",
+            projectId: "project-1",
+            name: "feature/chat",
+            branch: "feature/chat",
+            worktreePath: "/tmp/worktree",
+            status: .active,
+            sourceType: "new_feature",
+            createdAt: Date(),
+            tmuxSession: "tm_thread-1",
+            portOffset: nil
+        )
+        appState.threads = [thread]
+        appState.selectedThreadID = thread.id
+        chatConversationService.createConversationResult = .failure(TestError.forcedFailure)
+
+        var selectedConversationID: String? = "conversation-existing"
+        var reloadToken = 4
+        var errorMessage: String?
+        let tabStateManager = ThreadTabStateManager()
+
+        ChatModeActions.createChatConversation(
+            appState: appState,
+            selectedChatConversationIDBinding: Binding(
+                get: { selectedConversationID },
+                set: { selectedConversationID = $0 }
+            ),
+            chatReloadToken: Binding(
+                get: { reloadToken },
+                set: { reloadToken = $0 }
+            ),
+            tabStateManager: tabStateManager,
+            errorMessageBinding: Binding(
+                get: { errorMessage },
+                set: { errorMessage = $0 }
+            ),
+            agentID: "reviewer"
+        )
+
+        let didSurfaceError = await waitForCondition {
+            errorMessage != nil
+        }
+
+        XCTAssertTrue(didSurfaceError)
+        XCTAssertEqual(selectedConversationID, "conversation-existing")
+        XCTAssertEqual(reloadToken, 4)
+    }
+
+    func testArchiveChatConversationsSurfacesErrorAndSkipsReloadOnFailure() async {
+        let appState = AppState()
+        let database = MockDatabaseManager()
+        let connection = MockDaemonConnection()
+        let syncService = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+        let chatConversationService = MockChatConversationService()
+        let openCodeClient = MockOpenCodeClient()
+
+        let pool = makeSingleRemoteConnectionPool(connection: connection)
+        appState.configure(
+            connectionPool: pool,
+            databaseManager: database,
+            syncService: syncService,
+            multiplexer: multiplexer,
+            openCodeClient: openCodeClient,
+            chatConversationService: chatConversationService
+        )
+
+        let thread = ThreadModel(
+            id: "thread-1",
+            projectId: "project-1",
+            name: "feature/chat",
+            branch: "feature/chat",
+            worktreePath: "/tmp/worktree",
+            status: .active,
+            sourceType: "new_feature",
+            createdAt: Date(),
+            tmuxSession: "tm_thread-1",
+            portOffset: nil
+        )
+        appState.threads = [thread]
+        appState.selectedThreadID = thread.id
+        chatConversationService.archiveConversationResult = .failure(TestError.forcedFailure)
+
+        var selectedConversationID: String? = "conversation-1"
+        var reloadToken = 2
+        var errorMessage: String?
+        let tabStateManager = ThreadTabStateManager()
+
+        let makeConversation: (String) -> ChatConversation = { id in
+            var conversation = ChatConversation(threadID: thread.id)
+            conversation.id = id
+            return conversation
+        }
+        let existingConversations = [makeConversation("conversation-1"), makeConversation("conversation-2")]
+
+        ChatModeActions.archiveChatConversations(
+            ["conversation-1"],
+            appState: appState,
+            chatConversations: { existingConversations },
+            selectedChatConversationIDBinding: Binding(
+                get: { selectedConversationID },
+                set: { selectedConversationID = $0 }
+            ),
+            chatReloadToken: Binding(
+                get: { reloadToken },
+                set: { reloadToken = $0 }
+            ),
+            tabStateManager: tabStateManager,
+            errorMessageBinding: Binding(
+                get: { errorMessage },
+                set: { errorMessage = $0 }
+            )
+        )
+
+        let didSurfaceError = await waitForCondition {
+            errorMessage != nil
+        }
+
+        XCTAssertTrue(didSurfaceError)
+        XCTAssertEqual(selectedConversationID, "conversation-1")
+        XCTAssertEqual(reloadToken, 2)
+    }
+}

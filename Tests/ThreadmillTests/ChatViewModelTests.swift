@@ -58,6 +58,19 @@ final class ChatViewModelTests: XCTestCase {
         XCTAssertEqual(conversations.createdConversations.first?.model, expectedModel)
     }
 
+    func testCreateConversationStartsEventStreamWhenLoadedDirectly() async {
+        let mock = MockOpenCodeClient()
+        let conversations = MockChatConversationService()
+        let created = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: nil, title: "", time: 1)
+
+        conversations.createConversationResult = .success(created)
+
+        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        await viewModel.createConversation(threadID: "thread_1", directory: "/tmp/worktree", agentID: nil, model: nil)
+
+        XCTAssertEqual(mock.streamedDirectories, ["/tmp/worktree"])
+    }
+
     func testSendPromptStreamsAssistantTextAndStopsWhenSessionBecomesIdle() async {
         let mock = MockOpenCodeClient()
         let conversations = MockChatConversationService()

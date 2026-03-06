@@ -16,11 +16,15 @@ struct RecordedRequest {
 @MainActor
 final class MockDaemonConnection: ConnectionManaging {
     var state: ConnectionStatus
+    var onStateChange: ((ConnectionStatus) -> Void)?
+    var onConnected: (() -> Void)?
+    var onEvent: ((String, [String: Any]?) -> Void)?
     var startCallCount = 0
     var stopCallCount = 0
     var requests: [RecordedRequest] = []
     var sentBinaryFrames: [Data] = []
     var requestHandler: ((String, [String: Any]?, TimeInterval) throws -> Any)?
+    private var binaryFrameHandler: ((Data) -> Void)?
 
     init(state: ConnectionStatus = .disconnected) {
         self.state = state
@@ -35,9 +39,7 @@ final class MockDaemonConnection: ConnectionManaging {
     }
 
     func request(method: String, params: [String: Any]?, timeout: TimeInterval) async throws -> Any {
-        if method != "system.stats" && method != "system.cleanup" {
-            requests.append(RecordedRequest(method: method, params: params))
-        }
+        requests.append(RecordedRequest(method: method, params: params))
         if let requestHandler {
             return try requestHandler(method, params, timeout)
         }
@@ -46,6 +48,11 @@ final class MockDaemonConnection: ConnectionManaging {
 
     func sendBinaryFrame(_ data: Data) async throws {
         sentBinaryFrames.append(data)
+        binaryFrameHandler?(data)
+    }
+
+    func setBinaryFrameHandler(_ handler: ((Data) -> Void)?) {
+        binaryFrameHandler = handler
     }
 }
 
@@ -80,6 +87,7 @@ final class MockDatabaseManager: DatabaseManaging {
     var updateStatusResult = true
     var updatedStatuses: [(threadID: String, status: ThreadStatus)] = []
     var replaceAllFromDaemonRemoteIDs: [String] = []
+    private(set) var linkedProjects: [(projectID: String, repoID: String, remoteID: String)] = []
 
     func allProjects() throws -> [Project] {
         projects
@@ -114,11 +122,20 @@ final class MockDatabaseManager: DatabaseManaging {
     }
 
     func ensureDefaultRemoteExists() throws -> Remote {
-        if let beast = remotes.first(where: { $0.name == DatabaseManager.RemoteDefaults.beastName }) {
-            return beast
+        if let currentDefault = remotes.first(where: \.isDefault) {
+            return currentDefault
         }
+
+        if let beastIndex = remotes.firstIndex(where: { $0.name == DatabaseManager.RemoteDefaults.beastName }) {
+            remotes[beastIndex].isDefault = true
+            return remotes[beastIndex]
+        }
+
         if let firstRemote = remotes.first {
-            return firstRemote
+            var updatedFirstRemote = firstRemote
+            updatedFirstRemote.isDefault = true
+            remotes[0] = updatedFirstRemote
+            return updatedFirstRemote
         }
 
         let defaultRemote = Remote(
@@ -127,7 +144,8 @@ final class MockDatabaseManager: DatabaseManaging {
             host: DatabaseManager.RemoteDefaults.beastHost,
             daemonPort: DatabaseManager.RemoteDefaults.beastDaemonPort,
             useSSHTunnel: DatabaseManager.RemoteDefaults.beastUseSSHTunnel,
-            cloneRoot: DatabaseManager.RemoteDefaults.beastCloneRoot
+            cloneRoot: DatabaseManager.RemoteDefaults.beastCloneRoot,
+            isDefault: true
         )
         remotes = [defaultRemote]
         return defaultRemote
@@ -165,6 +183,7 @@ final class MockDatabaseManager: DatabaseManaging {
     }
 
     func linkProject(projectID: String, repoID: String, remoteID: String) throws -> Bool {
+        linkedProjects.append((projectID, repoID, remoteID))
         guard let index = projects.firstIndex(where: { $0.id == projectID }) else {
             return false
         }
@@ -305,6 +324,9 @@ final class MockTerminalMultiplexer: TerminalMultiplexing {
 @MainActor
 final class MockRemoteConnectionPool: RemoteConnectionPooling {
     var connections: [String: any ConnectionManaging] = [:]
+    var addedRemotes: [Remote] = []
+    var updatedRemotes: [Remote] = []
+    var removedRemoteIDs: [String] = []
     private(set) var ensuredRemoteIDs: [String] = []
     private(set) var activatedRemoteIDs: [String] = []
     var activeRemoteId: String?
@@ -320,6 +342,30 @@ final class MockRemoteConnectionPool: RemoteConnectionPooling {
 
         activatedRemoteIDs.append(remoteId)
         activeRemoteId = remoteId
+    }
+
+    func addRemote(_ remote: Remote) {
+        addedRemotes.append(remote)
+        if connections[remote.id] == nil {
+            connections[remote.id] = MockDaemonConnection(state: .disconnected)
+        }
+    }
+
+    func removeRemote(id: String) {
+        removedRemoteIDs.append(id)
+        if let connection = connections.removeValue(forKey: id) {
+            connection.stop()
+        }
+        if activeRemoteId == id {
+            activeRemoteId = nil
+        }
+    }
+
+    func updateRemote(_ remote: Remote) {
+        updatedRemotes.append(remote)
+        if connections[remote.id] == nil {
+            connections[remote.id] = MockDaemonConnection(state: .disconnected)
+        }
     }
 
     func ensureConnected(remoteId: String) async throws {

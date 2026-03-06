@@ -26,8 +26,6 @@ final class ChatConversationService: ChatConversationManaging {
 
     func createConversation(threadID: String, directory: String, agentID: String?, model: OCMessageModel?) async throws -> ChatConversation {
         var conversation = ChatConversation(threadID: threadID)
-        try databaseManager.saveConversation(conversation)
-
         let session = try await openCodeClient.createSession(directory: directory, agentID: agentID)
         let initializedSession = try await openCodeClient.initSession(id: session.id, directory: directory, model: model)
         conversation.linkSession(initializedSession.id)

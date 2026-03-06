@@ -160,6 +160,7 @@ struct ThreadSessionTabsProvider {
 
 struct ThreadModeSessionTabs: View {
     @Environment(AppState.self) private var appState
+    @State private var chatActionErrorMessage: String?
 
     let selectedTab: String
     @Binding var chatConversations: [ChatConversation]
@@ -190,7 +191,8 @@ struct ThreadModeSessionTabs: View {
                     chatConversations: { chatConversations },
                     selectedChatConversationIDBinding: $selectedChatConversationID,
                     chatReloadToken: $chatReloadToken,
-                    tabStateManager: tabStateManager
+                    tabStateManager: tabStateManager,
+                    errorMessageBinding: $chatActionErrorMessage
                 )
             },
             onCloseTerminalSessions: { sessionIDs in
@@ -209,6 +211,7 @@ struct ThreadModeSessionTabs: View {
                     selectedChatConversationIDBinding: $selectedChatConversationID,
                     chatReloadToken: $chatReloadToken,
                     tabStateManager: tabStateManager,
+                    errorMessageBinding: $chatActionErrorMessage,
                     agentID: $0
                 )
             },
@@ -244,6 +247,21 @@ struct ThreadModeSessionTabs: View {
             addButtonHelp: provider.addButtonHelpText,
             addButtonAccessibilityID: provider.addButtonAccessibilityID
         )
+        .alert(
+            "Chat Action Failed",
+            isPresented: Binding(
+                get: { chatActionErrorMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        chatActionErrorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(chatActionErrorMessage ?? "Unknown chat error")
+        }
     }
 }
 

@@ -169,7 +169,6 @@ struct ChatView: View {
 
     private func synchronizeModelSelection() {
         guard !viewModel.availableModels.isEmpty else {
-            viewModel.setPreferredModel(OCMessageModel(storageID: persistedModelStorageID))
             return
         }
 
@@ -179,8 +178,6 @@ struct ChatView: View {
             selectedModelStorageID = fallbackModel.id
             persistedModelStorageID = fallbackModel.id
         }
-
-        viewModel.setPreferredModel(OCMessageModel(storageID: selectedModelStorageID))
     }
 
     private func publishConversationState() {

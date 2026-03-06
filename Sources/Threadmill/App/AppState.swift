@@ -42,9 +42,12 @@ final class AppState {
     var projects: [Project] = []
     var threads: [ThreadModel] = []
     var systemStats: SystemStatsResult?
-    private var statsTimer: Timer?
+    private var statsTask: Task<Void, Never>?
+    private let statsPollingEnabled: Bool
+    private let statsRefreshIntervalNanoseconds: UInt64
 
     var isNewThreadSheetPresented = false
+    var alertMessage: String?
     var selectedThreadID: String? {
         didSet {
             ensureSelectedPresetIsValid()
@@ -71,6 +74,12 @@ final class AppState {
     private var attachedEndpoints: [AttachmentKey: RelayEndpoint] = [:]
     private var pendingAttachTasks: [AttachmentKey: Task<Void, Never>] = [:]
     private var permanentAttachFailures: Set<AttachmentKey> = []
+
+    init(statsPollingEnabled: Bool = false, statsRefreshInterval: TimeInterval = 5) {
+        self.statsPollingEnabled = statsPollingEnabled
+        let refreshInterval = max(statsRefreshInterval, 0.1)
+        statsRefreshIntervalNanoseconds = UInt64(refreshInterval * 1_000_000_000)
+    }
 
     private var connectionManager: (any ConnectionManaging)? {
         connectionForSelectedThread() ?? defaultConnectionManager()
@@ -198,7 +207,9 @@ final class AppState {
         }
 
         do {
+            let previousRemotes = remotes
             remotes = try databaseManager.allRemotes()
+            reconcileConnectionPool(previousRemotes: previousRemotes, currentRemotes: remotes)
             repos = try databaseManager.allRepos()
             projects = try databaseManager.allProjects()
             threads = try databaseManager.allThreads()
@@ -209,6 +220,29 @@ final class AppState {
             updateActiveRemoteConnection()
         } catch {
             NSLog("threadmill-state: failed to load cache: %@", "\(error)")
+        }
+    }
+
+    private func reconcileConnectionPool(previousRemotes: [Remote], currentRemotes: [Remote]) {
+        guard let connectionPool else {
+            return
+        }
+
+        let previousByID = Dictionary(uniqueKeysWithValues: previousRemotes.map { ($0.id, $0) })
+        let currentByID = Dictionary(uniqueKeysWithValues: currentRemotes.map { ($0.id, $0) })
+
+        for remoteID in previousByID.keys where currentByID[remoteID] == nil {
+            connectionPool.removeRemote(id: remoteID)
+        }
+
+        for remote in currentRemotes {
+            if let previousRemote = previousByID[remote.id] {
+                if previousRemote != remote {
+                    connectionPool.updateRemote(remote)
+                }
+            } else {
+                connectionPool.addRemote(remote)
+            }
         }
     }
 
@@ -586,15 +620,6 @@ final class AppState {
             sourceType: sourceType,
             branch: branch,
             prURL: prURL
-        )
-        linkProject(
-            projectID: projectID,
-            repoID: repo.id,
-            remoteID: remote.id,
-            repoOwner: repo.owner,
-            repoName: repo.name,
-            remoteCloneRoot: remote.cloneRoot,
-            defaultBranch: repo.defaultBranch
         )
     }
 
@@ -1116,20 +1141,34 @@ final class AppState {
     }
 
     private func startStatsTimer() {
-        guard statsTimer == nil else {
+        guard statsPollingEnabled, statsTask == nil else {
             return
         }
 
-        statsTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                await self?.refreshSystemStats()
+        statsTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: self.statsRefreshIntervalNanoseconds)
+                } catch {
+                    return
+                }
+
+                if Task.isCancelled {
+                    return
+                }
+
+                await self.refreshSystemStats()
             }
         }
     }
 
     private func stopStatsTimer() {
-        statsTimer?.invalidate()
-        statsTimer = nil
+        statsTask?.cancel()
+        statsTask = nil
     }
 
     private func refreshSystemStats() async {
@@ -1174,6 +1213,10 @@ final class AppState {
         }
     }
 
+    func shutdown() {
+        stopStatsTimer()
+    }
+
     // MARK: - Keyboard shortcut actions
 
     func selectThreadByIndex(_ index: Int) {
@@ -1182,7 +1225,12 @@ final class AppState {
     }
 
     func openNewThreadSheet() {
-        guard !repos.isEmpty, !remotes.isEmpty else {
+        if repos.isEmpty {
+            alertMessage = "Add a repository first (Cmd+Shift+A)"
+            return
+        }
+        if remotes.isEmpty {
+            alertMessage = "Configure a remote in Settings (Cmd+,)"
             return
         }
         isNewThreadSheetPresented = true

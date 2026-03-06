@@ -93,6 +93,11 @@ final class DatabaseManager: DatabaseManaging {
 
     func saveRemote(_ remote: Remote) throws {
         try dbQueue.write { db in
+            if remote.isDefault {
+                _ = try Remote
+                    .filter(Remote.Columns.id != remote.id && Remote.Columns.isDefault == true)
+                    .updateAll(db, Remote.Columns.isDefault.set(to: false))
+            }
             try remote.save(db)
         }
     }
@@ -212,13 +217,13 @@ final class DatabaseManager: DatabaseManaging {
                     .filter(Project.Columns.remoteId == remoteId && !incomingProjectIDs.contains(Project.Columns.id))
                     .deleteAll(db)
 
-                var staleThreadFilter = incomingProjectIDs.contains(ThreadModel.Columns.projectId)
+                var staleThreads = ThreadModel
+                    .joining(required: ThreadModel.project.filter(Project.Columns.remoteId == remoteId))
+                    .filter(incomingProjectIDs.contains(ThreadModel.Columns.projectId))
                 if !incomingThreadIDs.isEmpty {
-                    staleThreadFilter = staleThreadFilter && !incomingThreadIDs.contains(ThreadModel.Columns.id)
+                    staleThreads = staleThreads.filter(!incomingThreadIDs.contains(ThreadModel.Columns.id))
                 }
-                _ = try ThreadModel
-                    .filter(staleThreadFilter)
-                    .deleteAll(db)
+                _ = try staleThreads.deleteAll(db)
             }
 
             for thread in threads {
@@ -274,7 +279,8 @@ final class DatabaseManager: DatabaseManaging {
                     host: entry.host,
                     daemonPort: entry.daemonPort,
                     useSSHTunnel: entry.useSSHTunnel,
-                    cloneRoot: entry.cloneRoot
+                    cloneRoot: entry.cloneRoot,
+                    isDefault: existing?.isDefault ?? false
                 )
                 try remote.save(db)
             }
@@ -283,15 +289,28 @@ final class DatabaseManager: DatabaseManaging {
 
     func ensureDefaultRemoteExists() throws -> Remote {
         try dbQueue.write { db in
+            if let currentDefault = try Remote
+                .filter(Remote.Columns.isDefault == true)
+                .fetchOne(db)
+            {
+                return currentDefault
+            }
+
             if let beast = try Remote
                 .filter(Remote.Columns.name == RemoteDefaults.beastName)
                 .fetchOne(db)
             {
-                return beast
+                var updatedBeast = beast
+                updatedBeast.isDefault = true
+                try updatedBeast.save(db)
+                return updatedBeast
             }
 
             if let firstRemote = try Remote.order(Remote.Columns.name.asc).fetchOne(db) {
-                return firstRemote
+                var updatedRemote = firstRemote
+                updatedRemote.isDefault = true
+                try updatedRemote.save(db)
+                return updatedRemote
             }
 
             let beastRemote = Remote(
@@ -300,7 +319,8 @@ final class DatabaseManager: DatabaseManaging {
                 host: RemoteDefaults.beastHost,
                 daemonPort: RemoteDefaults.beastDaemonPort,
                 useSSHTunnel: RemoteDefaults.beastUseSSHTunnel,
-                cloneRoot: RemoteDefaults.beastCloneRoot
+                cloneRoot: RemoteDefaults.beastCloneRoot,
+                isDefault: true
             )
             try beastRemote.insert(db)
             return beastRemote
@@ -369,25 +389,33 @@ final class DatabaseManager: DatabaseManaging {
         }
 
         migrator.registerMigration("v6_remote_model") { db in
-            let beastRemote = Remote(
-                id: UUID().uuidString,
-                name: RemoteDefaults.beastName,
-                host: RemoteDefaults.beastHost,
-                daemonPort: RemoteDefaults.beastDaemonPort,
-                useSSHTunnel: RemoteDefaults.beastUseSSHTunnel,
-                cloneRoot: RemoteDefaults.beastCloneRoot
-            )
+            let beastRemoteID = UUID().uuidString
 
             try db.create(table: "remotes") { table in
                 table.column("id", .text).primaryKey()
-                table.column("name", .text).notNull().unique(onConflict: .replace)
+                table.column("name", .text).notNull().unique(onConflict: .abort)
                 table.column("host", .text).notNull()
                 table.column("daemon_port", .integer).notNull()
                 table.column("use_ssh_tunnel", .boolean).notNull()
                 table.column("clone_root", .text).notNull()
+                table.column("is_default", .boolean).notNull().defaults(to: false)
             }
 
-            try beastRemote.insert(db)
+            try db.execute(
+                sql: """
+                INSERT INTO remotes (id, name, host, daemon_port, use_ssh_tunnel, clone_root, is_default)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    beastRemoteID,
+                    RemoteDefaults.beastName,
+                    RemoteDefaults.beastHost,
+                    RemoteDefaults.beastDaemonPort,
+                    RemoteDefaults.beastUseSSHTunnel,
+                    RemoteDefaults.beastCloneRoot,
+                    true,
+                ]
+            )
 
             try db.alter(table: "projects") { table in
                 table.add(column: "remote_id", .text).indexed().references("remotes", onDelete: .setNull)
@@ -395,7 +423,7 @@ final class DatabaseManager: DatabaseManaging {
 
             try db.execute(
                 sql: "UPDATE projects SET remote_id = ? WHERE remote_id IS NULL",
-                arguments: [beastRemote.id]
+                arguments: [beastRemoteID]
             )
         }
 
@@ -404,7 +432,7 @@ final class DatabaseManager: DatabaseManaging {
                 table.column("id", .text).primaryKey()
                 table.column("owner", .text).notNull()
                 table.column("name", .text).notNull()
-                table.column("full_name", .text).notNull().unique(onConflict: .replace)
+                table.column("full_name", .text).notNull().unique()
                 table.column("clone_url", .text).notNull()
                 table.column("default_branch", .text).notNull()
                 table.column("is_private", .boolean).notNull()
@@ -414,6 +442,36 @@ final class DatabaseManager: DatabaseManaging {
             try db.alter(table: "projects") { table in
                 table.add(column: "repo_id", .text).indexed().references("repos", onDelete: .setNull)
             }
+        }
+
+        migrator.registerMigration("v8_remote_default_flag") { db in
+            let hasDefaultColumn = try Int.fetchOne(
+                db,
+                sql: "SELECT 1 FROM pragma_table_info('remotes') WHERE name = 'is_default' LIMIT 1"
+            ) != nil
+
+            if !hasDefaultColumn {
+                try db.alter(table: "remotes") { table in
+                    table.add(column: "is_default", .boolean).notNull().defaults(to: false)
+                }
+            }
+
+            try db.execute(
+                sql: """
+                UPDATE remotes
+                SET is_default = 1
+                WHERE id = (
+                    SELECT id
+                    FROM remotes
+                    WHERE name = ?
+                    ORDER BY rowid
+                    LIMIT 1
+                )
+                """,
+                arguments: [RemoteDefaults.beastName]
+            )
+
+            try db.execute(sql: "CREATE UNIQUE INDEX IF NOT EXISTS idx_remotes_default_true ON remotes(is_default) WHERE is_default = 1")
         }
 
         try migrator.migrate(dbQueue)

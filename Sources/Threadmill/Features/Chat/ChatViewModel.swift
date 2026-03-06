@@ -209,6 +209,7 @@ final class ChatViewModel {
 
         do {
             try await ensureOpenCodeRunningIfNeeded()
+            startEventStreamIfNeeded(directory: resolvedDirectory)
             let resolvedModel = model ?? preferredModel
             let newConversation = try await chatConversationService.createConversation(
                 threadID: resolvedThreadID,

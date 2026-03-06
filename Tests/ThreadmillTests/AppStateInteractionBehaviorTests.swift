@@ -101,6 +101,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertEqual(connection.requests.map(\.method), ["project.lookup", "project.clone", "thread.create"])
         XCTAssertEqual(connection.requests[2].params?["project_id"] as? String, "project-11")
         XCTAssertEqual(connection.requests[2].params?["name"] as? String, "feature-auth")
+        XCTAssertEqual(database.linkedProjects.count, 1)
     }
 
     func testCloseThreadRemovesItFromSidebar() async {

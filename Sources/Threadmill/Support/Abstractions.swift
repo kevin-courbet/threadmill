@@ -35,10 +35,14 @@ protocol FileBrowsing: AnyObject {
 @MainActor
 protocol ConnectionManaging: AnyObject {
     var state: ConnectionStatus { get }
+    var onStateChange: ((ConnectionStatus) -> Void)? { get set }
+    var onConnected: (() -> Void)? { get set }
+    var onEvent: ((String, [String: Any]?) -> Void)? { get set }
     func start()
     func stop()
     func request(method: String, params: [String: Any]?, timeout: TimeInterval) async throws -> Any
     func sendBinaryFrame(_ data: Data) async throws
+    func setBinaryFrameHandler(_ handler: ((Data) -> Void)?)
 }
 
 @MainActor

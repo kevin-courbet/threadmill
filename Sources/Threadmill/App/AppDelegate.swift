@@ -42,8 +42,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let remotes = try databaseManager.allRemotes()
             let effectiveRemotes = remotes.isEmpty ? [defaultRemote] : remotes
 
-            let selectedRemote = effectiveRemotes.first(where: { $0.name == DatabaseManager.RemoteDefaults.beastName }) ?? defaultRemote
-            let connectionPool = RemoteConnectionPool(remotes: effectiveRemotes, activeRemoteId: selectedRemote.id)
+            let selectedRemote = effectiveRemotes.first(where: \.isDefault) ?? defaultRemote
+            let connectionPool = RemoteConnectionPool(
+                remotes: effectiveRemotes,
+                activeRemoteId: selectedRemote.id,
+                onConnectionCreated: { [weak self, weak appState] connection in
+                    guard let self, let appState else {
+                        return
+                    }
+                    self.configureConnectionHandlers(for: connection, appState: appState)
+                }
+            )
             guard let primaryConnectionManager = connectionPool.connection(for: selectedRemote.id) else {
                 fatalError("Failed to bootstrap Threadmill: default remote connection unavailable")
             }
@@ -86,29 +95,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             appState.reloadFromDatabase()
 
-            if let concreteConnectionManager = primaryConnectionManager as? ConnectionManager {
-                concreteConnectionManager.onStateChange = { [weak appState] status in
-                    appState?.connectionStatus = status
-                }
-
-                concreteConnectionManager.onConnected = { [weak self] in
-                    Task { @MainActor [weak self] in
-                        await self?.multiplexer?.reattachAll()
-                        await self?.syncService?.syncFromDaemon()
-                    }
-                }
-
-                concreteConnectionManager.onEvent = { [weak appState] method, params in
-                    appState?.handleDaemonEvent(method: method, params: params)
-                }
-
-                concreteConnectionManager.setBinaryFrameHandler { [weak self] data in
-                    Task { @MainActor [weak self] in
-                        self?.multiplexer?.handleBinaryFrame(data)
-                    }
-                }
-            }
-
             appState.connectionStatus = primaryConnectionManager.state
             primaryConnectionManager.start()
             isBootstrapped = true
@@ -119,10 +105,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_: Notification) {
         Task { @MainActor [weak self] in
+            self?.appState?.shutdown()
             self?.appState?.selectedEndpoint = nil
             self?.multiplexer?.detachAll()
             self?.remoteConnectionPool?.stopAll()
             self?.surfaceHost.shutdown()
+        }
+    }
+
+    private func configureConnectionHandlers(for connection: any ConnectionManaging, appState: AppState) {
+        connection.onStateChange = { [weak appState] status in
+            appState?.connectionStatus = status
+        }
+
+        connection.onConnected = { [weak self] in
+            Task { @MainActor [weak self] in
+                await self?.multiplexer?.reattachAll()
+                await self?.syncService?.syncFromDaemon()
+            }
+        }
+
+        connection.onEvent = { [weak appState] method, params in
+            appState?.handleDaemonEvent(method: method, params: params)
+        }
+
+        connection.setBinaryFrameHandler { [weak self] data in
+            Task { @MainActor [weak self] in
+                self?.multiplexer?.handleBinaryFrame(data)
+            }
         }
     }
 }

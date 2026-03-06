@@ -117,6 +117,7 @@ enum ChatModeActions {
         selectedChatConversationIDBinding: Binding<String?>,
         chatReloadToken: Binding<Int>,
         tabStateManager: ThreadTabStateManager,
+        errorMessageBinding: Binding<String?> = .constant(nil),
         agentID: String? = nil
     ) {
         guard
@@ -136,12 +137,15 @@ enum ChatModeActions {
                     model: selectedModel
                 )
                 await MainActor.run {
+                    errorMessageBinding.wrappedValue = nil
                     selectedChatConversationIDBinding.wrappedValue = conversation.id
                     tabStateManager.setSelectedSessionID(conversation.id, modeID: TabItem.chat.id, threadID: thread.id)
                     chatReloadToken.wrappedValue += 1
                 }
             } catch {
-                return
+                await MainActor.run {
+                    errorMessageBinding.wrappedValue = error.localizedDescription
+                }
             }
         }
     }
@@ -152,7 +156,8 @@ enum ChatModeActions {
         chatConversations: @escaping () -> [ChatConversation],
         selectedChatConversationIDBinding: Binding<String?>,
         chatReloadToken: Binding<Int>,
-        tabStateManager: ThreadTabStateManager
+        tabStateManager: ThreadTabStateManager,
+        errorMessageBinding: Binding<String?> = .constant(nil)
     ) {
         guard
             !conversationIDs.isEmpty,
@@ -163,20 +168,27 @@ enum ChatModeActions {
         }
 
         Task {
-            for conversationID in conversationIDs {
-                try? await chatConversationService.archiveConversation(id: conversationID)
-            }
-
-            await MainActor.run {
-                if let selectedChatConversationID = selectedChatConversationIDBinding.wrappedValue,
-                   conversationIDs.contains(selectedChatConversationID)
-                {
-                    selectedChatConversationIDBinding.wrappedValue = chatConversations()
-                        .first(where: { !conversationIDs.contains($0.id) })?
-                        .id
+            do {
+                for conversationID in conversationIDs {
+                    try await chatConversationService.archiveConversation(id: conversationID)
                 }
-                tabStateManager.setSelectedSessionID(selectedChatConversationIDBinding.wrappedValue, modeID: TabItem.chat.id, threadID: thread.id)
-                chatReloadToken.wrappedValue += 1
+
+                await MainActor.run {
+                    errorMessageBinding.wrappedValue = nil
+                    if let selectedChatConversationID = selectedChatConversationIDBinding.wrappedValue,
+                       conversationIDs.contains(selectedChatConversationID)
+                    {
+                        selectedChatConversationIDBinding.wrappedValue = chatConversations()
+                            .first(where: { !conversationIDs.contains($0.id) })?
+                            .id
+                    }
+                    tabStateManager.setSelectedSessionID(selectedChatConversationIDBinding.wrappedValue, modeID: TabItem.chat.id, threadID: thread.id)
+                    chatReloadToken.wrappedValue += 1
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessageBinding.wrappedValue = error.localizedDescription
+                }
             }
         }
     }
