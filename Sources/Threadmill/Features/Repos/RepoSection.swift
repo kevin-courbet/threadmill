@@ -15,7 +15,7 @@ struct RepoSection: View {
     @State private var isHeaderHovered = false
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
+        Section(isExpanded: $isExpanded) {
             if displayedThreads.isEmpty {
                 Text("No threads yet")
                     .font(.caption2)
@@ -27,11 +27,9 @@ struct RepoSection: View {
                     threadRow(thread)
                 }
             }
-        } label: {
+        } header: {
             header
         }
-        .disclosureGroupStyle(RepoSectionDisclosureStyle())
-        .padding(.vertical, 4)
         .accessibilityIdentifier("repo.section.\(repo.id)")
     }
 
@@ -79,11 +77,15 @@ struct RepoSection: View {
             .accessibilityIdentifier("repo.section.new-thread.\(repo.id)")
 
             Button {
-                isExpanded.toggle()
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isExpanded.toggle()
+                }
             } label: {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .animation(.easeInOut(duration: 0.15), value: isExpanded)
                     .frame(width: 20, height: 20)
                     .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             }
@@ -133,19 +135,5 @@ struct RepoSection: View {
                     }
                 }
             }
-    }
-}
-
-private struct RepoSectionDisclosureStyle: DisclosureGroupStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            configuration.label
-
-            if configuration.isExpanded {
-                configuration.content
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .animation(.easeInOut(duration: 0.14), value: configuration.isExpanded)
     }
 }

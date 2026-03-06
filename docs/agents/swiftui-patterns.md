@@ -8,65 +8,63 @@ Patterns learned the hard way building Threadmill's macOS UI. Follow these to av
 
 ---
 
-## DisclosureGroup with Custom Chevron Position
+## Collapsible Sections with Custom Chevron Position
 
-**Problem:** SwiftUI's `DisclosureGroup` places its disclosure indicator on the left. Moving it (e.g. to the right) tempts you to abandon `DisclosureGroup` and use manual `if isExpanded` toggling inside a `List`. This causes **layout jank** — SwiftUI's `List` doesn't get a proper layout pass when content appears/disappears manually, producing overlapping/overflowing intermediate frames that only resolve on the next redraw (e.g. mouse hover).
+**Problem:** SwiftUI's default disclosure indicators (in `DisclosureGroup`, `Section`, `List`) place the chevron on the left. Moving it (e.g. to the right side, next to a + button) is a common design requirement but easily breaks layout.
 
-**Solution:** Keep `DisclosureGroup(isExpanded:)` for native animation support, but use a **custom `DisclosureGroupStyle`** to control layout and hide the default indicator.
+### What DOESN'T work (and why)
+
+**Manual `if isExpanded` in a VStack inside List** — List doesn't know content changed. Produces overlapping/overflowing intermediate frames that only resolve on mouse hover (triggering a redraw).
+
+**`DisclosureGroup` + custom `DisclosureGroupStyle`** — Seems right but ALSO causes the same jank. The custom style's `makeBody` still uses `if configuration.isExpanded` inside a VStack, which bypasses List's layout engine just like manual toggling. The DisclosureGroup wrapper provides the state binding but the custom style defeats the layout integration that makes it smooth.
+
+**`instantToggleTransaction()` / `Transaction(animation: nil)`** — Disabling animation doesn't fix layout, makes it worse.
+
+### What WORKS: `Section(isExpanded:)` (macOS 14+)
+
+`Section(isExpanded:)` is the only approach that gives List full control over the expand/collapse lifecycle AND lets you customize the header freely. Each child row is a proper List row (not nested in a single DisclosureGroup cell), so List can animate them individually.
 
 ```swift
 struct RepoSection: View {
     @State private var isExpanded = true
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            // child content
+        Section(isExpanded: $isExpanded) {
             ForEach(items) { item in
                 ItemRow(item: item)
             }
-        } label: {
-            header  // your custom label with right-side chevron
-        }
-        .disclosureGroupStyle(NoIndicatorDisclosureStyle())
-    }
+        } header: {
+            HStack {
+                Text("Section Title")
+                Spacer()
 
-    private var header: some View {
-        HStack {
-            Text("Section Title")
-            Spacer()
-            Button { isExpanded.toggle() } label: {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                Button { /* add action */ } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .animation(.easeInOut(duration: 0.15), value: isExpanded)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
     }
 }
 ```
 
-The custom style suppresses the default indicator and adds smooth animation:
+**Why this works:** `Section(isExpanded:)` tells `List` about the section's collapse state at the layout level. List manages row insertion/removal natively. The header is fully custom — put the chevron anywhere.
 
-```swift
-private struct NoIndicatorDisclosureStyle: DisclosureGroupStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            configuration.label
-
-            if configuration.isExpanded {
-                configuration.content
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-        .animation(.easeInOut(duration: 0.14), value: configuration.isExpanded)
-    }
-}
-```
-
-**Why this works:** `DisclosureGroup` tells `List` about the expand/collapse lifecycle. The custom style controls rendering while `List` still gets proper layout notifications. Manual `if isExpanded` without `DisclosureGroup` bypasses this entirely.
-
-**Anti-patterns (do NOT use):**
-- `VStack { if isExpanded { content } }` inside a `List` — causes layout jank
-- `instantToggleTransaction()` / `Transaction(animation: nil)` — disabling animation doesn't fix layout, makes it worse
-- `withAnimation { isExpanded.toggle() }` on manual toggle — animates but `List` still doesn't know about the disclosure lifecycle
+**Key details:**
+- Wrap `isExpanded.toggle()` in `withAnimation` for smooth content transition
+- Use `rotationEffect` on a fixed `chevron.right` icon (not swapping between `chevron.down`/`chevron.right`) for smooth rotation animation
+- Works with `.listStyle(.plain)` and `.listStyle(.sidebar)`
 
 ---
 
