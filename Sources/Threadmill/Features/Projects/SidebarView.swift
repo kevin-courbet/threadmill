@@ -13,80 +13,70 @@ struct SidebarView: View {
         Color(red: 0.06, green: 0.07, blue: 0.09)
     }
 
+    // Single ForEach avoids implicit section boundary that macOS List
+    // inserts between consecutive ForEach blocks (causes phantom dividers).
+    private var sidebarItems: [SidebarItem] {
+        appState.reposWithThreads.map { .repo($0.0, $0.1) } +
+        appState.projectsWithThreads.map { .project($0.0, $0.1) }
+    }
+
     var body: some View {
         @Bindable var bindableState = appState
 
         VStack(spacing: 0) {
             List {
-                ForEach(appState.reposWithThreads, id: \.0.id) { repo, threads in
-                    RepoSection(
-                        repo: repo,
-                        threads: threads,
-                        canCreateThread: !appState.remotes.isEmpty,
-                        selectedThreadID: $bindableState.selectedThreadID,
-                        onNewThread: { repo in
-                            newThreadRepo = repo
-                        },
-                        onCancelThreadCreation: { thread in
-                            Task {
-                                await appState.cancelThreadCreation(threadID: thread.id)
+                ForEach(sidebarItems) { item in
+                    switch item {
+                    case .repo(let repo, let threads):
+                        RepoSection(
+                            repo: repo,
+                            threads: threads,
+                            canCreateThread: !appState.remotes.isEmpty,
+                            selectedThreadID: $bindableState.selectedThreadID,
+                            onNewThread: { repo in
+                                newThreadRepo = repo
+                            },
+                            onCancelThreadCreation: { thread in
+                                Task { await appState.cancelThreadCreation(threadID: thread.id) }
+                            },
+                            onHideThread: { thread in
+                                Task { await appState.hideThread(threadID: thread.id) }
+                            },
+                            onCloseThread: { thread in
+                                Task { await appState.closeThread(threadID: thread.id) }
+                            },
+                            onReopenThread: { thread in
+                                Task { await appState.reopenThread(threadID: thread.id) }
                             }
-                        },
-                        onHideThread: { thread in
-                            Task {
-                                await appState.hideThread(threadID: thread.id)
-                            }
-                        },
-                        onCloseThread: { thread in
-                            Task {
-                                await appState.closeThread(threadID: thread.id)
-                            }
-                        },
-                        onReopenThread: { thread in
-                            Task {
-                                await appState.reopenThread(threadID: thread.id)
-                            }
-                        }
-                    )
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-                    .listRowBackground(Color.clear)
-                }
+                        )
 
-                ForEach(appState.projectsWithThreads, id: \.0.id) { project, threads in
-                    ProjectSection(
-                        project: project,
-                        threads: threads,
-                        canCreateThread: preselectedRepoForNewThread(from: project, repos: appState.repos) != nil && !appState.remotes.isEmpty,
-                        selectedThreadID: $bindableState.selectedThreadID,
-                        onNewThread: { project in
-                            newThreadRepo = preselectedRepoForNewThread(from: project, repos: appState.repos)
-                        },
-                        onCancelThreadCreation: { thread in
-                            Task {
-                                await appState.cancelThreadCreation(threadID: thread.id)
+                    case .project(let project, let threads):
+                        ProjectSection(
+                            project: project,
+                            threads: threads,
+                            canCreateThread: preselectedRepoForNewThread(from: project, repos: appState.repos) != nil && !appState.remotes.isEmpty,
+                            selectedThreadID: $bindableState.selectedThreadID,
+                            onNewThread: { project in
+                                newThreadRepo = preselectedRepoForNewThread(from: project, repos: appState.repos)
+                            },
+                            onCancelThreadCreation: { thread in
+                                Task { await appState.cancelThreadCreation(threadID: thread.id) }
+                            },
+                            onHideThread: { thread in
+                                Task { await appState.hideThread(threadID: thread.id) }
+                            },
+                            onCloseThread: { thread in
+                                Task { await appState.closeThread(threadID: thread.id) }
+                            },
+                            onReopenThread: { thread in
+                                Task { await appState.reopenThread(threadID: thread.id) }
                             }
-                        },
-                        onHideThread: { thread in
-                            Task {
-                                await appState.hideThread(threadID: thread.id)
-                            }
-                        },
-                        onCloseThread: { thread in
-                            Task {
-                                await appState.closeThread(threadID: thread.id)
-                            }
-                        },
-                        onReopenThread: { thread in
-                            Task {
-                                await appState.reopenThread(threadID: thread.id)
-                            }
-                        }
-                    )
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-                    .listRowBackground(Color.clear)
+                        )
+                    }
                 }
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+                .listRowBackground(Color.clear)
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -162,6 +152,18 @@ struct SidebarView: View {
             if let newThreadRepo {
                 NewThreadSheet(repo: newThreadRepo)
             }
+        }
+    }
+}
+
+private enum SidebarItem: Identifiable {
+    case repo(Repo, [ThreadModel])
+    case project(Project, [ThreadModel])
+
+    var id: String {
+        switch self {
+        case .repo(let repo, _): return "repo_\(repo.id)"
+        case .project(let project, _): return "project_\(project.id)"
         }
     }
 }

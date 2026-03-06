@@ -20,6 +20,13 @@ final class ProjectSectionTests: XCTestCase {
         XCTAssertTrue(source.contains("createdAt"))
     }
 
+    func testSidebarUsesUnifiedForEachToAvoidImplicitSectionBoundary() throws {
+        let source = try loadSource(at: "Sources/Threadmill/Features/Projects/SidebarView.swift")
+
+        XCTAssertTrue(source.contains("SidebarItem"))
+        XCTAssertTrue(source.contains("ForEach(sidebarItems)"))
+    }
+
     private func loadSource(at relativePath: String) throws -> String {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
