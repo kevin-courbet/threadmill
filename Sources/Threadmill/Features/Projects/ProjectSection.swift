@@ -23,16 +23,21 @@ struct ProjectSection: View {
                     .padding(.leading, 38)
                     .padding(.vertical, 3)
                     .listRowSeparator(.hidden)
+                    .listSectionSeparator(.hidden)
             } else {
                 ForEach(displayedThreads) { thread in
                     threadRow(thread)
                         .listRowSeparator(.hidden)
+                        .listSectionSeparator(.hidden)
                 }
             }
         } header: {
             header
+                .listRowSeparator(.hidden)
+                .listSectionSeparator(.hidden)
         }
         .listSectionSeparator(.hidden, edges: .all)
+        .listSectionSeparatorTint(.clear)
         .accessibilityIdentifier("project.section.\(project.id)")
     }
 
