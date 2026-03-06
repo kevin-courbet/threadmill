@@ -3,20 +3,20 @@ import XCTest
 @testable import Threadmill
 
 final class ProjectSectionTests: XCTestCase {
-    func testInstantToggleTransactionDisablesAnimations() {
-        let transaction = instantToggleTransaction()
-
-        XCTAssertTrue(transaction.disablesAnimations)
-        XCTAssertNil(transaction.animation)
-    }
-
-    func testProjectSectionTreatsMainCheckoutAsPrimaryRow() throws {
+    func testProjectSectionUsesNativeDisclosureInsteadOfInstantTransaction() throws {
         let source = try loadSource(at: "Sources/Threadmill/Features/Projects/ProjectSection.swift")
 
-        XCTAssertTrue(source.contains("sourceType == \"main_checkout\""))
+        XCTAssertTrue(source.contains("DisclosureGroup"))
+        XCTAssertFalse(source.contains("instantToggleTransaction"))
+    }
+
+    func testProjectSectionSortsThreadsByCreatedAtOnly() throws {
+        let source = try loadSource(at: "Sources/Threadmill/Features/Projects/ProjectSection.swift")
+
+        XCTAssertFalse(source.contains("sourceType == \"main_checkout\""))
         XCTAssertTrue(source.contains("ForEach(displayedThreads)"))
         XCTAssertTrue(source.contains("threads.sorted"))
-        XCTAssertFalse(source.contains("mainBranchThreadRow"))
+        XCTAssertTrue(source.contains("createdAt"))
     }
 
     private func loadSource(at relativePath: String) throws -> String {

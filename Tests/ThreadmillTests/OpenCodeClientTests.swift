@@ -153,6 +153,124 @@ final class OpenCodeClientTests: XCTestCase {
         XCTAssertNil(session.slug)
     }
 
+    func testCreateSessionWithAgentSendsAgentPayload() async throws {
+        TestURLProtocol.requestHandler = { request in
+            let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(components?.percentEncodedPath, "/session")
+
+            let body = try OpenCodeClientTests.requestBodyData(from: request)
+            let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+            XCTAssertEqual(payload?["agent"] as? String, "my-agent")
+
+            let response = """
+            {
+              "id": "ses_1",
+              "projectID": "proj_1",
+              "directory": "/tmp/worktree",
+              "title": "Session",
+              "version": "1.1.65",
+              "time": { "created": 1, "updated": 2 }
+            }
+            """.data(using: .utf8)!
+
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                response
+            )
+        }
+
+        let client = makeClient()
+        let session = try await client.createSession(directory: "/tmp/worktree", agentID: "my-agent")
+        XCTAssertEqual(session.id, "ses_1")
+    }
+
+    func testInitSessionUsesExplicitModelWithoutProviderLookup() async throws {
+        var requestPaths: [String] = []
+
+        TestURLProtocol.requestHandler = { request in
+            let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+            let path = components?.percentEncodedPath ?? ""
+            requestPaths.append(path)
+
+            if path == "/session/ses_1/init" {
+                XCTAssertEqual(request.httpMethod, "POST")
+                let body = try OpenCodeClientTests.requestBodyData(from: request)
+                let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+                XCTAssertEqual(payload?["providerID"] as? String, "anthropic")
+                XCTAssertEqual(payload?["modelID"] as? String, "claude-sonnet")
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    Data("{}".utf8)
+                )
+            }
+
+            if path == "/session/ses_1" {
+                let payload = """
+                {
+                  "id": "ses_1",
+                  "projectID": "proj_1",
+                  "directory": "/tmp/worktree",
+                  "title": "Session",
+                  "version": "1.1.65",
+                  "time": { "created": 1, "updated": 2 }
+                }
+                """.data(using: .utf8)!
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    payload
+                )
+            }
+
+            XCTFail("Unexpected path: \(path)")
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!,
+                Data()
+            )
+        }
+
+        let client = makeClient()
+        let session = try await client.initSession(
+            id: "ses_1",
+            directory: "/tmp/worktree",
+            model: OCMessageModel(providerID: "anthropic", modelID: "claude-sonnet")
+        )
+
+        XCTAssertEqual(session.id, "ses_1")
+        XCTAssertFalse(requestPaths.contains("/provider"))
+    }
+
+    private static func requestBodyData(from request: URLRequest) throws -> Data {
+        if let body = request.httpBody {
+            return body
+        }
+
+        guard let stream = request.httpBodyStream else {
+            return Data()
+        }
+
+        stream.open()
+        defer {
+            stream.close()
+        }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+
+        while stream.hasBytesAvailable {
+            let bytesRead = stream.read(&buffer, maxLength: buffer.count)
+            if bytesRead < 0 {
+                throw stream.streamError ?? NSError(domain: "OpenCodeClientTests", code: 1)
+            }
+            if bytesRead == 0 {
+                break
+            }
+            data.append(buffer, count: bytesRead)
+        }
+
+        return data
+    }
+
     func testGetSessionEscapesForwardSlashesInPathComponents() async throws {
         TestURLProtocol.requestHandler = { request in
             let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)

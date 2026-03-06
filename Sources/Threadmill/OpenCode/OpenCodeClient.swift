@@ -60,21 +60,35 @@ final class OpenCodeClient: OpenCodeManaging {
         return try decoder.decode(OCSession.self, from: data)
     }
 
-    func createSession(directory: String) async throws -> OCSession {
-        let data = try await performDataRequest(pathComponents: ["session"], method: "POST", directory: directory)
+    func createSession(directory: String, agentID: String?) async throws -> OCSession {
+        let requestBody: Data?
+        if let agentID, !agentID.isEmpty {
+            requestBody = try encoder.encode(OCSessionCreateRequest(agent: agentID))
+        } else {
+            requestBody = nil
+        }
+
+        let data = try await performDataRequest(pathComponents: ["session"], method: "POST", directory: directory, body: requestBody)
         return try decoder.decode(OCSession.self, from: data)
     }
 
-    func initSession(id: String, directory: String) async throws -> OCSession {
+    func initSession(id: String, directory: String, model: OCMessageModel?) async throws -> OCSession {
         let sessionID = id
-        let providers = try await getProvidersPayload(directory: directory)
-        guard let model = defaultModel(from: providers) else {
-            throw OpenCodeClientError.missingDefaultModel
+        let resolvedModel: OCMessageModel
+
+        if let model {
+            resolvedModel = model
+        } else {
+            let providers = try await getProvidersPayload(directory: directory)
+            guard let model = defaultModel(from: providers) else {
+                throw OpenCodeClientError.missingDefaultModel
+            }
+            resolvedModel = model
         }
 
         let initRequest = OCSessionInitRequest(
-            modelID: model.modelID,
-            providerID: model.providerID,
+            modelID: resolvedModel.modelID,
+            providerID: resolvedModel.providerID,
             messageID: Self.makeMessageID()
         )
         let body = try encoder.encode(initRequest)
@@ -388,6 +402,10 @@ private struct OCMessageEnvelope: Decodable {
 private struct OCPromptRequest: Encodable {
     let messageID: String
     let parts: [OCTextPromptPart]
+}
+
+private struct OCSessionCreateRequest: Encodable {
+    let agent: String
 }
 
 private struct OCTextPromptPart: Encodable {

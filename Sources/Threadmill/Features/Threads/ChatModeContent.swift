@@ -116,7 +116,8 @@ enum ChatModeActions {
         appState: AppState,
         selectedChatConversationIDBinding: Binding<String?>,
         chatReloadToken: Binding<Int>,
-        tabStateManager: ThreadTabStateManager
+        tabStateManager: ThreadTabStateManager,
+        agentID: String? = nil
     ) {
         guard
             let thread = appState.selectedThread,
@@ -127,9 +128,12 @@ enum ChatModeActions {
 
         Task {
             do {
+                let selectedModel = ChatModelSelectionStore.selectedModel(threadID: thread.id)
                 let conversation = try await chatConversationService.createConversation(
                     threadID: thread.id,
-                    directory: thread.worktreePath
+                    directory: thread.worktreePath,
+                    agentID: agentID,
+                    model: selectedModel
                 )
                 await MainActor.run {
                     selectedChatConversationIDBinding.wrappedValue = conversation.id

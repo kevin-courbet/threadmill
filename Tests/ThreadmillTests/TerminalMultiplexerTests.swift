@@ -141,4 +141,69 @@ final class TerminalMultiplexerTests: XCTestCase {
         XCTAssertEqual(connection.requests.filter { $0.method == "terminal.attach" }.count, 2)
         multiplexer.detachAll()
     }
+
+    func testAttachDetachAndBinarySendUseConnectionForThread() async throws {
+        let remoteAConnection = MockDaemonConnection(state: .connected)
+        let remoteBConnection = MockDaemonConnection(state: .connected)
+
+        remoteAConnection.requestHandler = { method, _, _ in
+            if method == "terminal.attach" {
+                return ["channel_id": 11]
+            }
+            if method == "terminal.detach" {
+                return ["detached": true]
+            }
+            return NSNull()
+        }
+
+        remoteBConnection.requestHandler = { method, _, _ in
+            if method == "terminal.attach" {
+                return ["channel_id": 22]
+            }
+            if method == "terminal.detach" {
+                return ["detached": true]
+            }
+            return NSNull()
+        }
+
+        let multiplexer = TerminalMultiplexer(
+            connectionResolver: { threadID in
+                switch threadID {
+                case "thread-a":
+                    remoteAConnection
+                case "thread-b":
+                    remoteBConnection
+                default:
+                    nil
+                }
+            },
+            surfaceHost: MockSurfaceHost()
+        )
+
+        let endpointA = try await multiplexer.attach(threadID: "thread-a", preset: "terminal")
+        let endpointB = try await multiplexer.attach(threadID: "thread-b", preset: "terminal")
+        endpointA.forwardRelayPayloadForTesting(Data([0x01, 0x02]))
+        endpointB.forwardRelayPayloadForTesting(Data([0x03]))
+
+        multiplexer.detach(threadID: "thread-a", preset: "terminal")
+        multiplexer.detach(threadID: "thread-b", preset: "terminal")
+
+        let sentFrameExpectation = expectation(description: "sent frames routed")
+        Task { @MainActor in
+            let routed = await waitForCondition {
+                remoteAConnection.sentBinaryFrames.count == 1 && remoteBConnection.sentBinaryFrames.count == 1
+            }
+            XCTAssertTrue(routed)
+
+            XCTAssertEqual(remoteAConnection.requests.filter { $0.method == "terminal.attach" }.count, 1)
+            XCTAssertEqual(remoteBConnection.requests.filter { $0.method == "terminal.attach" }.count, 1)
+            XCTAssertEqual(remoteAConnection.requests.filter { $0.method == "terminal.detach" }.count, 1)
+            XCTAssertEqual(remoteBConnection.requests.filter { $0.method == "terminal.detach" }.count, 1)
+            XCTAssertEqual(remoteAConnection.sentBinaryFrames.first, makeFrame(channelID: 11, payload: [0x01, 0x02]))
+            XCTAssertEqual(remoteBConnection.sentBinaryFrames.first, makeFrame(channelID: 22, payload: [0x03]))
+
+            sentFrameExpectation.fulfill()
+        }
+        await fulfillment(of: [sentFrameExpectation], timeout: 1)
+    }
 }

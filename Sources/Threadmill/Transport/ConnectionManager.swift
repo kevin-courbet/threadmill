@@ -5,6 +5,18 @@ struct ThreadmillConfig {
     let daemonPort: Int
     let useSSHTunnel: Bool
 
+    init(host: String, daemonPort: Int, useSSHTunnel: Bool) {
+        self.host = host
+        self.daemonPort = daemonPort
+        self.useSSHTunnel = useSSHTunnel
+    }
+
+    init(remote: Remote) {
+        self.host = remote.host
+        self.daemonPort = remote.daemonPort
+        self.useSSHTunnel = remote.useSSHTunnel
+    }
+
     static func load(environment: [String: String] = ProcessInfo.processInfo.environment) -> ThreadmillConfig {
         let host = environment["THREADMILL_HOST"] ?? "beast"
         let daemonPort = Int(environment["THREADMILL_DAEMON_PORT"] ?? "") ?? 19990

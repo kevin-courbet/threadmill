@@ -40,6 +40,24 @@ final class ChatViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.conversations.map(\.id), [created.id])
     }
 
+    func testCreateConversationUsesPreferredModelAndSelectedAgent() async {
+        let mock = MockOpenCodeClient()
+        let conversations = MockChatConversationService()
+        let created = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "", time: 1)
+
+        conversations.createConversationResult = .success(created)
+        mock.getMessagesResult = .success([])
+
+        let expectedModel = OCMessageModel(providerID: "anthropic", modelID: "claude-sonnet")
+        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        viewModel.setPreferredModel(expectedModel)
+
+        await viewModel.createConversation(threadID: "thread_1", directory: "/tmp/worktree", agentID: "reviewer", model: nil)
+
+        XCTAssertEqual(conversations.createdConversations.first?.agentID, "reviewer")
+        XCTAssertEqual(conversations.createdConversations.first?.model, expectedModel)
+    }
+
     func testSendPromptStreamsAssistantTextAndStopsWhenSessionBecomesIdle() async {
         let mock = MockOpenCodeClient()
         let conversations = MockChatConversationService()

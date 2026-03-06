@@ -1,5 +1,16 @@
 import Foundation
 
+enum TerminalMultiplexerError: LocalizedError {
+    case connectionUnavailable(threadID: String)
+
+    var errorDescription: String? {
+        switch self {
+        case let .connectionUnavailable(threadID):
+            "Connection unavailable for thread: \(threadID)."
+        }
+    }
+}
+
 @MainActor
 final class TerminalMultiplexer: TerminalMultiplexing {
     private struct AttachmentKey: Hashable {
@@ -15,11 +26,19 @@ final class TerminalMultiplexer: TerminalMultiplexing {
     private var preRegistrationBuffer: [UInt16: [Data]] = [:]
     private let maxBufferedFramesPerChannel = 100
 
-    private let connectionManager: any ConnectionManaging
+    private let connectionResolver: @MainActor (String) -> (any ConnectionManaging)?
     private let surfaceHost: any SurfaceHosting
 
     init(connectionManager: any ConnectionManaging, surfaceHost: any SurfaceHosting) {
-        self.connectionManager = connectionManager
+        connectionResolver = { _ in connectionManager }
+        self.surfaceHost = surfaceHost
+    }
+
+    init(
+        connectionResolver: @escaping @MainActor (String) -> (any ConnectionManaging)?,
+        surfaceHost: any SurfaceHosting
+    ) {
+        self.connectionResolver = connectionResolver
         self.surfaceHost = surfaceHost
     }
 
@@ -31,10 +50,13 @@ final class TerminalMultiplexer: TerminalMultiplexing {
         let key = AttachmentKey(threadID: threadID, preset: preset)
         if let existing = endpointsByAttachment[key] {
             if existing.channelID == 0 {
-                try await attachEndpoint(existing)
+                let connectionManager = try connectionManager(for: threadID)
+                try await attachEndpoint(existing, connectionManager: connectionManager)
             }
             return existing
         }
+
+        let connectionManager = try connectionManager(for: threadID)
 
         let endpoint = RelayEndpoint(
             channelID: 0,
@@ -47,7 +69,7 @@ final class TerminalMultiplexer: TerminalMultiplexing {
         endpointsByAttachment[key] = endpoint
 
         do {
-            try await attachEndpoint(endpoint)
+            try await attachEndpoint(endpoint, connectionManager: connectionManager)
             return endpoint
         } catch {
             endpointsByAttachment.removeValue(forKey: key)
@@ -110,7 +132,12 @@ final class TerminalMultiplexer: TerminalMultiplexing {
         var remapped: [UInt16: RelayEndpoint] = [:]
         for endpoint in endpoints {
             do {
-                let channelID = try await requestAttachChannel(threadID: endpoint.threadID, preset: endpoint.preset)
+                let connectionManager = try connectionManager(for: endpoint.threadID)
+                let channelID = try await requestAttachChannel(
+                    threadID: endpoint.threadID,
+                    preset: endpoint.preset,
+                    connectionManager: connectionManager
+                )
                 endpoint.setChannelID(channelID)
                 remapped[channelID] = endpoint
                 flushPreRegistrationBuffer(channelID: channelID, to: endpoint)
@@ -123,8 +150,12 @@ final class TerminalMultiplexer: TerminalMultiplexing {
         endpointsByChannel = remapped
     }
 
-    private func attachEndpoint(_ endpoint: RelayEndpoint) async throws {
-        let channelID = try await requestAttachChannel(threadID: endpoint.threadID, preset: endpoint.preset)
+    private func attachEndpoint(_ endpoint: RelayEndpoint, connectionManager: any ConnectionManaging) async throws {
+        let channelID = try await requestAttachChannel(
+            threadID: endpoint.threadID,
+            preset: endpoint.preset,
+            connectionManager: connectionManager
+        )
 
         if endpoint.channelID > 0 {
             endpointsByChannel.removeValue(forKey: endpoint.channelID)
@@ -165,6 +196,15 @@ final class TerminalMultiplexer: TerminalMultiplexing {
         }
 
         Task {
+            guard let connectionManager = connectionResolver(threadID) else {
+                NSLog(
+                    "threadmill-mux: detach RPC skipped, no connection thread_id=%@ preset=%@ channel=%hu",
+                    threadID,
+                    preset,
+                    channelID
+                )
+                return
+            }
             do {
                 _ = try await connectionManager.request(
                     method: "terminal.detach",
@@ -186,7 +226,18 @@ final class TerminalMultiplexer: TerminalMultiplexing {
         }
     }
 
-    private func requestAttachChannel(threadID: String, preset: String) async throws -> UInt16 {
+    private func connectionManager(for threadID: String) throws -> any ConnectionManaging {
+        guard let connectionManager = connectionResolver(threadID) else {
+            throw TerminalMultiplexerError.connectionUnavailable(threadID: threadID)
+        }
+        return connectionManager
+    }
+
+    private func requestAttachChannel(
+        threadID: String,
+        preset: String,
+        connectionManager: any ConnectionManaging
+    ) async throws -> UInt16 {
         let result = try await connectionManager.request(
             method: "terminal.attach",
             params: [

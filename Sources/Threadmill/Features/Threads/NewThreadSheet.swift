@@ -23,9 +23,9 @@ struct NewThreadSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
-    let preselectedProjectID: String?
+    let repo: Repo
 
-    @State private var selectedProjectID: String?
+    @State private var selectedRemoteID: String?
     @State private var name = ""
     @State private var sourceType: NewThreadSourceType = .newFeature
     @State private var selectedBranch = ""
@@ -34,25 +34,23 @@ struct NewThreadSheet: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
-    init(preselectedProjectID: String? = nil) {
-        self.preselectedProjectID = preselectedProjectID
-        _selectedProjectID = State(initialValue: preselectedProjectID)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("New Thread")
                 .font(.title3.weight(.semibold))
 
             Form {
-                Picker("Project", selection: $selectedProjectID) {
-                    ForEach(appState.projects) { project in
-                        Text(project.name).tag(Optional(project.id))
+                LabeledContent("Repository") {
+                    Text(repo.fullName)
+                }
+
+                Picker("Remote", selection: $selectedRemoteID) {
+                    ForEach(appState.remotes) { remote in
+                        Text(remote.name).tag(Optional(remote.id))
                     }
                 }
-                .disabled(preselectedProjectID != nil)
-                .accessibilityIdentifier("sheet.new-thread.project-picker")
-                .accessibilityLabel("Sheet New Thread Project")
+                .accessibilityIdentifier("sheet.new-thread.remote-picker")
+                .accessibilityLabel("Sheet New Thread Remote")
 
                 TextField("Thread name", text: $name)
                     .accessibilityIdentifier("sheet.new-thread.name-input")
@@ -120,13 +118,9 @@ struct NewThreadSheet: View {
         .frame(width: 520)
         .accessibilityIdentifier("sheet.new-thread")
         .onAppear {
-            if let preselectedProjectID {
-                selectedProjectID = preselectedProjectID
-            } else {
-                selectedProjectID = selectedProjectID ?? appState.projects.first?.id
-            }
+            selectedRemoteID = selectedRemoteID ?? appState.remotes.first?.id
         }
-        .onChange(of: selectedProjectID) { _, _ in
+        .onChange(of: selectedRemoteID) { _, _ in
             branches = []
             selectedBranch = ""
             if sourceType == .existingBranch {
@@ -139,7 +133,7 @@ struct NewThreadSheet: View {
 
     private var isCreateDisabled: Bool {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty, selectedProjectID != nil, !isLoading else {
+        guard !trimmedName.isEmpty, selectedRemote != nil, !isLoading else {
             return true
         }
         switch sourceType {
@@ -153,7 +147,7 @@ struct NewThreadSheet: View {
     }
 
     private func loadBranches() async {
-        guard let selectedProjectID else {
+        guard let remote = selectedRemote else {
             return
         }
         isLoading = true
@@ -161,7 +155,13 @@ struct NewThreadSheet: View {
 
         do {
             errorMessage = nil
-            branches = try await appState.branches(for: selectedProjectID)
+            let projectID: String
+            if let existingProjectID = appState.projectId(for: repo, on: remote) {
+                projectID = existingProjectID
+            } else {
+                projectID = try await appState.ensureRepoOnRemote(repo: repo, remote: remote)
+            }
+            branches = try await appState.branches(for: projectID)
             if selectedBranch.isEmpty {
                 selectedBranch = branches.first ?? ""
             }
@@ -171,7 +171,7 @@ struct NewThreadSheet: View {
     }
 
     private func createThread() async {
-        guard let selectedProjectID else {
+        guard let remote = selectedRemote else {
             return
         }
         isLoading = true
@@ -194,7 +194,8 @@ struct NewThreadSheet: View {
             }
 
             try await appState.createThread(
-                projectID: selectedProjectID,
+                repo: repo,
+                remote: remote,
                 name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                 sourceType: sourceType.rawValue,
                 branch: branch,
@@ -204,5 +205,12 @@ struct NewThreadSheet: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private var selectedRemote: Remote? {
+        guard let selectedRemoteID else {
+            return nil
+        }
+        return appState.remotes.first(where: { $0.id == selectedRemoteID })
     }
 }

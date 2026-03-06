@@ -1,6 +1,25 @@
 import Foundation
 import Observation
 
+struct ChatModelOption: Identifiable, Equatable {
+    let providerID: String
+    let providerName: String
+    let modelID: String
+    let modelName: String
+
+    var id: String {
+        selection.storageID
+    }
+
+    var title: String {
+        "\(providerName) / \(modelName)"
+    }
+
+    var selection: OCMessageModel {
+        OCMessageModel(providerID: providerID, modelID: modelID)
+    }
+}
+
 @MainActor
 @Observable
 final class ChatViewModel {
@@ -9,6 +28,8 @@ final class ChatViewModel {
     var messages: [OCMessage] = []
     var isGenerating = false
     var streamingParts: [String: OCMessagePart] = [:]
+    var availableModels: [ChatModelOption] = []
+    var isLoadingModels = false
 
     var lastError: String?
 
@@ -23,6 +44,7 @@ final class ChatViewModel {
     private var eventStreamToken = UUID()
     private var messageLoadTask: Task<Void, Never>?
     private var messageLoadToken = UUID()
+    private var preferredModel: OCMessageModel?
 
     init(
         openCodeClient: any OpenCodeManaging,
@@ -46,6 +68,8 @@ final class ChatViewModel {
             messages = []
             streamingParts = [:]
             isGenerating = false
+            availableModels = []
+            isLoadingModels = false
             lastError = nil
             messageLoadTask?.cancel()
             messageLoadTask = nil
@@ -58,6 +82,7 @@ final class ChatViewModel {
         do {
             try await ensureOpenCodeRunningIfNeeded()
             startEventStreamIfNeeded(directory: directory)
+            await loadAvailableModels(directory: directory)
 
             conversations = try await chatConversationService.listConversations(threadID: threadID)
             conversations.sort { $0.updatedAt > $1.updatedAt }
@@ -168,6 +193,10 @@ final class ChatViewModel {
     }
 
     func createConversation(threadID: String? = nil, directory: String? = nil) async {
+        await createConversation(threadID: threadID, directory: directory, agentID: nil, model: nil)
+    }
+
+    func createConversation(threadID: String? = nil, directory: String? = nil, agentID: String?, model: OCMessageModel?) async {
         guard
             let resolvedThreadID = threadID ?? activeThreadID,
             let resolvedDirectory = directory ?? activeDirectory
@@ -180,10 +209,12 @@ final class ChatViewModel {
 
         do {
             try await ensureOpenCodeRunningIfNeeded()
-            startEventStreamIfNeeded(directory: resolvedDirectory)
+            let resolvedModel = model ?? preferredModel
             let newConversation = try await chatConversationService.createConversation(
                 threadID: resolvedThreadID,
-                directory: resolvedDirectory
+                directory: resolvedDirectory,
+                agentID: agentID,
+                model: resolvedModel
             )
 
             upsertConversation(newConversation)
@@ -198,6 +229,10 @@ final class ChatViewModel {
         } catch {
             lastError = error.localizedDescription
         }
+    }
+
+    func setPreferredModel(_ model: OCMessageModel?) {
+        preferredModel = model
     }
 
     func archiveConversation(_ conversation: ChatConversation) async {
@@ -310,6 +345,29 @@ final class ChatViewModel {
                 }
                 await self.handleEvent(event, directory: directory)
             }
+        }
+    }
+
+    private func loadAvailableModels(directory: String) async {
+        isLoadingModels = true
+        defer {
+            isLoadingModels = false
+        }
+
+        do {
+            let providers = try await openCodeClient.getProviders(directory: directory)
+            availableModels = providers.flatMap { provider in
+                provider.models.map { model in
+                    ChatModelOption(
+                        providerID: provider.id,
+                        providerName: provider.name,
+                        modelID: model.id,
+                        modelName: model.name
+                    )
+                }
+            }
+        } catch {
+            availableModels = []
         }
     }
 

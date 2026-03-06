@@ -107,7 +107,7 @@ final class AppStateEventHandlingTests: XCTestCase {
         await appState.attachSelectedPreset()
 
         XCTAssertEqual(multiplexer.attachCallCount, 1)
-        XCTAssertEqual(connection.requests.count, 1)
+        XCTAssertEqual(connection.requests.filter { $0.method == "preset.start" }.count, 1)
     }
 
     func testThreadProgressFailureCancelsPendingAttach() async {
@@ -199,7 +199,7 @@ final class AppStateEventHandlingTests: XCTestCase {
 
         let appState = AppState()
         appState.configure(
-            connectionManager: connection,
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
             databaseManager: database,
             syncService: syncService,
             multiplexer: multiplexer
@@ -240,7 +240,7 @@ final class AppStateEventHandlingTests: XCTestCase {
         let multiplexer = MockTerminalMultiplexer()
         let appState = AppState()
         appState.configure(
-            connectionManager: connection,
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
             databaseManager: database,
             syncService: sync,
             multiplexer: multiplexer

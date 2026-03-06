@@ -1,15 +1,9 @@
 import SwiftUI
 
-func instantToggleTransaction() -> Transaction {
-    var transaction = Transaction()
-    transaction.animation = nil
-    transaction.disablesAnimations = true
-    return transaction
-}
-
 struct ProjectSection: View {
     let project: Project
     let threads: [ThreadModel]
+    let canCreateThread: Bool
     @Binding var selectedThreadID: String?
     let onNewThread: (Project) -> Void
     let onCancelThreadCreation: (ThreadModel) -> Void
@@ -20,24 +14,23 @@ struct ProjectSection: View {
     @State private var isExpanded = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            header
-
-            if isExpanded {
-                if displayedThreads.isEmpty {
-                    Text("No threads yet")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 38)
-                        .padding(.vertical, 3)
-                } else {
-                    ForEach(displayedThreads) { thread in
-                        threadRow(thread)
-                    }
+        DisclosureGroup(isExpanded: $isExpanded) {
+            if displayedThreads.isEmpty {
+                Text("No threads yet")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 38)
+                    .padding(.vertical, 3)
+            } else {
+                ForEach(displayedThreads) { thread in
+                    threadRow(thread)
                 }
             }
+        } label: {
+            header
         }
         .padding(.vertical, 4)
+        .tint(.secondary)
         .accessibilityIdentifier("project.section.\(project.id)")
     }
 
@@ -74,40 +67,18 @@ struct ProjectSection: View {
                     .frame(width: 20, height: 20)
                     .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             }
+            .disabled(!canCreateThread)
             .buttonStyle(.plain)
             .accessibilityIdentifier("project.section.new-thread.\(project.id)")
 
-            Button {
-                toggleExpanded()
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    .frame(width: 16, height: 16)
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("project.section.toggle.\(project.id)")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-    }
-
-    private func toggleExpanded() {
-        withTransaction(instantToggleTransaction()) {
-            isExpanded.toggle()
-        }
+        .accessibilityIdentifier("project.section.toggle.\(project.id)")
     }
 
     private var displayedThreads: [ThreadModel] {
-        threads.sorted {
-            let lhsRank = $0.sourceType == "main_checkout" ? 0 : 1
-            let rhsRank = $1.sourceType == "main_checkout" ? 0 : 1
-            if lhsRank != rhsRank {
-                return lhsRank < rhsRank
-            }
-            return $0.createdAt > $1.createdAt
-        }
+        threads.sorted { $0.createdAt > $1.createdAt }
     }
 
     @ViewBuilder

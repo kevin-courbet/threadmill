@@ -35,7 +35,9 @@ final class MockDaemonConnection: ConnectionManaging {
     }
 
     func request(method: String, params: [String: Any]?, timeout: TimeInterval) async throws -> Any {
-        requests.append(RecordedRequest(method: method, params: params))
+        if method != "system.stats" && method != "system.cleanup" {
+            requests.append(RecordedRequest(method: method, params: params))
+        }
         if let requestHandler {
             return try requestHandler(method, params, timeout)
         }
@@ -69,12 +71,15 @@ final class MockSyncService: SyncServicing {
 
 @MainActor
 final class MockDatabaseManager: DatabaseManaging {
+    var remotes: [Remote] = []
+    var repos: [Repo] = []
     var projects: [Project] = []
     var threads: [ThreadModel] = []
     var conversations: [ChatConversation] = []
     var browserSessions: [BrowserSession] = []
     var updateStatusResult = true
     var updatedStatuses: [(threadID: String, status: ThreadStatus)] = []
+    var replaceAllFromDaemonRemoteIDs: [String] = []
 
     func allProjects() throws -> [Project] {
         projects
@@ -84,14 +89,88 @@ final class MockDatabaseManager: DatabaseManaging {
         threads
     }
 
-    func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel]) throws {
+    func allRemotes() throws -> [Remote] {
+        remotes
+    }
+
+    func allRepos() throws -> [Repo] {
+        repos
+    }
+
+    func remote(id: String) throws -> Remote? {
+        remotes.first(where: { $0.id == id })
+    }
+
+    func repo(id: String) throws -> Repo? {
+        repos.first(where: { $0.id == id })
+    }
+
+    func saveRemote(_ remote: Remote) throws {
+        if let index = remotes.firstIndex(where: { $0.id == remote.id }) {
+            remotes[index] = remote
+        } else {
+            remotes.append(remote)
+        }
+    }
+
+    func ensureDefaultRemoteExists() throws -> Remote {
+        if let beast = remotes.first(where: { $0.name == DatabaseManager.RemoteDefaults.beastName }) {
+            return beast
+        }
+        if let firstRemote = remotes.first {
+            return firstRemote
+        }
+
+        let defaultRemote = Remote(
+            id: UUID().uuidString,
+            name: DatabaseManager.RemoteDefaults.beastName,
+            host: DatabaseManager.RemoteDefaults.beastHost,
+            daemonPort: DatabaseManager.RemoteDefaults.beastDaemonPort,
+            useSSHTunnel: DatabaseManager.RemoteDefaults.beastUseSSHTunnel,
+            cloneRoot: DatabaseManager.RemoteDefaults.beastCloneRoot
+        )
+        remotes = [defaultRemote]
+        return defaultRemote
+    }
+
+    func deleteRemote(id: String) throws {
+        remotes.removeAll { $0.id == id }
+    }
+
+    func saveRepo(_ repo: Repo) throws {
+        if let index = repos.firstIndex(where: { $0.id == repo.id }) {
+            repos[index] = repo
+        } else {
+            repos.append(repo)
+        }
+    }
+
+    func deleteRepo(id: String) throws {
+        repos.removeAll { $0.id == id }
+    }
+
+    func replaceAllRepos(_ repos: [Repo]) throws {
+        self.repos = repos
+    }
+
+    func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel], remoteId: String) throws {
         self.projects = projects
         self.threads = threads
+        replaceAllFromDaemonRemoteIDs.append(remoteId)
     }
 
     func updateThreadStatus(threadID: String, status: ThreadStatus) throws -> Bool {
         updatedStatuses.append((threadID, status))
         return updateStatusResult
+    }
+
+    func linkProject(projectID: String, repoID: String, remoteID: String) throws -> Bool {
+        guard let index = projects.firstIndex(where: { $0.id == projectID }) else {
+            return false
+        }
+        projects[index].repoId = repoID
+        projects[index].remoteId = remoteID
+        return true
     }
 
     func saveConversation(_ conversation: ChatConversation) throws {
@@ -151,15 +230,15 @@ final class MockChatConversationService: ChatConversationManaging {
     var updateTitleResult: Result<Void, Error> = .success(())
     var verifySessionResult: Result<Bool, Error> = .success(true)
 
-    private(set) var createdConversations: [(threadID: String, directory: String)] = []
+    private(set) var createdConversations: [(threadID: String, directory: String, agentID: String?, model: OCMessageModel?)] = []
     private(set) var listedThreadIDs: [String] = []
     private(set) var activeThreadIDs: [String] = []
     private(set) var archivedConversationIDs: [String] = []
     private(set) var updatedTitles: [(id: String, title: String)] = []
     private(set) var verifiedConversationIDs: [String] = []
 
-    func createConversation(threadID: String, directory: String) async throws -> ChatConversation {
-        createdConversations.append((threadID, directory))
+    func createConversation(threadID: String, directory: String, agentID: String?, model: OCMessageModel?) async throws -> ChatConversation {
+        createdConversations.append((threadID, directory, agentID, model))
         return try createConversationResult.get()
     }
 
@@ -221,6 +300,56 @@ final class MockTerminalMultiplexer: TerminalMultiplexing {
     func handleBinaryFrame(_: Data) {}
 
     func reattachAll() async {}
+}
+
+@MainActor
+final class MockRemoteConnectionPool: RemoteConnectionPooling {
+    var connections: [String: any ConnectionManaging] = [:]
+    private(set) var ensuredRemoteIDs: [String] = []
+    private(set) var activatedRemoteIDs: [String] = []
+    var activeRemoteId: String?
+
+    func connection(for remoteId: String) -> (any ConnectionManaging)? {
+        connections[remoteId]
+    }
+
+    func activate(remoteId: String) throws {
+        guard connections[remoteId] != nil else {
+            throw RemoteConnectionPoolError.unknownRemote(id: remoteId)
+        }
+
+        activatedRemoteIDs.append(remoteId)
+        activeRemoteId = remoteId
+    }
+
+    func ensureConnected(remoteId: String) async throws {
+        guard let connection = connections[remoteId] else {
+            throw RemoteConnectionPoolError.unknownRemote(id: remoteId)
+        }
+
+        ensuredRemoteIDs.append(remoteId)
+        guard connection.state == .disconnected else {
+            return
+        }
+        connection.start()
+    }
+
+    func stopAll() {
+        for connection in connections.values {
+            connection.stop()
+        }
+    }
+}
+
+@MainActor
+func makeSingleRemoteConnectionPool(
+    connection: any ConnectionManaging,
+    remoteID: String = "remote-1"
+) -> MockRemoteConnectionPool {
+    let pool = MockRemoteConnectionPool()
+    pool.connections[remoteID] = connection
+    pool.activeRemoteId = remoteID
+    return pool
 }
 
 @MainActor
@@ -336,7 +465,8 @@ final class MockOpenCodeClient: OpenCodeManaging {
     private(set) var listedDirectories: [String] = []
     private(set) var fetchedSessions: [(id: String, directory: String)] = []
     private(set) var createdSessionsInDirectories: [String] = []
-    private(set) var initializedSessions: [(id: String, directory: String)] = []
+    private(set) var createdSessions: [(directory: String, agentID: String?)] = []
+    private(set) var initializedSessions: [(id: String, directory: String, model: OCMessageModel?)] = []
     private(set) var fetchedMessages: [(sessionID: String, directory: String)] = []
     private(set) var promptedSessions: [(sessionID: String, prompt: String, directory: String)] = []
     private(set) var abortedSessions: [(sessionID: String, directory: String)] = []
@@ -355,13 +485,14 @@ final class MockOpenCodeClient: OpenCodeManaging {
         return try getSessionResult.get()
     }
 
-    func createSession(directory: String) async throws -> OCSession {
+    func createSession(directory: String, agentID: String?) async throws -> OCSession {
         createdSessionsInDirectories.append(directory)
+        createdSessions.append((directory, agentID))
         return try createSessionResult.get()
     }
 
-    func initSession(id: String, directory: String) async throws -> OCSession {
-        initializedSessions.append((id, directory))
+    func initSession(id: String, directory: String, model: OCMessageModel?) async throws -> OCSession {
+        initializedSessions.append((id, directory, model))
         return try initSessionResult.get()
     }
 

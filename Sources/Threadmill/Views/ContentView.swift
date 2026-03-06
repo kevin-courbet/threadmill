@@ -2,14 +2,14 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppState.self) private var appState
-    @State private var showingAddProjectSheet = false
+    @State private var showingAddRepoSheet = false
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(showingAddProjectSheet: $showingAddProjectSheet)
+            SidebarView(showingAddRepoSheet: $showingAddRepoSheet)
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 400)
         } detail: {
-            if appState.projects.isEmpty {
+            if appState.repos.isEmpty && appState.projects.isEmpty {
                 VStack(spacing: 14) {
                     Image(systemName: "folder.badge.plus")
                         .font(.system(size: 44, weight: .regular))
@@ -17,7 +17,7 @@ struct ContentView: View {
                     Text("Add a repository to get started")
                         .font(.title3.weight(.semibold))
                     Button("Add Repository") {
-                        showingAddProjectSheet = true
+                        showingAddRepoSheet = true
                     }
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("empty-state.add-repository-button")
@@ -34,11 +34,19 @@ struct ContentView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
-        .sheet(isPresented: Bindable(appState).isNewThreadSheetPresented) {
-            NewThreadSheet()
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                ConnectionStatusView(status: appState.connectionStatus)
+                    .padding(.trailing, 4)
+            }
         }
-        .sheet(isPresented: $showingAddProjectSheet) {
-            AddProjectSheet()
+        .sheet(isPresented: Bindable(appState).isNewThreadSheetPresented) {
+            if let repo = appState.repos.first {
+                NewThreadSheet(repo: repo)
+            }
+        }
+        .sheet(isPresented: $showingAddRepoSheet) {
+            AddRepoSheet()
         }
         .background {
             keyboardShortcuts

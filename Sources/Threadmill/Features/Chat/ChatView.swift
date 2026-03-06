@@ -18,6 +18,8 @@ struct ChatView: View {
     @State private var jumpRequestToken = 0
     @State private var hasAppeared = false
     @State private var hoveredConversationID: String?
+    @State private var selectedModelStorageID = ""
+    @AppStorage private var persistedModelStorageID: String
 
     init(
         threadID: String,
@@ -36,6 +38,7 @@ struct ChatView: View {
         self.reloadToken = reloadToken
         self.showsConversationTabBar = showsConversationTabBar
         self.onConversationStateChange = onConversationStateChange
+        _persistedModelStorageID = AppStorage(wrappedValue: "", ChatModelSelectionStore.key(threadID: threadID))
         _viewModel = State(initialValue: ChatViewModel(
             openCodeClient: openCodeClient,
             chatConversationService: chatConversationService,
@@ -82,6 +85,8 @@ struct ChatView: View {
                     .padding(.top, 6)
             }
 
+            modelPickerRow
+
             ChatInputView(
                 text: $draftText,
                 isGenerating: viewModel.isGenerating,
@@ -98,11 +103,21 @@ struct ChatView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .task(id: "\(threadID)::\(directory)::\(reloadToken)") {
+            selectedModelStorageID = persistedModelStorageID
+            viewModel.setPreferredModel(OCMessageModel(storageID: persistedModelStorageID))
             await viewModel.loadConversations(threadID: threadID, directory: directory)
+            synchronizeModelSelection()
             await applySelectedConversationIfNeeded()
             publishConversationState()
             jumpRequestToken += 1
             shouldRebaseBottomDistance = true
+        }
+        .onChange(of: viewModel.availableModels) { _, _ in
+            synchronizeModelSelection()
+        }
+        .onChange(of: selectedModelStorageID) { _, nextSelection in
+            persistedModelStorageID = nextSelection
+            viewModel.setPreferredModel(OCMessageModel(storageID: nextSelection))
         }
         .onChange(of: viewModel.currentConversation?.id) { _, _ in
             publishConversationState()
@@ -119,6 +134,53 @@ struct ChatView: View {
                 await applySelectedConversationIfNeeded()
             }
         }
+    }
+
+    private var modelPickerRow: some View {
+        HStack(spacing: 8) {
+            Text("Model")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            if viewModel.isLoadingModels {
+                ProgressView()
+                    .controlSize(.small)
+            } else if viewModel.availableModels.isEmpty {
+                Text("No AI providers configured. Configure OpenCode providers to start new chats.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            } else {
+                Picker("Model", selection: $selectedModelStorageID) {
+                    ForEach(viewModel.availableModels) { model in
+                        Text(model.title).tag(model.id)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .frame(maxWidth: 340, alignment: .leading)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+    }
+
+    private func synchronizeModelSelection() {
+        guard !viewModel.availableModels.isEmpty else {
+            viewModel.setPreferredModel(OCMessageModel(storageID: persistedModelStorageID))
+            return
+        }
+
+        if viewModel.availableModels.contains(where: { $0.id == persistedModelStorageID }) {
+            selectedModelStorageID = persistedModelStorageID
+        } else if let fallbackModel = viewModel.availableModels.first {
+            selectedModelStorageID = fallbackModel.id
+            persistedModelStorageID = fallbackModel.id
+        }
+
+        viewModel.setPreferredModel(OCMessageModel(storageID: selectedModelStorageID))
     }
 
     private func publishConversationState() {
@@ -149,7 +211,12 @@ struct ChatView: View {
 
             Button {
                 Task {
-                    await viewModel.createConversation(threadID: threadID, directory: directory)
+                    await viewModel.createConversation(
+                        threadID: threadID,
+                        directory: directory,
+                        agentID: nil,
+                        model: OCMessageModel(storageID: selectedModelStorageID)
+                    )
                 }
             } label: {
                 Image(systemName: "plus")

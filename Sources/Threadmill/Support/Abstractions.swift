@@ -45,7 +45,18 @@ protocol ConnectionManaging: AnyObject {
 protocol DatabaseManaging: AnyObject {
     func allProjects() throws -> [Project]
     func allThreads() throws -> [ThreadModel]
-    func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel]) throws
+    func allRemotes() throws -> [Remote]
+    func allRepos() throws -> [Repo]
+    func remote(id: String) throws -> Remote?
+    func repo(id: String) throws -> Repo?
+    func saveRemote(_ remote: Remote) throws
+    func ensureDefaultRemoteExists() throws -> Remote
+    func deleteRemote(id: String) throws
+    func saveRepo(_ repo: Repo) throws
+    func deleteRepo(id: String) throws
+    func replaceAllRepos(_ repos: [Repo]) throws
+    func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel], remoteId: String) throws
+    func linkProject(projectID: String, repoID: String, remoteID: String) throws -> Bool
     func updateThreadStatus(threadID: String, status: ThreadStatus) throws -> Bool
     func saveConversation(_ conversation: ChatConversation) throws
     func conversation(id: String) throws -> ChatConversation?
@@ -58,12 +69,18 @@ protocol DatabaseManaging: AnyObject {
 
 @MainActor
 protocol ChatConversationManaging: AnyObject {
-    func createConversation(threadID: String, directory: String) async throws -> ChatConversation
+    func createConversation(threadID: String, directory: String, agentID: String?, model: OCMessageModel?) async throws -> ChatConversation
     func listConversations(threadID: String) async throws -> [ChatConversation]
     func activeConversations(threadID: String) async throws -> [ChatConversation]
     func archiveConversation(id: String) async throws
     func updateTitle(conversationID: String, title: String) async throws
     func verifySession(conversation: ChatConversation) async throws -> Bool
+}
+
+extension ChatConversationManaging {
+    func createConversation(threadID: String, directory: String) async throws -> ChatConversation {
+        try await createConversation(threadID: threadID, directory: directory, agentID: nil, model: nil)
+    }
 }
 
 @MainActor

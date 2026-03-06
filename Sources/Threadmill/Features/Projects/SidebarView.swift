@@ -2,9 +2,8 @@ import SwiftUI
 
 struct SidebarView: View {
     @Environment(AppState.self) private var appState
-    @Binding var showingAddProjectSheet: Bool
-    @State private var showingCloneRepoSheet = false
-    @State private var newThreadProjectID: String?
+    @Binding var showingAddRepoSheet: Bool
+    @State private var newThreadRepo: Repo?
 
     private var isUITestMode: Bool {
         ProcessInfo.processInfo.environment["THREADMILL_UI_TEST_MODE"] == "1"
@@ -19,13 +18,49 @@ struct SidebarView: View {
 
         VStack(spacing: 0) {
             List {
+                ForEach(appState.reposWithThreads, id: \.0.id) { repo, threads in
+                    RepoSection(
+                        repo: repo,
+                        threads: threads,
+                        canCreateThread: !appState.remotes.isEmpty,
+                        selectedThreadID: $bindableState.selectedThreadID,
+                        onNewThread: { repo in
+                            newThreadRepo = repo
+                        },
+                        onCancelThreadCreation: { thread in
+                            Task {
+                                await appState.cancelThreadCreation(threadID: thread.id)
+                            }
+                        },
+                        onHideThread: { thread in
+                            Task {
+                                await appState.hideThread(threadID: thread.id)
+                            }
+                        },
+                        onCloseThread: { thread in
+                            Task {
+                                await appState.closeThread(threadID: thread.id)
+                            }
+                        },
+                        onReopenThread: { thread in
+                            Task {
+                                await appState.reopenThread(threadID: thread.id)
+                            }
+                        }
+                    )
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+                    .listRowBackground(Color.clear)
+                }
+
                 ForEach(appState.projectsWithThreads, id: \.0.id) { project, threads in
                     ProjectSection(
                         project: project,
                         threads: threads,
+                        canCreateThread: preselectedRepoForNewThread(from: project, repos: appState.repos) != nil && !appState.remotes.isEmpty,
                         selectedThreadID: $bindableState.selectedThreadID,
                         onNewThread: { project in
-                            newThreadProjectID = preselectedProjectIDForNewThread(from: project)
+                            newThreadRepo = preselectedRepoForNewThread(from: project, repos: appState.repos)
                         },
                         onCancelThreadCreation: { thread in
                             Task {
@@ -59,16 +94,8 @@ struct SidebarView: View {
             .accessibilityIdentifier("sidebar.projects-list")
 
             HStack {
-                Menu {
-                    Button("Open project") {
-                        showingAddProjectSheet = true
-                    }
-                    .accessibilityIdentifier("sidebar.open-project-button")
-
-                    Button("Clone repo") {
-                        showingCloneRepoSheet = true
-                    }
-                    .accessibilityIdentifier("sidebar.clone-repo-button")
+                Button {
+                    showingAddRepoSheet = true
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "plus")
@@ -86,7 +113,7 @@ struct SidebarView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityIdentifier("sidebar.add-repository-menu")
+                .accessibilityIdentifier("sidebar.add-repository-button")
 
                 Spacer()
             }
@@ -97,13 +124,13 @@ struct SidebarView: View {
             if isUITestMode {
                 VStack(spacing: 2) {
                     Button("Automation Add Project") {
-                        showingAddProjectSheet = true
+                        showingAddRepoSheet = true
                     }
                     .accessibilityIdentifier("automation.open-add-project")
                     .accessibilityLabel("Automation Open Add Project")
 
                     Button("Automation New Thread") {
-                        newThreadProjectID = appState.projects.first?.id
+                        newThreadRepo = appState.repos.first
                     }
                     .accessibilityIdentifier("automation.open-new-thread")
                     .accessibilityLabel("Automation Open New Thread")
@@ -122,24 +149,26 @@ struct SidebarView: View {
             }
         }
         .background(sidebarBackground)
-        .sheet(isPresented: $showingCloneRepoSheet) {
-            CloneRepoSheet()
-        }
         .sheet(
             isPresented: Binding(
-                get: { newThreadProjectID != nil },
+                get: { newThreadRepo != nil },
                 set: { isPresented in
                     if !isPresented {
-                        newThreadProjectID = nil
+                        newThreadRepo = nil
                     }
                 }
             )
         ) {
-            NewThreadSheet(preselectedProjectID: newThreadProjectID)
+            if let newThreadRepo {
+                NewThreadSheet(repo: newThreadRepo)
+            }
         }
     }
 }
 
-func preselectedProjectIDForNewThread(from project: Project) -> String {
-    project.id
+func preselectedRepoForNewThread(from project: Project, repos: [Repo]) -> Repo? {
+    guard let repoID = project.repoId else {
+        return nil
+    }
+    return repos.first(where: { $0.id == repoID })
 }

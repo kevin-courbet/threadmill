@@ -44,6 +44,65 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertEqual(appState.selectedThreadID, creatingThread.id)
     }
 
+    func testCreateThreadFromRepoContextProvisionsThenCreatesThread() async throws {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let remote = Remote(
+            id: "remote-1",
+            name: "beast",
+            host: "beast",
+            daemonPort: 19990,
+            useSSHTunnel: true,
+            cloneRoot: "/home/wsl/dev"
+        )
+        let repo = Repo(
+            id: "repo-1",
+            owner: "anomalyco",
+            name: "threadmill",
+            fullName: "anomalyco/threadmill",
+            cloneURL: "git@github.com:anomalyco/threadmill.git",
+            defaultBranch: "main",
+            isPrivate: true,
+            cachedAt: Date(timeIntervalSince1970: 1)
+        )
+        database.remotes = [remote]
+        database.repos = [repo]
+
+        connection.requestHandler = { method, _, _ in
+            switch method {
+            case "project.lookup":
+                return [
+                    "exists": false,
+                    "is_git_repo": false,
+                    "project_id": NSNull(),
+                ]
+            case "project.clone":
+                return ["id": "project-11"]
+            case "thread.create":
+                return ["id": "thread-11"]
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+
+        try await appState.createThread(
+            repo: repo,
+            remote: remote,
+            name: "feature-auth",
+            sourceType: "new_feature",
+            branch: nil
+        )
+
+        XCTAssertEqual(connection.requests.map(\.method), ["project.lookup", "project.clone", "thread.create"])
+        XCTAssertEqual(connection.requests[2].params?["project_id"] as? String, "project-11")
+        XCTAssertEqual(connection.requests[2].params?["name"] as? String, "feature-auth")
+    }
+
     func testCloseThreadRemovesItFromSidebar() async {
         let connection = MockDaemonConnection(state: .connected)
         let database = MockDatabaseManager()
@@ -521,7 +580,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
 
         let appState = AppState()
         appState.configure(
-            connectionManager: connection,
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
             databaseManager: database,
             syncService: sync,
             multiplexer: multiplexer
@@ -577,7 +636,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
     ) -> AppState {
         let appState = AppState()
         appState.configure(
-            connectionManager: connection,
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
             databaseManager: database,
             syncService: sync,
             multiplexer: multiplexer

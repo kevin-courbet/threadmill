@@ -51,6 +51,7 @@ let package = Package(
                 .linkedFramework("IOSurface"),
                 .linkedFramework("Metal"),
                 .linkedFramework("QuartzCore"),
+                .linkedFramework("Security"),
                 .linkedFramework("UniformTypeIdentifiers"),
                 .linkedFramework("WebKit"),
                 .linkedLibrary("z"),

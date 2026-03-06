@@ -59,7 +59,7 @@ final class KeyboardShortcutTests: XCTestCase {
 
         let appState = AppState()
         appState.configure(
-            connectionManager: connection,
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
             databaseManager: database,
             syncService: sync,
             multiplexer: multiplexer
@@ -106,7 +106,7 @@ final class KeyboardShortcutTests: XCTestCase {
 
         let appState = AppState()
         appState.configure(
-            connectionManager: connection,
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
             databaseManager: database,
             syncService: sync,
             multiplexer: multiplexer

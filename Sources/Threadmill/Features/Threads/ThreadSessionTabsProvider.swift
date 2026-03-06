@@ -13,7 +13,7 @@ struct ThreadSessionTabsProvider {
     let onSelectTerminalSession: (String) -> Void
     let onArchiveChatConversations: ([String]) -> Void
     let onCloseTerminalSessions: ([String]) -> Void
-    let onCreateChatConversation: () -> Void
+    let onCreateChatConversation: (String?) -> Void
     let onAddDefaultTerminalSession: () -> Void
     let onAddTerminalSession: (String) -> Void
 
@@ -62,7 +62,7 @@ struct ThreadSessionTabsProvider {
             }
             return chatAgents.map { agent in
                 SessionAddMenuItem(id: agent.id, title: agent.name) {
-                    onCreateChatConversation()
+                    onCreateChatConversation(agent.id)
                 }
             }
         default:
@@ -135,7 +135,7 @@ struct ThreadSessionTabsProvider {
     func handleDefaultSessionCreation() {
         switch selectedTab {
         case TabItem.chat.id:
-            onCreateChatConversation()
+            onCreateChatConversation(nil)
         case TabItem.terminal.id:
             onAddDefaultTerminalSession()
         default:
@@ -208,7 +208,8 @@ struct ThreadModeSessionTabs: View {
                     appState: appState,
                     selectedChatConversationIDBinding: $selectedChatConversationID,
                     chatReloadToken: $chatReloadToken,
-                    tabStateManager: tabStateManager
+                    tabStateManager: tabStateManager,
+                    agentID: $0
                 )
             },
             onAddDefaultTerminalSession: {

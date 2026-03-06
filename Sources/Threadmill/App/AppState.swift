@@ -4,6 +4,7 @@ import Observation
 enum AppStateError: LocalizedError {
     case connectionManagerUnavailable
     case invalidGitStatusResponse
+    case provisioningUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -11,6 +12,8 @@ enum AppStateError: LocalizedError {
             "Connection to spindle is unavailable."
         case .invalidGitStatusResponse:
             "Invalid response for file.git_status."
+        case .provisioningUnavailable:
+            "Provisioning service is unavailable."
         }
     }
 }
@@ -27,16 +30,26 @@ final class AppState {
         didSet {
             if case .connected = connectionStatus, oldValue != connectionStatus {
                 scheduleAttachSelectedPreset()
+                startStatsTimer()
+            } else if connectionStatus == .disconnected {
+                stopStatsTimer()
+                systemStats = nil
             }
         }
     }
+    var remotes: [Remote] = []
+    var repos: [Repo] = []
     var projects: [Project] = []
     var threads: [ThreadModel] = []
+    var systemStats: SystemStatsResult?
+    private var statsTimer: Timer?
+
     var isNewThreadSheetPresented = false
     var selectedThreadID: String? {
         didSet {
             ensureSelectedPresetIsValid()
             refreshSelectedEndpoint()
+            updateActiveRemoteConnection()
         }
     }
     var selectedPreset: String? {
@@ -50,13 +63,18 @@ final class AppState {
     private(set) var fileService: (any FileBrowsing)?
 
     private(set) var databaseManager: (any DatabaseManaging)?
+    private var provisioningService: (any Provisioning)?
     private var syncService: (any SyncServicing)?
     private var multiplexer: (any TerminalMultiplexing)?
-    private var connectionManager: (any ConnectionManaging)?
+    private var connectionPool: (any RemoteConnectionPooling)?
     private var eventSyncScheduled = false
     private var attachedEndpoints: [AttachmentKey: RelayEndpoint] = [:]
     private var pendingAttachTasks: [AttachmentKey: Task<Void, Never>] = [:]
     private var permanentAttachFailures: Set<AttachmentKey> = []
+
+    private var connectionManager: (any ConnectionManaging)? {
+        connectionForSelectedThread() ?? defaultConnectionManager()
+    }
 
     var selectedThread: ThreadModel? {
         threads.first { $0.id == selectedThreadID }
@@ -69,15 +87,42 @@ final class AppState {
         return projects.first { $0.id == projectID }
     }
 
+    var activeRemoteID: String? {
+        if let activeRemoteID = connectionPool?.activeRemoteId {
+            return activeRemoteID
+        }
+        return remotes.first?.id
+    }
+
+    func connectionForSelectedThread() -> (any ConnectionManaging)? {
+        guard let selectedThreadID else {
+            return nil
+        }
+        return connectionForThread(id: selectedThreadID)
+    }
+
     var projectsWithThreads: [(Project, [ThreadModel])] {
-        let grouped = Dictionary(grouping: threads, by: \.projectId)
+        let grouped = Dictionary(grouping: visibleThreads, by: \.projectId)
         return projects
+            .filter { $0.repoId == nil }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             .map { project in
-                let rows = (grouped[project.id] ?? [])
-                    .filter { $0.status != .closed && $0.status != .failed }
-                    .sorted { $0.createdAt > $1.createdAt }
+                let rows = (grouped[project.id] ?? []).sorted { $0.createdAt > $1.createdAt }
                 return (project, rows)
+            }
+    }
+
+    var reposWithThreads: [(Repo, [ThreadModel])] {
+        let projectsByID = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0) })
+        let grouped = Dictionary(grouping: visibleThreads) { thread in
+            projectsByID[thread.projectId]?.repoId
+        }
+
+        return repos
+            .sorted { $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending }
+            .map { repo in
+                let rows = (grouped[repo.id] ?? []).sorted { $0.createdAt > $1.createdAt }
+                return (repo, rows)
             }
     }
 
@@ -118,21 +163,25 @@ final class AppState {
     }
 
     func configure(
-        connectionManager: any ConnectionManaging,
+        connectionPool: any RemoteConnectionPooling,
         databaseManager: any DatabaseManaging,
         syncService: any SyncServicing,
         multiplexer: any TerminalMultiplexing,
+        provisioningService: (any Provisioning)? = nil,
         openCodeClient: any OpenCodeManaging = OpenCodeClient(),
         chatConversationService: (any ChatConversationManaging)? = nil,
         fileService: (any FileBrowsing)? = nil
     ) {
-        self.connectionManager = connectionManager
+        self.connectionPool = connectionPool
         self.databaseManager = databaseManager
+        self.provisioningService = provisioningService ?? ProvisioningService(connectionPool: connectionPool)
         self.syncService = syncService
         self.multiplexer = multiplexer
         self.openCodeClient = openCodeClient
         self.chatConversationService = chatConversationService
-        self.fileService = fileService ?? FileService(connectionManager: connectionManager)
+        self.fileService = fileService ?? FileService(connectionProvider: { [weak self] in
+            self?.connectionForSelectedThread() ?? self?.defaultConnectionManager()
+        })
     }
 
     func ensureValidSelection() {
@@ -149,12 +198,15 @@ final class AppState {
         }
 
         do {
+            remotes = try databaseManager.allRemotes()
+            repos = try databaseManager.allRepos()
             projects = try databaseManager.allProjects()
             threads = try databaseManager.allThreads()
             pruneDetachedThreadEndpoints()
             ensureValidSelection()
             ensureSelectedPresetIsValid()
             refreshSelectedEndpoint()
+            updateActiveRemoteConnection()
         } catch {
             NSLog("threadmill-state: failed to load cache: %@", "\(error)")
         }
@@ -265,7 +317,9 @@ final class AppState {
     }
 
     func startPreset(threadID: String, preset: String) async {
-        guard selectedThreadID == threadID, let connectionManager else {
+        guard selectedThreadID == threadID,
+              let connectionManager = connectionForThread(id: threadID)
+        else {
             return
         }
         guard presets.contains(where: { $0.name == preset }) else {
@@ -307,7 +361,9 @@ final class AppState {
             return
         }
 
-        guard selectedThreadID == threadID, let connectionManager else {
+        guard selectedThreadID == threadID,
+              let connectionManager = connectionForThread(id: threadID)
+        else {
             return
         }
 
@@ -364,7 +420,7 @@ final class AppState {
             return
         }
 
-        guard let connectionManager, let multiplexer else {
+        guard let connectionManager = connectionForThread(id: requestedThreadID), let multiplexer else {
             return
         }
 
@@ -429,7 +485,7 @@ final class AppState {
     }
 
     func hideThread(threadID: String) async {
-        guard let connectionManager else {
+        guard let connectionManager = connectionForThread(id: threadID) else {
             return
         }
         detachEndpoints(threadID: threadID)
@@ -447,7 +503,7 @@ final class AppState {
     }
 
     func closeThread(threadID: String) async {
-        guard let connectionManager else {
+        guard let connectionManager = connectionForThread(id: threadID) else {
             return
         }
         detachEndpoints(threadID: threadID)
@@ -468,7 +524,7 @@ final class AppState {
     }
 
     func cancelThreadCreation(threadID: String) async {
-        guard let connectionManager else {
+        guard let connectionManager = connectionForThread(id: threadID) else {
             return
         }
 
@@ -484,8 +540,66 @@ final class AppState {
         }
     }
 
+    func projectId(for repo: Repo, on remote: Remote) -> String? {
+        projects.first { project in
+            project.repoId == repo.id && project.remoteId == remote.id
+        }?.id
+    }
+
+    func lookupProject(path: String, on remoteId: String) async throws -> (exists: Bool, isGitRepo: Bool, projectId: String?) {
+        guard let provisioningService else {
+            throw AppStateError.provisioningUnavailable
+        }
+        return try await provisioningService.lookupProject(path: path, on: remoteId)
+    }
+
+    func ensureRepoOnRemote(repo: Repo, remote: Remote) async throws -> String {
+        guard let provisioningService else {
+            throw AppStateError.provisioningUnavailable
+        }
+
+        let projectID = try await provisioningService.ensureRepoOnRemote(repo: repo, remote: remote)
+        linkProject(
+            projectID: projectID,
+            repoID: repo.id,
+            remoteID: remote.id,
+            repoOwner: repo.owner,
+            repoName: repo.name,
+            remoteCloneRoot: remote.cloneRoot,
+            defaultBranch: repo.defaultBranch
+        )
+        return projectID
+    }
+
+    func createThread(
+        repo: Repo,
+        remote: Remote,
+        name: String,
+        sourceType: String,
+        branch: String?,
+        prURL: String? = nil
+    ) async throws {
+        let projectID = try await ensureRepoOnRemote(repo: repo, remote: remote)
+        try await createThread(
+            projectID: projectID,
+            name: name,
+            sourceType: sourceType,
+            branch: branch,
+            prURL: prURL
+        )
+        linkProject(
+            projectID: projectID,
+            repoID: repo.id,
+            remoteID: remote.id,
+            repoOwner: repo.owner,
+            repoName: repo.name,
+            remoteCloneRoot: remote.cloneRoot,
+            defaultBranch: repo.defaultBranch
+        )
+    }
+
     func reopenThread(threadID: String) async {
-        guard let connectionManager else {
+        guard let connectionManager = connectionForThread(id: threadID) else {
             return
         }
         do {
@@ -498,35 +612,6 @@ final class AppState {
         } catch {
             NSLog("threadmill-state: thread.reopen failed (%@): %@", threadID, "\(error)")
         }
-    }
-
-    func browseDirectories(path: String) async throws -> [String] {
-        guard let connectionManager else {
-            return []
-        }
-
-        let result = try await connectionManager.request(
-            method: "project.browse",
-            params: ["path": path],
-            timeout: 10
-        )
-
-        guard let entries = result as? [[String: Any]] else {
-            return []
-        }
-
-        return entries.compactMap { entry in
-            guard
-                let isDir = entry["is_dir"] as? Bool,
-                isDir,
-                let name = entry["name"] as? String
-            else {
-                return nil
-            }
-
-            return URL(fileURLWithPath: path).appendingPathComponent(name).path
-        }
-        .sorted()
     }
 
     func gitStatus(path: String) async throws -> [String: FileGitStatus] {
@@ -571,7 +656,7 @@ final class AppState {
     }
 
     func removeProject(projectID: String) async {
-        guard let connectionManager else { return }
+        guard let connectionManager = connectionForProject(id: projectID) else { return }
         do {
             _ = try await connectionManager.request(
                 method: "project.remove",
@@ -603,7 +688,7 @@ final class AppState {
     }
 
     func branches(for projectID: String) async throws -> [String] {
-        guard let connectionManager else {
+        guard let connectionManager = connectionForProject(id: projectID) else {
             return []
         }
 
@@ -643,7 +728,7 @@ final class AppState {
             prURL ?? "<nil>"
         )
 
-        guard let connectionManager else {
+        guard let connectionManager = connectionForProject(id: projectID) else {
             NSLog("threadmill-state: createThread aborted, connection manager unavailable")
             throw AppStateError.connectionManagerUnavailable
         }
@@ -905,6 +990,190 @@ final class AppState {
         refreshSelectedEndpoint()
     }
 
+    private func defaultConnectionManager() -> (any ConnectionManaging)? {
+        guard let connectionPool else {
+            return nil
+        }
+
+        if let activeRemoteID = connectionPool.activeRemoteId,
+           let activeConnection = connectionPool.connection(for: activeRemoteID)
+        {
+            return activeConnection
+        }
+
+        if let firstRemoteID = remotes.first?.id {
+            return connectionPool.connection(for: firstRemoteID)
+        }
+
+        return nil
+    }
+
+    func connectionForThread(id threadID: String) -> (any ConnectionManaging)? {
+        guard let connectionPool else {
+            return nil
+        }
+
+        guard let remoteID = remoteIDForThread(id: threadID) else {
+            return defaultConnectionManager()
+        }
+        return connectionPool.connection(for: remoteID)
+    }
+
+    private func connectionForProject(id projectID: String) -> (any ConnectionManaging)? {
+        guard let connectionPool else {
+            return nil
+        }
+
+        guard let remoteID = remoteIDForProject(id: projectID) else {
+            return defaultConnectionManager()
+        }
+        return connectionPool.connection(for: remoteID)
+    }
+
+    private func remoteIDForThread(id threadID: String) -> String? {
+        guard let projectID = threads.first(where: { $0.id == threadID })?.projectId else {
+            return nil
+        }
+        return remoteIDForProject(id: projectID)
+    }
+
+    private func remoteIDForProject(id projectID: String) -> String? {
+        projects.first(where: { $0.id == projectID })?.remoteId
+    }
+
+    private func linkProject(
+        projectID: String,
+        repoID: String,
+        remoteID: String,
+        repoOwner: String,
+        repoName: String,
+        remoteCloneRoot: String,
+        defaultBranch: String
+    ) {
+        if let projectIndex = projects.firstIndex(where: { $0.id == projectID }) {
+            projects[projectIndex].repoId = repoID
+            projects[projectIndex].remoteId = remoteID
+        } else {
+            projects.append(
+                Project(
+                    id: projectID,
+                    name: repoName,
+                    remotePath: Remote.joinedRemotePath(root: remoteCloneRoot, owner: repoOwner, repoName: repoName),
+                    defaultBranch: defaultBranch,
+                    presets: [],
+                    remoteId: remoteID,
+                    repoId: repoID
+                )
+            )
+        }
+
+        do {
+            _ = try databaseManager?.linkProject(projectID: projectID, repoID: repoID, remoteID: remoteID)
+        } catch {
+            NSLog("threadmill-state: failed to link project metadata (%@): %@", projectID, "\(error)")
+        }
+    }
+
+    private func selectedRemoteID() -> String? {
+        if let selectedThreadID,
+           let remoteID = remoteIDForThread(id: selectedThreadID)
+        {
+            return remoteID
+        }
+
+        if let activeRemoteID = connectionPool?.activeRemoteId {
+            return activeRemoteID
+        }
+
+        return remotes.first?.id
+    }
+
+    private var visibleThreads: [ThreadModel] {
+        threads.filter { thread in
+            thread.status != .closed
+                && thread.status != .failed
+                && thread.sourceType != "main_checkout"
+        }
+    }
+
+    private func updateActiveRemoteConnection() {
+        guard let connectionPool, let remoteID = selectedRemoteID() else {
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            do {
+                try connectionPool.activate(remoteId: remoteID)
+                try await connectionPool.ensureConnected(remoteId: remoteID)
+            } catch {
+                NSLog("threadmill-state: failed to activate remote connection (%@): %@", remoteID, "\(error)")
+            }
+
+            if let activeConnection = self?.connectionPool?.connection(for: remoteID) {
+                self?.connectionStatus = activeConnection.state
+            }
+        }
+    }
+
+    private func startStatsTimer() {
+        guard statsTimer == nil else {
+            return
+        }
+
+        statsTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.refreshSystemStats()
+            }
+        }
+    }
+
+    private func stopStatsTimer() {
+        statsTimer?.invalidate()
+        statsTimer = nil
+    }
+
+    private func refreshSystemStats() async {
+        guard case .connected = connectionStatus, let connectionManager else {
+            return
+        }
+
+        do {
+            let result = try await connectionManager.request(
+                method: "system.stats",
+                params: nil,
+                timeout: 5
+            )
+
+            guard JSONSerialization.isValidJSONObject(result) else {
+                systemStats = nil
+                return
+            }
+
+            let payload = try JSONSerialization.data(withJSONObject: result)
+            systemStats = try JSONDecoder().decode(SystemStatsResult.self, from: payload)
+        } catch {
+            systemStats = nil
+            NSLog("threadmill-state: failed to refresh system stats: %@", "\(error)")
+        }
+    }
+
+    func cleanupSystem() async {
+        guard case .connected = connectionStatus, let connectionManager else {
+            return
+        }
+
+        do {
+            _ = try await connectionManager.request(
+                method: "system.cleanup",
+                params: nil,
+                timeout: 30
+            )
+            await refreshSystemStats()
+        } catch {
+            NSLog("threadmill-state: failed to cleanup system: %@", "\(error)")
+        }
+    }
+
     // MARK: - Keyboard shortcut actions
 
     func selectThreadByIndex(_ index: Int) {
@@ -913,6 +1182,9 @@ final class AppState {
     }
 
     func openNewThreadSheet() {
+        guard !repos.isEmpty, !remotes.isEmpty else {
+            return
+        }
         isNewThreadSheetPresented = true
     }
 

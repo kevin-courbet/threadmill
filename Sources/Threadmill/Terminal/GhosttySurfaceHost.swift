@@ -154,6 +154,7 @@ final class GhosttySurfaceHost: SurfaceHosting {
         guard let config = ghostty_config_new() else {
             fatalError("ghostty_config_new failed")
         }
+        loadThemeDefaults(into: config)
         ghostty_config_load_default_files(config)
         ghostty_config_finalize(config)
         ghosttyConfig = config
@@ -218,6 +219,59 @@ final class GhosttySurfaceHost: SurfaceHosting {
         }
         ghosttyApp = app
     }
+
+    private func loadThemeDefaults(into config: ghostty_config_t) {
+        guard let filePath = writeThemeDefaultsFile() else {
+            NSLog("threadmill: failed to write ghostty theme defaults")
+            return
+        }
+
+        filePath.withCString { ptr in
+            ghostty_config_load_file(config, ptr)
+        }
+    }
+
+    private func writeThemeDefaultsFile() -> String? {
+        let baseDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("threadmill", isDirectory: true)
+        let fileURL = baseDirectory.appendingPathComponent("ghostty-default-theme.ghostty")
+
+        do {
+            try FileManager.default.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+
+            let existing = try? String(contentsOf: fileURL, encoding: .utf8)
+            if existing != Self.themeDefaults {
+                try Self.themeDefaults.write(to: fileURL, atomically: true, encoding: .utf8)
+            }
+
+            return fileURL.path
+        } catch {
+            NSLog("threadmill: unable to persist ghostty theme defaults: %@", String(describing: error))
+            return nil
+        }
+    }
+
+    private static let themeDefaults = """
+    background = #1e1e2e
+    foreground = #cdd6f4
+
+    palette = 0=#45475a
+    palette = 1=#f38ba8
+    palette = 2=#a6e3a1
+    palette = 3=#f9e2af
+    palette = 4=#89b4fa
+    palette = 5=#f5c2e7
+    palette = 6=#94e2d5
+    palette = 7=#bac2de
+    palette = 8=#585b70
+    palette = 9=#f38ba8
+    palette = 10=#a6e3a1
+    palette = 11=#f9e2af
+    palette = 12=#89b4fa
+    palette = 13=#f5c2e7
+    palette = 14=#94e2d5
+    palette = 15=#a6adc8
+    """
 
     private func handleChildExited(target: ghostty_target_s) {
         guard target.tag == GHOSTTY_TARGET_SURFACE,

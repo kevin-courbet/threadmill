@@ -3,13 +3,36 @@ import GRDB
 
 @MainActor
 final class DatabaseManager: DatabaseManaging {
+    struct RemoteDefaults {
+        static let beastName = "beast"
+        static let beastHost = "beast"
+        static let beastDaemonPort = 19990
+        static let beastUseSSHTunnel = true
+        static let beastCloneRoot = "/home/wsl/dev"
+    }
+
+    private struct RemoteConfigEntry: Decodable {
+        let name: String
+        let host: String
+        let daemonPort: Int
+        let useSSHTunnel: Bool
+        let cloneRoot: String
+    }
+
     private let dbQueue: DatabaseQueue
 
-    init() throws {
+    init(databasePath: String? = nil) throws {
         let fileManager = FileManager.default
         let databaseURL: URL
 
-        if let overridePath = ProcessInfo.processInfo.environment["THREADMILL_DB_PATH"], !overridePath.isEmpty {
+        if let databasePath, !databasePath.isEmpty {
+            databaseURL = URL(fileURLWithPath: databasePath)
+            try fileManager.createDirectory(
+                at: databaseURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+        } else if let overridePath = ProcessInfo.processInfo.environment["THREADMILL_DB_PATH"], !overridePath.isEmpty {
             databaseURL = URL(fileURLWithPath: overridePath)
             try fileManager.createDirectory(
                 at: databaseURL.deletingLastPathComponent(),
@@ -41,6 +64,63 @@ final class DatabaseManager: DatabaseManaging {
     func allThreads() throws -> [ThreadModel] {
         try dbQueue.read { db in
             try ThreadModel.order(ThreadModel.Columns.createdAt.desc).fetchAll(db)
+        }
+    }
+
+    func allRemotes() throws -> [Remote] {
+        try dbQueue.read { db in
+            try Remote.order(Remote.Columns.name.asc).fetchAll(db)
+        }
+    }
+
+    func allRepos() throws -> [Repo] {
+        try dbQueue.read { db in
+            try Repo.order(Repo.Columns.fullName.asc).fetchAll(db)
+        }
+    }
+
+    func remote(id: String) throws -> Remote? {
+        try dbQueue.read { db in
+            try Remote.fetchOne(db, key: id)
+        }
+    }
+
+    func repo(id: String) throws -> Repo? {
+        try dbQueue.read { db in
+            try Repo.fetchOne(db, key: id)
+        }
+    }
+
+    func saveRemote(_ remote: Remote) throws {
+        try dbQueue.write { db in
+            try remote.save(db)
+        }
+    }
+
+    func saveRepo(_ repo: Repo) throws {
+        try dbQueue.write { db in
+            try repo.save(db)
+        }
+    }
+
+    func deleteRemote(id: String) throws {
+        try dbQueue.write { db in
+            _ = try Remote.deleteOne(db, key: id)
+        }
+    }
+
+    func deleteRepo(id: String) throws {
+        try dbQueue.write { db in
+            _ = try Repo.deleteOne(db, key: id)
+        }
+    }
+
+    func replaceAllRepos(_ repos: [Repo]) throws {
+        try dbQueue.write { db in
+            try Repo.deleteAll(db)
+            for repo in repos {
+                try repo.insert(db)
+            }
         }
     }
 
@@ -104,17 +184,45 @@ final class DatabaseManager: DatabaseManaging {
         }
     }
 
-    func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel]) throws {
+    func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel], remoteId: String) throws {
         try dbQueue.write { db in
-            try Project.deleteAll(db)
-            try ThreadModel.deleteAll(db)
+            let existingProjectMetadata = try Project.fetchAll(db).reduce(into: [String: (remoteID: String?, repoID: String?)]()) { result, project in
+                result[project.id] = (project.remoteId, project.repoId)
+            }
+            let incomingProjectIDs = Set(projects.map(\.id))
+            let incomingThreadIDs = Set(threads.map(\.id))
 
             for project in projects {
-                try project.insert(db)
+                var projectToPersist = project
+                if projectToPersist.remoteId == nil {
+                    projectToPersist.remoteId = existingProjectMetadata[project.id]?.remoteID ?? remoteId
+                }
+                if projectToPersist.repoId == nil {
+                    projectToPersist.repoId = existingProjectMetadata[project.id]?.repoID
+                }
+                try projectToPersist.save(db)
+            }
+
+            if incomingProjectIDs.isEmpty {
+                _ = try Project
+                    .filter(Project.Columns.remoteId == remoteId)
+                    .deleteAll(db)
+            } else {
+                _ = try Project
+                    .filter(Project.Columns.remoteId == remoteId && !incomingProjectIDs.contains(Project.Columns.id))
+                    .deleteAll(db)
+
+                var staleThreadFilter = incomingProjectIDs.contains(ThreadModel.Columns.projectId)
+                if !incomingThreadIDs.isEmpty {
+                    staleThreadFilter = staleThreadFilter && !incomingThreadIDs.contains(ThreadModel.Columns.id)
+                }
+                _ = try ThreadModel
+                    .filter(staleThreadFilter)
+                    .deleteAll(db)
             }
 
             for thread in threads {
-                try thread.insert(db)
+                try thread.save(db)
             }
         }
     }
@@ -125,6 +233,77 @@ final class DatabaseManager: DatabaseManaging {
                 .filter(ThreadModel.Columns.id == threadID)
                 .updateAll(db, ThreadModel.Columns.status.set(to: status.rawValue))
             return updated > 0
+        }
+    }
+
+    func linkProject(projectID: String, repoID: String, remoteID: String) throws -> Bool {
+        try dbQueue.write { db in
+            let updated = try Project
+                .filter(Project.Columns.id == projectID)
+                .updateAll(
+                    db,
+                    Project.Columns.repoId.set(to: repoID),
+                    Project.Columns.remoteId.set(to: remoteID)
+                )
+            return updated > 0
+        }
+    }
+
+    func syncRemotesFromConfigFile() throws {
+        let configURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config", isDirectory: true)
+            .appendingPathComponent("threadmill", isDirectory: true)
+            .appendingPathComponent("remotes.json", isDirectory: false)
+
+        guard FileManager.default.fileExists(atPath: configURL.path) else {
+            return
+        }
+
+        let data = try Data(contentsOf: configURL)
+        let entries = try JSONDecoder().decode([RemoteConfigEntry].self, from: data)
+
+        try dbQueue.write { db in
+            for entry in entries {
+                let existing = try Remote
+                    .filter(Remote.Columns.name == entry.name)
+                    .fetchOne(db)
+
+                let remote = Remote(
+                    id: existing?.id ?? UUID().uuidString,
+                    name: entry.name,
+                    host: entry.host,
+                    daemonPort: entry.daemonPort,
+                    useSSHTunnel: entry.useSSHTunnel,
+                    cloneRoot: entry.cloneRoot
+                )
+                try remote.save(db)
+            }
+        }
+    }
+
+    func ensureDefaultRemoteExists() throws -> Remote {
+        try dbQueue.write { db in
+            if let beast = try Remote
+                .filter(Remote.Columns.name == RemoteDefaults.beastName)
+                .fetchOne(db)
+            {
+                return beast
+            }
+
+            if let firstRemote = try Remote.order(Remote.Columns.name.asc).fetchOne(db) {
+                return firstRemote
+            }
+
+            let beastRemote = Remote(
+                id: UUID().uuidString,
+                name: RemoteDefaults.beastName,
+                host: RemoteDefaults.beastHost,
+                daemonPort: RemoteDefaults.beastDaemonPort,
+                useSSHTunnel: RemoteDefaults.beastUseSSHTunnel,
+                cloneRoot: RemoteDefaults.beastCloneRoot
+            )
+            try beastRemote.insert(db)
+            return beastRemote
         }
     }
 
@@ -189,6 +368,55 @@ final class DatabaseManager: DatabaseManaging {
             try db.create(index: "idx_browserSession_threadID", on: "browserSession", columns: ["threadID"])
         }
 
+        migrator.registerMigration("v6_remote_model") { db in
+            let beastRemote = Remote(
+                id: UUID().uuidString,
+                name: RemoteDefaults.beastName,
+                host: RemoteDefaults.beastHost,
+                daemonPort: RemoteDefaults.beastDaemonPort,
+                useSSHTunnel: RemoteDefaults.beastUseSSHTunnel,
+                cloneRoot: RemoteDefaults.beastCloneRoot
+            )
+
+            try db.create(table: "remotes") { table in
+                table.column("id", .text).primaryKey()
+                table.column("name", .text).notNull().unique(onConflict: .replace)
+                table.column("host", .text).notNull()
+                table.column("daemon_port", .integer).notNull()
+                table.column("use_ssh_tunnel", .boolean).notNull()
+                table.column("clone_root", .text).notNull()
+            }
+
+            try beastRemote.insert(db)
+
+            try db.alter(table: "projects") { table in
+                table.add(column: "remote_id", .text).indexed().references("remotes", onDelete: .setNull)
+            }
+
+            try db.execute(
+                sql: "UPDATE projects SET remote_id = ? WHERE remote_id IS NULL",
+                arguments: [beastRemote.id]
+            )
+        }
+
+        migrator.registerMigration("v7_repo_model") { db in
+            try db.create(table: "repos") { table in
+                table.column("id", .text).primaryKey()
+                table.column("owner", .text).notNull()
+                table.column("name", .text).notNull()
+                table.column("full_name", .text).notNull().unique(onConflict: .replace)
+                table.column("clone_url", .text).notNull()
+                table.column("default_branch", .text).notNull()
+                table.column("is_private", .boolean).notNull()
+                table.column("cached_at", .datetime).notNull()
+            }
+
+            try db.alter(table: "projects") { table in
+                table.add(column: "repo_id", .text).indexed().references("repos", onDelete: .setNull)
+            }
+        }
+
         try migrator.migrate(dbQueue)
     }
+
 }

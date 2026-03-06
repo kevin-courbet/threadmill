@@ -24,12 +24,13 @@ final class ChatConversationService: ChatConversationManaging {
         self.openCodeClient = openCodeClient
     }
 
-    func createConversation(threadID: String, directory: String) async throws -> ChatConversation {
+    func createConversation(threadID: String, directory: String, agentID: String?, model: OCMessageModel?) async throws -> ChatConversation {
         var conversation = ChatConversation(threadID: threadID)
         try databaseManager.saveConversation(conversation)
 
-        let session = try await openCodeClient.createSession(directory: directory)
-        conversation.linkSession(session.id)
+        let session = try await openCodeClient.createSession(directory: directory, agentID: agentID)
+        let initializedSession = try await openCodeClient.initSession(id: session.id, directory: directory, model: model)
+        conversation.linkSession(initializedSession.id)
         try databaseManager.saveConversation(conversation)
         return conversation
     }
