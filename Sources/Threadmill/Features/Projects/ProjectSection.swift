@@ -12,6 +12,7 @@ struct ProjectSection: View {
     let onReopenThread: (ThreadModel) -> Void
 
     @State private var isExpanded = true
+    @State private var isHeaderHovered = false
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
@@ -29,8 +30,8 @@ struct ProjectSection: View {
         } label: {
             header
         }
+        .disclosureGroupStyle(ProjectSectionDisclosureStyle())
         .padding(.vertical, 4)
-        .tint(.secondary)
         .accessibilityIdentifier("project.section.\(project.id)")
     }
 
@@ -71,9 +72,25 @@ struct ProjectSection: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("project.section.new-thread.\(project.id)")
 
+            Button {
+                isExpanded.toggle()
+            } label: {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
+        .background(isHeaderHovered ? Color.white.opacity(0.05) : .clear)
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(Rectangle())
+        .onHover { isHovered in
+            isHeaderHovered = isHovered
+        }
         .accessibilityIdentifier("project.section.toggle.\(project.id)")
     }
 
@@ -110,5 +127,19 @@ struct ProjectSection: View {
                     }
                 }
             }
+    }
+}
+
+private struct ProjectSectionDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            configuration.label
+
+            if configuration.isExpanded {
+                configuration.content
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.easeInOut(duration: 0.14), value: configuration.isExpanded)
     }
 }

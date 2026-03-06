@@ -3,10 +3,12 @@ import XCTest
 @testable import Threadmill
 
 final class ProjectSectionTests: XCTestCase {
-    func testProjectSectionUsesNativeDisclosureInsteadOfInstantTransaction() throws {
+    func testProjectSectionUsesCustomChevronDisclosureAndNoInstantTransaction() throws {
         let source = try loadSource(at: "Sources/Threadmill/Features/Projects/ProjectSection.swift")
 
-        XCTAssertTrue(source.contains("DisclosureGroup"))
+        XCTAssertTrue(source.contains("DisclosureGroup(isExpanded: $isExpanded)"))
+        XCTAssertTrue(source.contains("ProjectSectionDisclosureStyle"))
+        XCTAssertTrue(source.contains("isExpanded ? \"chevron.down\" : \"chevron.right\""))
         XCTAssertFalse(source.contains("instantToggleTransaction"))
     }
 

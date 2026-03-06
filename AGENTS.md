@@ -236,3 +236,4 @@ Every tmux session gets these env vars:
 | `docs/architecture.md` | Full architecture spec, module structure, milestone status |
 | `docs/vision.md` | Product vision, feature status, milestone checklist |
 | `protocol/threadmill-rpc.schema.json` | JSON-RPC schema (types, methods, events) |
+| `docs/agents/swiftui-patterns.md` | SwiftUI/AppKit patterns: DisclosureGroup custom chevron, hover states, Settings window, GhosttyKit theming |

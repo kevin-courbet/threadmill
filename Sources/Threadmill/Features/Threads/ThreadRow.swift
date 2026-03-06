@@ -3,6 +3,7 @@ import SwiftUI
 struct ThreadRow: View {
     let thread: ThreadModel
     let onCancelCreation: (ThreadModel) -> Void
+    @State private var isHovered = false
 
     init(thread: ThreadModel, onCancelCreation: @escaping (ThreadModel) -> Void = { _ in }) {
         self.thread = thread
@@ -45,6 +46,12 @@ struct ThreadRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 2)
+        .background(isHovered ? Color.white.opacity(0.04) : .clear)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .onHover { hovered in
+            isHovered = hovered
+        }
     }
 
     private var statusLabel: String? {

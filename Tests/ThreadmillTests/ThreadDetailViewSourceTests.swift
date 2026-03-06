@@ -58,7 +58,7 @@ final class ThreadDetailViewSourceTests: XCTestCase {
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertTrue(source.contains(".toolbar {"))
-        XCTAssertTrue(source.contains("ToolbarItem(placement: .automatic)"))
+        XCTAssertTrue(source.contains("ToolbarItem(placement: .navigation)"))
         XCTAssertFalse(source.contains("private var toolbarRow: some View"))
     }
 
