@@ -25,7 +25,7 @@ struct ThreadDetailView: View {
             VStack(spacing: 0) { thread.status == .active ? AnyView(activeModeContent(thread: thread)) : AnyView(InactiveThreadView(thread: thread)) }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .toolbar {
-                    ToolbarItem(placement: .automatic) { modePicker }
+                    ToolbarItem(placement: .principal) { modePicker }
                     if showsModeSessionTabs {
                         ToolbarItem(placement: .automatic) {
                             ThreadModeSessionTabs(
@@ -40,6 +40,10 @@ struct ThreadDetailView: View {
                                 isTerminalModeSelected: { selectedTab == TabItem.terminal.id }
                             )
                         }
+                    }
+                    ToolbarItem(placement: .automatic) {
+                        ConnectionStatusView(status: appState.connectionStatus)
+                            .padding(.leading, 8)
                     }
                 }
                 .overlay(alignment: .bottomLeading) {

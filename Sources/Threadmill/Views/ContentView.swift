@@ -33,13 +33,12 @@ struct ContentView: View {
                 )
             }
         }
-        .navigationSplitViewStyle(.balanced)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(placement: .confirmationAction) {
                 ConnectionStatusView(status: appState.connectionStatus)
-                    .padding(.trailing, 4)
             }
         }
+        .navigationSplitViewStyle(.balanced)
         .sheet(isPresented: Bindable(appState).isNewThreadSheetPresented) {
             if let repo = appState.repos.first {
                 NewThreadSheet(repo: repo)

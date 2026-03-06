@@ -30,6 +30,7 @@ struct ConnectionStatusView: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            
             Circle()
                 .fill(color)
                 .frame(width: 9, height: 9)
@@ -64,6 +65,7 @@ struct ConnectionStatusView: View {
                 .font(.caption)
             }
         }
+        .padding(.horizontal, 6)
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier("connection.status")
         .accessibilityLabel("Connection")
