@@ -132,6 +132,74 @@ final class AppStateRemoteConnectionTests: XCTestCase {
         XCTAssertEqual(connectionB.startCallCount, 1)
     }
 
+    func testCreateThreadSyncsTargetProjectRemote() async throws {
+        let remoteA = Remote(id: "remote-a", name: "alpha", host: "alpha", daemonPort: 19990, useSSHTunnel: true, cloneRoot: "/home/wsl/dev")
+        let remoteB = Remote(id: "remote-b", name: "beta", host: "beta", daemonPort: 19990, useSSHTunnel: true, cloneRoot: "/home/wsl/dev")
+
+        let connectionA = MockDaemonConnection(state: .connected)
+        let connectionB = MockDaemonConnection(state: .connected)
+        connectionB.requestHandler = { method, _, _ in
+            switch method {
+            case "thread.create":
+                return ["id": "thread-b"]
+            case "project.list":
+                return [[
+                    "id": "project-b",
+                    "name": "beta",
+                    "path": "/home/wsl/dev/beta",
+                    "default_branch": "main",
+                    "remote_id": remoteB.id,
+                ]]
+            case "thread.list":
+                return [[
+                    "id": "thread-b",
+                    "project_id": "project-b",
+                    "name": "feature-b",
+                    "branch": "feature-b",
+                    "worktree_path": "/home/wsl/dev/.threadmill/beta/feature-b",
+                    "status": "active",
+                    "source_type": "new_feature",
+                    "created_at": "2026-03-07T00:00:00Z",
+                    "tmux_session": "tm_feature_b",
+                    "port_offset": 0,
+                ]]
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let pool = MockRemoteConnectionPool()
+        pool.connections = [remoteA.id: connectionA, remoteB.id: connectionB]
+        pool.activeRemoteId = remoteA.id
+
+        let database = MockDatabaseManager()
+        database.remotes = [remoteA, remoteB]
+        database.projects = [
+            Project(
+                id: "project-b",
+                name: "beta",
+                remotePath: "/home/wsl/dev/beta",
+                defaultBranch: "main",
+                presets: [PresetConfig(name: "terminal", command: "$SHELL", cwd: nil)],
+                remoteId: remoteB.id
+            )
+        ]
+
+        let appState = AppState()
+        appState.configure(
+            connectionPool: pool,
+            databaseManager: database,
+            syncService: MockSyncService(),
+            multiplexer: MockTerminalMultiplexer()
+        )
+        appState.reloadFromDatabase()
+
+        try await appState.createThread(projectID: "project-b", name: "feature-b", sourceType: "new_feature", branch: nil)
+
+        XCTAssertEqual(database.replaceAllFromDaemonRemoteIDs.last, remoteB.id)
+        XCTAssertEqual(connectionB.requests.map(\.method), ["thread.create", "project.list", "thread.list"])
+    }
+
     func testReloadFromDatabaseReconcilesRemoteConnectionPool() {
         let remoteA = Remote(id: "remote-a", name: "alpha", host: "alpha", daemonPort: 19990, useSSHTunnel: true, cloneRoot: "/home/wsl/dev")
         let remoteAUpdated = Remote(id: "remote-a", name: "alpha", host: "alpha-new", daemonPort: 20001, useSSHTunnel: true, cloneRoot: "/home/wsl/dev")

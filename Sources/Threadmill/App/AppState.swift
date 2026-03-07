@@ -819,7 +819,7 @@ final class AppState {
         do {
             _ = try await connectionManager.request(method: "thread.create", params: params, timeout: 30)
             NSLog("threadmill-state: createThread request sent")
-            await syncService?.syncFromDaemon()
+            await syncRemoteState(forProjectID: projectID, using: connectionManager)
             NSLog("threadmill-state: createThread sync complete")
         } catch {
             NSLog("threadmill-state: createThread failed: %@", "\(error)")
@@ -1187,6 +1187,21 @@ final class AppState {
                 self?.connectionStatus = activeConnection.state
             }
         }
+    }
+
+    private func syncRemoteState(forProjectID projectID: String, using connection: any ConnectionManaging) async {
+        guard let databaseManager, let remoteID = remoteIDForProject(id: projectID) else {
+            await syncService?.syncFromDaemon()
+            return
+        }
+
+        let syncService = SyncService(
+            connectionManager: connection,
+            databaseManager: databaseManager,
+            appState: self,
+            remoteId: remoteID
+        )
+        await syncService.syncFromDaemon()
     }
 
     private func injectDefaultWorkspaceRepo() {
