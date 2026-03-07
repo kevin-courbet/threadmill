@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// Emits flat rows into the parent List — no Section, no DisclosureGroup.
+/// List natively animates ForEach row insertion/removal.
 struct ProjectSection: View {
     let project: Project
     let threads: [ThreadModel]
@@ -15,25 +17,30 @@ struct ProjectSection: View {
     @State private var isHeaderHovered = false
 
     var body: some View {
-        Section(isExpanded: $isExpanded) {
+        header
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+            .listRowBackground(Color.clear)
+
+        if isExpanded {
             if displayedThreads.isEmpty {
                 Text("No threads yet")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .padding(.leading, 38)
+                    .padding(.leading, 48)
                     .padding(.vertical, 3)
                     .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 3, trailing: 10))
+                    .listRowBackground(Color.clear)
             } else {
                 ForEach(displayedThreads) { thread in
                     threadRow(thread)
                         .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+                        .listRowBackground(Color.clear)
                 }
             }
-        } header: {
-            header
         }
-        .listSectionSeparator(.hidden, edges: .all)
-        .accessibilityIdentifier("project.section.\(project.id)")
     }
 
     private var header: some View {

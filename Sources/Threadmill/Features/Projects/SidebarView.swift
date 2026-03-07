@@ -74,9 +74,6 @@ struct SidebarView: View {
                         )
                     }
                 }
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-                .listRowBackground(Color.clear)
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)

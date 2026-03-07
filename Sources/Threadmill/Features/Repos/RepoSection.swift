@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// Emits flat rows into the parent List — no Section, no DisclosureGroup.
+/// List natively animates ForEach row insertion/removal.
 struct RepoSection: View {
     let repo: Repo
     let threads: [ThreadModel]
@@ -15,25 +17,30 @@ struct RepoSection: View {
     @State private var isHeaderHovered = false
 
     var body: some View {
-        Section(isExpanded: $isExpanded) {
+        header
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+            .listRowBackground(Color.clear)
+
+        if isExpanded {
             if displayedThreads.isEmpty {
                 Text("No threads yet")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .padding(.leading, 38)
+                    .padding(.leading, 48)
                     .padding(.vertical, 3)
                     .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 3, trailing: 10))
+                    .listRowBackground(Color.clear)
             } else {
                 ForEach(displayedThreads) { thread in
                     threadRow(thread)
                         .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+                        .listRowBackground(Color.clear)
                 }
             }
-        } header: {
-            header
         }
-        .listSectionSeparator(.hidden, edges: .all)
-        .accessibilityIdentifier("repo.section.\(repo.id)")
     }
 
     private var header: some View {
@@ -51,13 +58,18 @@ struct RepoSection: View {
                 Text(repo.name)
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
-                if !repo.owner.isEmpty {
-                    Text(repo.owner)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+                Text(repo.owner)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
+
+            Text("\(threads.count)")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.white.opacity(0.06), in: Capsule())
 
             Spacer(minLength: 0)
 

@@ -3,14 +3,6 @@ import XCTest
 @testable import Threadmill
 
 final class ProjectSectionTests: XCTestCase {
-    func testProjectSectionUsesNativeSectionDisclosureAndNoInstantTransaction() throws {
-        let source = try loadSource(at: "Sources/Threadmill/Features/Projects/ProjectSection.swift")
-
-        XCTAssertTrue(source.contains("Section(isExpanded: $isExpanded)"))
-        XCTAssertTrue(source.contains("chevron.right"))
-        XCTAssertFalse(source.contains("instantToggleTransaction"))
-    }
-
     func testProjectSectionSortsThreadsByCreatedAtOnly() throws {
         let source = try loadSource(at: "Sources/Threadmill/Features/Projects/ProjectSection.swift")
 
