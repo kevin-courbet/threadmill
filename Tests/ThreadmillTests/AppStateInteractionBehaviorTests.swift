@@ -83,6 +83,8 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
                 return ["id": "project-11"]
             case "thread.create":
                 return ["id": "thread-11"]
+            case "project.list", "thread.list":
+                return []
             default:
                 throw TestError.missingStub
             }
@@ -98,7 +100,8 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
             branch: nil
         )
 
-        XCTAssertEqual(connection.requests.map(\.method), ["project.lookup", "project.clone", "thread.create"])
+        XCTAssertEqual(Array(connection.requests.prefix(3).map(\.method)), ["project.lookup", "project.clone", "thread.create"])
+        XCTAssertTrue(connection.requests.contains(where: { $0.method == "project.list" }))
         XCTAssertEqual(connection.requests[2].params?["project_id"] as? String, "project-11")
         XCTAssertEqual(connection.requests[2].params?["name"] as? String, "feature-auth")
         XCTAssertEqual(database.linkedProjects.count, 1)

@@ -36,11 +36,6 @@ struct SystemStatsBar: View {
                 }
                 .font(.caption)
                 .padding(.trailing, 10)
-            } else {
-                Text(status.label)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.trailing, 10)
             }
         }
     }

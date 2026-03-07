@@ -30,6 +30,7 @@ struct SidebarView: View {
                     case .repo(let repo, let threads):
                         RepoSection(
                             repo: repo,
+                            linkedProject: linkedProject(for: repo),
                             threads: threads,
                             canCreateThread: !appState.remotes.isEmpty,
                             selectedThreadID: $bindableState.selectedThreadID,
@@ -47,6 +48,9 @@ struct SidebarView: View {
                             },
                             onReopenThread: { thread in
                                 Task { await appState.reopenThread(threadID: thread.id) }
+                            },
+                            onRemoveProject: { project in
+                                Task { await appState.removeProject(projectID: project.id) }
                             }
                         )
 
@@ -70,6 +74,9 @@ struct SidebarView: View {
                             },
                             onReopenThread: { thread in
                                 Task { await appState.reopenThread(threadID: thread.id) }
+                            },
+                            onRemoveProject: { project in
+                                Task { await appState.removeProject(projectID: project.id) }
                             }
                         )
                     }
@@ -157,6 +164,26 @@ struct SidebarView: View {
                 }
             }
         }
+    }
+}
+
+private extension SidebarView {
+    func linkedProject(for repo: Repo) -> Project? {
+        let candidates = appState.projects.filter { $0.repoId == repo.id }
+
+        if let selectedRemoteID = appState.selectedWorkspaceRemoteID,
+           let exactRemoteMatch = candidates.first(where: { $0.remoteId == selectedRemoteID })
+        {
+            return exactRemoteMatch
+        }
+
+        if let activeRemoteID = appState.activeRemoteID,
+           let activeRemoteMatch = candidates.first(where: { $0.remoteId == activeRemoteID })
+        {
+            return activeRemoteMatch
+        }
+
+        return candidates.first
     }
 }
 
