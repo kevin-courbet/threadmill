@@ -14,57 +14,94 @@ Patterns learned the hard way building Threadmill's macOS UI. Follow these to av
 
 ### What DOESN'T work (and why)
 
-**Manual `if isExpanded` in a VStack inside List** — List doesn't know content changed. Produces overlapping/overflowing intermediate frames that only resolve on mouse hover (triggering a redraw).
+1. **Manual `if isExpanded` in a VStack inside List** — List doesn't know content changed. Produces overlapping/overflowing intermediate frames that only resolve on mouse hover (triggering a redraw).
 
-**`DisclosureGroup` + custom `DisclosureGroupStyle`** — Seems right but ALSO causes the same jank. The custom style's `makeBody` still uses `if configuration.isExpanded` inside a VStack, which bypasses List's layout engine just like manual toggling. The DisclosureGroup wrapper provides the state binding but the custom style defeats the layout integration that makes it smooth.
+2. **`DisclosureGroup` + custom `DisclosureGroupStyle`** — The custom style's `makeBody` still uses `if configuration.isExpanded` inside a VStack, which bypasses List's layout engine. Same jank as #1.
 
-**`instantToggleTransaction()` / `Transaction(animation: nil)`** — Disabling animation doesn't fix layout, makes it worse.
+3. **`Section(isExpanded:)` with custom header** — Smooth animations, but the Section header gets an **unsuppressible divider line** on macOS `.listStyle(.plain)`. No combination of `.listSectionSeparator(.hidden)`, `.listSectionSeparatorTint(.clear)`, or `.listRowSeparator(.hidden)` on the header removes it. This is a macOS SwiftUI bug/limitation.
 
-### What WORKS: `Section(isExpanded:)` (macOS 14+)
+4. **`instantToggleTransaction()` / `Transaction(animation: nil)`** — Disabling animation doesn't fix layout, makes it worse.
 
-`Section(isExpanded:)` is the only approach that gives List full control over the expand/collapse lifecycle AND lets you customize the header freely. Each child row is a proper List row (not nested in a single DisclosureGroup cell), so List can animate them individually.
+5. **Multiple `ForEach` blocks in a `List`** — macOS List inserts implicit section boundaries between consecutive `ForEach` blocks, creating phantom dividers that can't be suppressed.
+
+### What WORKS: Flat rows with `if isExpanded` + `withAnimation`
+
+Emit the header and child rows as **flat, independent List rows**. No `Section`, no `DisclosureGroup`. The view's `body` returns multiple rows via `@ViewBuilder`. Wrap `isExpanded.toggle()` in `withAnimation` so List animates row insertion/removal natively.
 
 ```swift
 struct RepoSection: View {
+    let items: [Item]
     @State private var isExpanded = true
+    @State private var isHeaderHovered = false
 
     var body: some View {
-        Section(isExpanded: $isExpanded) {
+        // Header is a regular list row
+        header
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+            .listRowBackground(Color.clear)
+
+        // Children appear/disappear with animation
+        if isExpanded {
             ForEach(items) { item in
                 ItemRow(item: item)
-            }
-        } header: {
-            HStack {
-                Text("Section Title")
-                Spacer()
-
-                Button { /* add action */ } label: {
-                    Image(systemName: "plus")
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        isExpanded.toggle()
-                    }
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .animation(.easeInOut(duration: 0.15), value: isExpanded)
-                }
-                .buttonStyle(.plain)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+                    .listRowBackground(Color.clear)
             }
         }
+    }
+
+    private var header: some View {
+        HStack {
+            Text("Section Title")
+            Spacer()
+            Button { /* add */ } label: {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(.plain)
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .animation(.easeInOut(duration: 0.15), value: isExpanded)
+            }
+            .buttonStyle(.plain)
+        }
+        .background(isHeaderHovered ? Color.white.opacity(0.05) : .clear)
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(Rectangle())
+        .onHover { isHeaderHovered = $0 }
     }
 }
 ```
 
-**Why this works:** `Section(isExpanded:)` tells `List` about the section's collapse state at the layout level. List manages row insertion/removal natively. The header is fully custom — put the chevron anywhere.
+**Why this works:** Each row is a direct child of the List's ForEach. The `withAnimation` block tells SwiftUI to animate the `if isExpanded` change, and List handles row insertion/removal with its native animation. No Section header = no phantom divider. No VStack wrapping = no layout jank.
 
 **Key details:**
-- Wrap `isExpanded.toggle()` in `withAnimation` for smooth content transition
-- Use `rotationEffect` on a fixed `chevron.right` icon (not swapping between `chevron.down`/`chevron.right`) for smooth rotation animation
-- Works with `.listStyle(.plain)` and `.listStyle(.sidebar)`
+- Use `rotationEffect` on a fixed `chevron.right` (not swapping icons) for smooth rotation
+- Each row must have its own `.listRowSeparator(.hidden)` + `.listRowInsets` + `.listRowBackground`
+- If mixing repos and projects, use a **single `ForEach`** over a unified enum to avoid implicit section boundaries:
+
+```swift
+private enum SidebarItem: Identifiable {
+    case repo(Repo, [Thread])
+    case project(Project, [Thread])
+    var id: String { /* unique per case */ }
+}
+
+List {
+    ForEach(sidebarItems) { item in
+        switch item {
+        case .repo(let r, let t): RepoSection(repo: r, threads: t, ...)
+        case .project(let p, let t): ProjectSection(project: p, threads: t, ...)
+        }
+    }
+}
+```
 
 ---
 
