@@ -118,6 +118,20 @@ final class AppState {
         repos.first(where: \.isDefaultWorkspace)
     }
 
+    private func isDefaultWorkspaceProject(_ project: Project) -> Bool {
+        if project.repoId == Repo.defaultWorkspaceID {
+            return true
+        }
+
+        guard let remoteID = project.remoteId,
+              let remote = remotes.first(where: { $0.id == remoteID })
+        else {
+            return false
+        }
+
+        return project.remotePath == remote.defaultWorkspacePath
+    }
+
     func connectionForSelectedThread() -> (any ConnectionManaging)? {
         guard let selectedThreadID else {
             return nil
@@ -128,7 +142,7 @@ final class AppState {
     var projectsWithThreads: [(Project, [ThreadModel])] {
         let grouped = Dictionary(grouping: visibleThreads, by: \.projectId)
         return projects
-            .filter { $0.repoId == nil }
+            .filter { !isDefaultWorkspaceProject($0) && $0.repoId == nil }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             .map { project in
                 let rows = (grouped[project.id] ?? []).sorted { $0.createdAt > $1.createdAt }
@@ -138,8 +152,14 @@ final class AppState {
 
     var reposWithThreads: [(Repo, [ThreadModel])] {
         let projectsByID = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0) })
-        let grouped = Dictionary(grouping: visibleThreads) { thread in
-            projectsByID[thread.projectId]?.repoId
+        let grouped: [String?: [ThreadModel]] = Dictionary(grouping: visibleThreads) { thread -> String? in
+            guard let project = projectsByID[thread.projectId] else {
+                return nil
+            }
+            if isDefaultWorkspaceProject(project) {
+                return Repo.defaultWorkspaceID
+            }
+            return project.repoId
         }
 
         return repos
@@ -233,6 +253,7 @@ final class AppState {
             repos = try databaseManager.allRepos()
             injectDefaultWorkspaceRepo()
             projects = try databaseManager.allProjects()
+            normalizeDefaultWorkspaceProjects()
             threads = try databaseManager.allThreads()
             if selectedWorkspaceRemoteID == nil {
                 selectedWorkspaceRemoteID = remotes.first?.id
@@ -1166,7 +1187,6 @@ final class AppState {
         threads.filter { thread in
             thread.status != .closed
                 && thread.status != .failed
-                && thread.sourceType != "main_checkout"
         }
     }
 
@@ -1211,8 +1231,24 @@ final class AppState {
         repos.insert(.defaultWorkspace, at: 0)
     }
 
+    private func normalizeDefaultWorkspaceProjects() {
+        for project in projects where isDefaultWorkspaceProject(project) {
+            guard let remoteID = project.remoteId else {
+                continue
+            }
+            linkProject(
+                projectID: project.id,
+                repoID: Repo.defaultWorkspaceID,
+                remoteID: remoteID,
+                projectName: Repo.defaultWorkspace.name,
+                remotePath: project.remotePath,
+                defaultBranch: project.defaultBranch
+            )
+        }
+    }
+
     private func ensureDefaultWorkspaceOnRemote(remote: Remote) async throws -> String {
-        if let projectID = projects.first(where: { $0.repoId == Repo.defaultWorkspaceID && $0.remoteId == remote.id })?.id {
+        if let projectID = projects.first(where: { isDefaultWorkspaceProject($0) && $0.remoteId == remote.id })?.id {
             return projectID
         }
 

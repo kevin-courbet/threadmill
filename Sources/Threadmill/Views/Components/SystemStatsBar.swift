@@ -35,6 +35,7 @@ struct SystemStatsBar: View {
                     .onHover { isCleanupHovered = $0 }
                 }
                 .font(.caption)
+                .padding(.leading, 12)
                 .padding(.trailing, 10)
             }
         }

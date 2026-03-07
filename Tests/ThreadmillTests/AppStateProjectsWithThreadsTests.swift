@@ -69,7 +69,7 @@ final class AppStateProjectsWithThreadsTests: XCTestCase {
         XCTAssertEqual(visibleThreadIDs, ["thread-active"])
     }
 
-    func testProjectsWithThreadsHidesMainCheckoutThreads() {
+    func testProjectsWithThreadsShowsMainCheckoutThreads() {
         let connection = MockDaemonConnection(state: .connected)
         connection.requestHandler = { _, _, _ in NSNull() }
 
@@ -120,7 +120,60 @@ final class AppStateProjectsWithThreadsTests: XCTestCase {
 
         let visibleThreadIDs = appState.projectsWithThreads.first?.1.map(\.id)
 
-        XCTAssertEqual(visibleThreadIDs, ["thread-feature"])
+        XCTAssertEqual(visibleThreadIDs, ["thread-main", "thread-feature"])
+    }
+
+    func testReposWithThreadsTreatsRemoteWorkspacePathAsCrossProject() {
+        let connection = MockDaemonConnection(state: .connected)
+        connection.requestHandler = { _, _, _ in NSNull() }
+
+        let remote = Remote(
+            id: "remote-1",
+            name: "beast",
+            host: "beast",
+            daemonPort: 19990,
+            useSSHTunnel: true,
+            cloneRoot: "/home/wsl/dev"
+        )
+        let workspaceProject = Project(
+            id: "project-workspace",
+            name: "wsl",
+            remotePath: "/home/wsl",
+            defaultBranch: "main",
+            presets: [PresetConfig(name: "terminal", command: "$SHELL", cwd: nil)],
+            remoteId: remote.id,
+            repoId: nil
+        )
+        let workspaceThread = ThreadModel(
+            id: "thread-workspace",
+            projectId: workspaceProject.id,
+            name: "scratch",
+            branch: "scratch",
+            worktreePath: "/home/wsl",
+            status: .active,
+            sourceType: "main_checkout",
+            createdAt: Date(timeIntervalSince1970: 100),
+            tmuxSession: "tm_workspace",
+            portOffset: 0
+        )
+
+        let database = MockDatabaseManager()
+        database.remotes = [remote]
+        database.projects = [workspaceProject]
+        database.threads = [workspaceThread]
+
+        let appState = AppState()
+        appState.configure(
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
+            databaseManager: database,
+            syncService: MockSyncService(),
+            multiplexer: MockTerminalMultiplexer()
+        )
+        appState.reloadFromDatabase()
+
+        XCTAssertEqual(appState.reposWithThreads.first?.0.id, Repo.defaultWorkspaceID)
+        XCTAssertEqual(appState.reposWithThreads.first?.1.map(\.id), ["thread-workspace"])
+        XCTAssertTrue(appState.projectsWithThreads.isEmpty)
     }
 
     func testReposWithThreadsGroupsByRepoAndIncludesEmptyRepos() {
