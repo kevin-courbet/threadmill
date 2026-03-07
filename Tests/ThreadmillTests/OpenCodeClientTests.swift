@@ -153,15 +153,12 @@ final class OpenCodeClientTests: XCTestCase {
         XCTAssertNil(session.slug)
     }
 
-    func testCreateSessionWithAgentSendsAgentPayload() async throws {
+    func testCreateSessionDoesNotSendRequestBody() async throws {
         TestURLProtocol.requestHandler = { request in
             let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(components?.percentEncodedPath, "/session")
-
-            let body = try OpenCodeClientTests.requestBodyData(from: request)
-            let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
-            XCTAssertEqual(payload?["agent"] as? String, "my-agent")
+            XCTAssertNil(request.httpBody)
 
             let response = """
             {
@@ -181,17 +178,44 @@ final class OpenCodeClientTests: XCTestCase {
         }
 
         let client = makeClient()
-        let session = try await client.createSession(directory: "/tmp/worktree", agentID: "my-agent")
+        let session = try await client.createSession(directory: "/tmp/worktree")
         XCTAssertEqual(session.id, "ses_1")
     }
 
-    func testInitSessionUsesExplicitModelWithoutProviderLookup() async throws {
+    func testInitSessionUsesProviderDefaultModel() async throws {
         var requestPaths: [String] = []
 
         TestURLProtocol.requestHandler = { request in
             let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
             let path = components?.percentEncodedPath ?? ""
             requestPaths.append(path)
+
+            if path == "/provider" {
+                let payload = """
+                {
+                  "all": [
+                    {
+                      "id": "anthropic",
+                      "name": "Anthropic",
+                      "models": {
+                        "claude-sonnet": {
+                          "id": "claude-sonnet",
+                          "name": "Claude Sonnet"
+                        }
+                      }
+                    }
+                  ],
+                  "connected": ["anthropic"],
+                  "default": {
+                    "anthropic": "claude-sonnet"
+                  }
+                }
+                """.data(using: .utf8)!
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    payload
+                )
+            }
 
             if path == "/session/ses_1/init" {
                 XCTAssertEqual(request.httpMethod, "POST")
@@ -230,14 +254,10 @@ final class OpenCodeClientTests: XCTestCase {
         }
 
         let client = makeClient()
-        let session = try await client.initSession(
-            id: "ses_1",
-            directory: "/tmp/worktree",
-            model: OCMessageModel(providerID: "anthropic", modelID: "claude-sonnet")
-        )
+        let session = try await client.initSession(id: "ses_1", directory: "/tmp/worktree")
 
         XCTAssertEqual(session.id, "ses_1")
-        XCTAssertFalse(requestPaths.contains("/provider"))
+        XCTAssertTrue(requestPaths.contains("/provider"))
     }
 
     private static func requestBodyData(from request: URLRequest) throws -> Data {

@@ -73,18 +73,12 @@ protocol DatabaseManaging: AnyObject {
 
 @MainActor
 protocol ChatConversationManaging: AnyObject {
-    func createConversation(threadID: String, directory: String, agentID: String?, model: OCMessageModel?) async throws -> ChatConversation
+    func createConversation(threadID: String, directory: String) async throws -> ChatConversation
     func listConversations(threadID: String) async throws -> [ChatConversation]
     func activeConversations(threadID: String) async throws -> [ChatConversation]
     func archiveConversation(id: String) async throws
     func updateTitle(conversationID: String, title: String) async throws
     func verifySession(conversation: ChatConversation) async throws -> Bool
-}
-
-extension ChatConversationManaging {
-    func createConversation(threadID: String, directory: String) async throws -> ChatConversation {
-        try await createConversation(threadID: threadID, directory: directory, agentID: nil, model: nil)
-    }
 }
 
 @MainActor

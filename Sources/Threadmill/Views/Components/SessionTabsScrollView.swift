@@ -303,31 +303,55 @@ private struct NewTabButton: View {
                 button
             }
         } else {
-            let menu = Menu {
-                ForEach(addMenuItems) { item in
-                    Button(item.title, action: item.action)
+            HStack(spacing: 2) {
+                let plusButton = Button {
+                    clickTrigger += 1
+                    onAddDefault()
+                } label: {
+                    plusLabel
                 }
-            } label: {
-                plusLabel
-            } primaryAction: {
-                clickTrigger += 1
-                onAddDefault()
-            }
-            .menuStyle(.button)
-            .menuIndicator(.visible)
-            .buttonStyle(.plain)
-            .onHover { hovering in
-                isHovering = hovering
-            }
-            .help(addButtonHelp)
-            .accessibilityIdentifier(addButtonAccessibilityID)
+                .buttonStyle(.plain)
+                .onHover { hovering in
+                    isHovering = hovering
+                }
+                .help(addButtonHelp)
+                .accessibilityIdentifier(addButtonAccessibilityID)
 
-            if #available(macOS 14.0, *) {
-                menu.symbolEffect(.bounce, value: clickTrigger)
-            } else {
-                menu
+                if #available(macOS 14.0, *) {
+                    plusButton.symbolEffect(.bounce, value: clickTrigger)
+                } else {
+                    plusButton
+                }
+
+                Menu {
+                    ForEach(addMenuItems) { item in
+                        Button(item.title, action: item.action)
+                    }
+                } label: {
+                    chevronLabel
+                }
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
+                .buttonStyle(.plain)
+                .onHover { hovering in
+                    isHovering = hovering
+                }
+                .help(addButtonHelp)
+                .accessibilityIdentifier("\(addButtonAccessibilityID).menu")
             }
+            .padding(.leading, 1)
+            .padding(.trailing, 1)
         }
+    }
+
+    private var chevronLabel: some View {
+        Image(systemName: "chevron.down")
+            .font(.system(size: 9, weight: .semibold))
+            .frame(width: 16, height: 24)
+            .background(
+                isHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
     }
 
     private var plusLabel: some View {

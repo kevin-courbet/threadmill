@@ -60,35 +60,21 @@ final class OpenCodeClient: OpenCodeManaging {
         return try decoder.decode(OCSession.self, from: data)
     }
 
-    func createSession(directory: String, agentID: String?) async throws -> OCSession {
-        let requestBody: Data?
-        if let agentID, !agentID.isEmpty {
-            requestBody = try encoder.encode(OCSessionCreateRequest(agent: agentID))
-        } else {
-            requestBody = nil
-        }
-
-        let data = try await performDataRequest(pathComponents: ["session"], method: "POST", directory: directory, body: requestBody)
+    func createSession(directory: String) async throws -> OCSession {
+        let data = try await performDataRequest(pathComponents: ["session"], method: "POST", directory: directory)
         return try decoder.decode(OCSession.self, from: data)
     }
 
-    func initSession(id: String, directory: String, model: OCMessageModel?) async throws -> OCSession {
+    func initSession(id: String, directory: String) async throws -> OCSession {
         let sessionID = id
-        let resolvedModel: OCMessageModel
-
-        if let model {
-            resolvedModel = model
-        } else {
-            let providers = try await getProvidersPayload(directory: directory)
-            guard let model = defaultModel(from: providers) else {
-                throw OpenCodeClientError.missingDefaultModel
-            }
-            resolvedModel = model
+        let providers = try await getProvidersPayload(directory: directory)
+        guard let model = defaultModel(from: providers) else {
+            throw OpenCodeClientError.missingDefaultModel
         }
 
         let initRequest = OCSessionInitRequest(
-            modelID: resolvedModel.modelID,
-            providerID: resolvedModel.providerID,
+            modelID: model.modelID,
+            providerID: model.providerID,
             messageID: Self.makeMessageID()
         )
         let body = try encoder.encode(initRequest)
@@ -122,16 +108,6 @@ final class OpenCodeClient: OpenCodeManaging {
 
     func abort(sessionID: String, directory: String) async throws {
         _ = try await performDataRequest(pathComponents: ["session", sessionID, "abort"], method: "POST", directory: directory)
-    }
-
-    func getProviders(directory: String) async throws -> [OCProvider] {
-        let payload = try await getProvidersPayload(directory: directory)
-        return normalizeProviders(payload.all)
-    }
-
-    func getAgents(directory: String) async throws -> [OCAgent] {
-        let data = try await performDataRequest(pathComponents: ["agent"], method: "GET", directory: directory)
-        return try decoder.decode([OCAgent].self, from: data)
     }
 
     func getSessionDiff(sessionID: String, directory: String) async throws -> OCDiff {
@@ -187,18 +163,6 @@ final class OpenCodeClient: OpenCodeManaging {
 
         let providers = try decoder.decode([OCProviderPayload].self, from: data)
         return OCProvidersPayload(all: providers, connected: [], defaultModelByProvider: [:])
-    }
-
-    private func normalizeProviders(_ providers: [OCProviderPayload]) -> [OCProvider] {
-        providers.map { provider in
-            let models = provider.models.map { key, value in
-                OCModel(id: value.id ?? key, name: value.name ?? value.id ?? key)
-            }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
-            return OCProvider(id: provider.id, name: provider.name, models: models)
-        }
-        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     private func defaultModel(from payload: OCProvidersPayload) -> OCMessageModel? {
@@ -402,10 +366,6 @@ private struct OCMessageEnvelope: Decodable {
 private struct OCPromptRequest: Encodable {
     let messageID: String
     let parts: [OCTextPromptPart]
-}
-
-private struct OCSessionCreateRequest: Encodable {
-    let agent: String
 }
 
 private struct OCTextPromptPart: Encodable {

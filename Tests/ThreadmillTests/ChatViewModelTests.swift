@@ -22,25 +22,39 @@ final class ChatViewModelTests: XCTestCase {
         XCTAssertEqual(mock.fetchedMessages.first?.sessionID, "ses_1")
     }
 
-    func testLoadConversationsCreatesInitialConversationWhenNoneExist() async {
+    func testLoadConversationsWithNoSessionsKeepsConversationListEmpty() async {
         let mock = MockOpenCodeClient()
         let conversations = MockChatConversationService()
-        let created = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "", time: 1)
 
         conversations.listConversationsResult = .success([])
-        conversations.createConversationResult = .success(created)
-        mock.getMessagesResult = .success([])
 
         let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
         await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
 
-        XCTAssertEqual(conversations.createdConversations.first?.threadID, "thread_1")
-        XCTAssertEqual(conversations.createdConversations.first?.directory, "/tmp/worktree")
-        XCTAssertEqual(viewModel.currentConversation?.id, created.id)
-        XCTAssertEqual(viewModel.conversations.map(\.id), [created.id])
+        XCTAssertTrue(conversations.createdConversations.isEmpty)
+        XCTAssertNil(viewModel.currentConversation)
+        XCTAssertTrue(viewModel.conversations.isEmpty)
     }
 
-    func testCreateConversationUsesPreferredModelAndSelectedAgent() async {
+    func testArchiveConversationLeavesEmptyStateWhenLastConversationIsClosed() async {
+        let mock = MockOpenCodeClient()
+        let conversations = MockChatConversationService()
+        let onlyConversation = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "", time: 1)
+
+        conversations.listConversationsResult = .success([onlyConversation])
+        mock.getMessagesResult = .success([])
+
+        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
+        await viewModel.archiveConversation(onlyConversation)
+
+        XCTAssertEqual(conversations.archivedConversationIDs, ["conv_1"])
+        XCTAssertTrue(conversations.createdConversations.isEmpty)
+        XCTAssertNil(viewModel.currentConversation)
+        XCTAssertTrue(viewModel.conversations.isEmpty)
+    }
+
+    func testCreateConversationInitializesSessionWithoutModelSelectionState() async {
         let mock = MockOpenCodeClient()
         let conversations = MockChatConversationService()
         let created = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "", time: 1)
@@ -48,14 +62,25 @@ final class ChatViewModelTests: XCTestCase {
         conversations.createConversationResult = .success(created)
         mock.getMessagesResult = .success([])
 
-        let expectedModel = OCMessageModel(providerID: "anthropic", modelID: "claude-sonnet")
         let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
-        viewModel.setPreferredModel(expectedModel)
 
-        await viewModel.createConversation(threadID: "thread_1", directory: "/tmp/worktree", agentID: "reviewer", model: nil)
+        await viewModel.createConversation(threadID: "thread_1", directory: "/tmp/worktree")
 
-        XCTAssertEqual(conversations.createdConversations.first?.agentID, "reviewer")
-        XCTAssertEqual(conversations.createdConversations.first?.model, expectedModel)
+        XCTAssertEqual(conversations.createdConversations.first?.threadID, "thread_1")
+        XCTAssertEqual(conversations.createdConversations.first?.directory, "/tmp/worktree")
+    }
+
+    func testChatViewModelSourceDoesNotReferenceProviderModelPickerState() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Chat/ChatViewModel.swift")
+        let source = try String(contentsOf: sourcePath, encoding: .utf8)
+
+        XCTAssertFalse(source.contains("getProviders("))
+        XCTAssertFalse(source.contains("availableModels"))
+        XCTAssertFalse(source.contains("setPreferredModel"))
     }
 
     func testCreateConversationStartsEventStreamWhenLoadedDirectly() async {
@@ -66,7 +91,7 @@ final class ChatViewModelTests: XCTestCase {
         conversations.createConversationResult = .success(created)
 
         let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
-        await viewModel.createConversation(threadID: "thread_1", directory: "/tmp/worktree", agentID: nil, model: nil)
+        await viewModel.createConversation(threadID: "thread_1", directory: "/tmp/worktree")
 
         XCTAssertEqual(mock.streamedDirectories, ["/tmp/worktree"])
     }

@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class ChatModeActionsTests: XCTestCase {
-    func testCreateChatConversationSelectsNewConversationAndPassesAgentAndModel() async {
+    func testCreateChatConversationSelectsNewConversationAndDoesNotOverrideHarnessModel() async {
         let appState = AppState()
         let database = MockDatabaseManager()
         let connection = MockDaemonConnection()
@@ -38,13 +38,6 @@ final class ChatModeActionsTests: XCTestCase {
         appState.threads = [thread]
         appState.selectedThreadID = thread.id
 
-        let expectedModel = OCMessageModel(providerID: "anthropic", modelID: "claude-sonnet")
-        let modelKey = ChatModelSelectionStore.key(threadID: thread.id)
-        UserDefaults.standard.set(expectedModel.storageID, forKey: modelKey)
-        defer {
-            UserDefaults.standard.removeObject(forKey: modelKey)
-        }
-
         var createdConversation = ChatConversation(threadID: thread.id)
         createdConversation.id = "conversation-1"
         chatConversationService.createConversationResult = .success(createdConversation)
@@ -64,7 +57,7 @@ final class ChatModeActionsTests: XCTestCase {
                 set: { reloadToken = $0 }
             ),
             tabStateManager: tabStateManager,
-            agentID: "reviewer"
+            harness: .openCodeServe
         )
 
         let didSelectConversation = await waitForCondition {
@@ -72,8 +65,8 @@ final class ChatModeActionsTests: XCTestCase {
         }
 
         XCTAssertTrue(didSelectConversation)
-        XCTAssertEqual(chatConversationService.createdConversations.first?.agentID, "reviewer")
-        XCTAssertEqual(chatConversationService.createdConversations.first?.model, expectedModel)
+        XCTAssertEqual(chatConversationService.createdConversations.first?.threadID, "thread-1")
+        XCTAssertEqual(chatConversationService.createdConversations.first?.directory, "/tmp/worktree")
     }
 
     func testCreateChatConversationSurfacesErrorAndLeavesSelectionUnchanged() async {
@@ -131,7 +124,7 @@ final class ChatModeActionsTests: XCTestCase {
                 get: { errorMessage },
                 set: { errorMessage = $0 }
             ),
-            agentID: "reviewer"
+            harness: .openCodeServe
         )
 
         let didSurfaceError = await waitForCondition {

@@ -25,10 +25,9 @@ final class ChatConversationServiceTests: XCTestCase {
         let conversation = try await service.createConversation(threadID: "thread_1", directory: "/tmp/worktree")
 
         XCTAssertEqual(openCodeClient.createdSessionsInDirectories, ["/tmp/worktree"])
-        XCTAssertEqual(openCodeClient.createdSessions.first?.agentID, nil)
+        XCTAssertEqual(openCodeClient.createdSessions.first, "/tmp/worktree")
         XCTAssertEqual(openCodeClient.initializedSessions.count, 1)
         XCTAssertEqual(openCodeClient.initializedSessions.first?.id, "ses_1")
-        XCTAssertEqual(openCodeClient.initializedSessions.first?.model, nil)
         XCTAssertEqual(conversation.opencodeSessionID, "ses_1")
     }
 

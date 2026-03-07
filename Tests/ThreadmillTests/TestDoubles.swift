@@ -249,15 +249,15 @@ final class MockChatConversationService: ChatConversationManaging {
     var updateTitleResult: Result<Void, Error> = .success(())
     var verifySessionResult: Result<Bool, Error> = .success(true)
 
-    private(set) var createdConversations: [(threadID: String, directory: String, agentID: String?, model: OCMessageModel?)] = []
+    private(set) var createdConversations: [(threadID: String, directory: String)] = []
     private(set) var listedThreadIDs: [String] = []
     private(set) var activeThreadIDs: [String] = []
     private(set) var archivedConversationIDs: [String] = []
     private(set) var updatedTitles: [(id: String, title: String)] = []
     private(set) var verifiedConversationIDs: [String] = []
 
-    func createConversation(threadID: String, directory: String, agentID: String?, model: OCMessageModel?) async throws -> ChatConversation {
-        createdConversations.append((threadID, directory, agentID, model))
+    func createConversation(threadID: String, directory: String) async throws -> ChatConversation {
+        createdConversations.append((threadID, directory))
         return try createConversationResult.get()
     }
 
@@ -500,8 +500,6 @@ final class MockOpenCodeClient: OpenCodeManaging {
     var getMessagesHandler: ((String, String) async throws -> [OCMessage])?
     var sendPromptResult: Result<Void, Error> = .success(())
     var abortResult: Result<Void, Error> = .success(())
-    var getProvidersResult: Result<[OCProvider], Error> = .failure(TestError.missingStub)
-    var getAgentsResult: Result<[OCAgent], Error> = .failure(TestError.missingStub)
     var getSessionDiffResult: Result<OCDiff, Error> = .failure(TestError.missingStub)
     var healthCheckResult: Result<Bool, Error> = .success(true)
     var eventStream: AsyncStream<OCEvent> = AsyncStream { continuation in
@@ -511,13 +509,11 @@ final class MockOpenCodeClient: OpenCodeManaging {
     private(set) var listedDirectories: [String] = []
     private(set) var fetchedSessions: [(id: String, directory: String)] = []
     private(set) var createdSessionsInDirectories: [String] = []
-    private(set) var createdSessions: [(directory: String, agentID: String?)] = []
-    private(set) var initializedSessions: [(id: String, directory: String, model: OCMessageModel?)] = []
+    private(set) var createdSessions: [String] = []
+    private(set) var initializedSessions: [(id: String, directory: String)] = []
     private(set) var fetchedMessages: [(sessionID: String, directory: String)] = []
     private(set) var promptedSessions: [(sessionID: String, prompt: String, directory: String)] = []
     private(set) var abortedSessions: [(sessionID: String, directory: String)] = []
-    private(set) var providerDirectories: [String] = []
-    private(set) var agentDirectories: [String] = []
     private(set) var diffRequests: [(sessionID: String, directory: String)] = []
     private(set) var streamedDirectories: [String] = []
 
@@ -531,14 +527,14 @@ final class MockOpenCodeClient: OpenCodeManaging {
         return try getSessionResult.get()
     }
 
-    func createSession(directory: String, agentID: String?) async throws -> OCSession {
+    func createSession(directory: String) async throws -> OCSession {
         createdSessionsInDirectories.append(directory)
-        createdSessions.append((directory, agentID))
+        createdSessions.append(directory)
         return try createSessionResult.get()
     }
 
-    func initSession(id: String, directory: String, model: OCMessageModel?) async throws -> OCSession {
-        initializedSessions.append((id, directory, model))
+    func initSession(id: String, directory: String) async throws -> OCSession {
+        initializedSessions.append((id, directory))
         return try initSessionResult.get()
     }
 
@@ -558,16 +554,6 @@ final class MockOpenCodeClient: OpenCodeManaging {
     func abort(sessionID: String, directory: String) async throws {
         abortedSessions.append((sessionID, directory))
         _ = try abortResult.get()
-    }
-
-    func getProviders(directory: String) async throws -> [OCProvider] {
-        providerDirectories.append(directory)
-        return try getProvidersResult.get()
-    }
-
-    func getAgents(directory: String) async throws -> [OCAgent] {
-        agentDirectories.append(directory)
-        return try getAgentsResult.get()
     }
 
     func getSessionDiff(sessionID: String, directory: String) async throws -> OCDiff {

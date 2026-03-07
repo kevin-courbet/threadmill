@@ -1,25 +1,6 @@
 import Foundation
 import Observation
 
-struct ChatModelOption: Identifiable, Equatable {
-    let providerID: String
-    let providerName: String
-    let modelID: String
-    let modelName: String
-
-    var id: String {
-        selection.storageID
-    }
-
-    var title: String {
-        "\(providerName) / \(modelName)"
-    }
-
-    var selection: OCMessageModel {
-        OCMessageModel(providerID: providerID, modelID: modelID)
-    }
-}
-
 @MainActor
 @Observable
 final class ChatViewModel {
@@ -28,8 +9,6 @@ final class ChatViewModel {
     var messages: [OCMessage] = []
     var isGenerating = false
     var streamingParts: [String: OCMessagePart] = [:]
-    var availableModels: [ChatModelOption] = []
-    var isLoadingModels = false
 
     var lastError: String?
 
@@ -44,7 +23,6 @@ final class ChatViewModel {
     private var eventStreamToken = UUID()
     private var messageLoadTask: Task<Void, Never>?
     private var messageLoadToken = UUID()
-    private var preferredModel: OCMessageModel?
 
     init(
         openCodeClient: any OpenCodeManaging,
@@ -68,8 +46,6 @@ final class ChatViewModel {
             messages = []
             streamingParts = [:]
             isGenerating = false
-            availableModels = []
-            isLoadingModels = false
             lastError = nil
             messageLoadTask?.cancel()
             messageLoadTask = nil
@@ -82,13 +58,15 @@ final class ChatViewModel {
         do {
             try await ensureOpenCodeRunningIfNeeded()
             startEventStreamIfNeeded(directory: directory)
-            await loadAvailableModels(directory: directory)
 
             conversations = try await chatConversationService.listConversations(threadID: threadID)
             conversations.sort { $0.updatedAt > $1.updatedAt }
 
             if conversations.isEmpty {
-                await createConversation(threadID: threadID, directory: directory)
+                currentConversation = nil
+                messages = []
+                streamingParts = [:]
+                isGenerating = false
                 return
             }
 
@@ -133,12 +111,8 @@ final class ChatViewModel {
             return
         }
 
-        if currentConversation == nil {
-            await createConversation(threadID: activeThreadID, directory: directory)
-        }
-
         guard let sessionID = currentConversation?.opencodeSessionID, !sessionID.isEmpty else {
-            lastError = "Conversation session is unavailable."
+            lastError = "Start a coding session before sending a prompt."
             return
         }
 
@@ -193,10 +167,6 @@ final class ChatViewModel {
     }
 
     func createConversation(threadID: String? = nil, directory: String? = nil) async {
-        await createConversation(threadID: threadID, directory: directory, agentID: nil, model: nil)
-    }
-
-    func createConversation(threadID: String? = nil, directory: String? = nil, agentID: String?, model: OCMessageModel?) async {
         guard
             let resolvedThreadID = threadID ?? activeThreadID,
             let resolvedDirectory = directory ?? activeDirectory
@@ -210,12 +180,9 @@ final class ChatViewModel {
         do {
             try await ensureOpenCodeRunningIfNeeded()
             startEventStreamIfNeeded(directory: resolvedDirectory)
-            let resolvedModel = model ?? preferredModel
             let newConversation = try await chatConversationService.createConversation(
                 threadID: resolvedThreadID,
-                directory: resolvedDirectory,
-                agentID: agentID,
-                model: resolvedModel
+                directory: resolvedDirectory
             )
 
             upsertConversation(newConversation)
@@ -232,15 +199,8 @@ final class ChatViewModel {
         }
     }
 
-    func setPreferredModel(_ model: OCMessageModel?) {
-        preferredModel = model
-    }
-
     func archiveConversation(_ conversation: ChatConversation) async {
-        guard
-            let threadID = activeThreadID,
-            let directory = activeDirectory
-        else {
+        guard activeThreadID != nil, activeDirectory != nil else {
             return
         }
 
@@ -258,7 +218,6 @@ final class ChatViewModel {
             }
 
             if conversations.isEmpty {
-                await createConversation(threadID: threadID, directory: directory)
                 return
             }
 
@@ -346,29 +305,6 @@ final class ChatViewModel {
                 }
                 await self.handleEvent(event, directory: directory)
             }
-        }
-    }
-
-    private func loadAvailableModels(directory: String) async {
-        isLoadingModels = true
-        defer {
-            isLoadingModels = false
-        }
-
-        do {
-            let providers = try await openCodeClient.getProviders(directory: directory)
-            availableModels = providers.flatMap { provider in
-                provider.models.map { model in
-                    ChatModelOption(
-                        providerID: provider.id,
-                        providerName: provider.name,
-                        modelID: model.id,
-                        modelName: model.name
-                    )
-                }
-            }
-        } catch {
-            availableModels = []
         }
     }
 

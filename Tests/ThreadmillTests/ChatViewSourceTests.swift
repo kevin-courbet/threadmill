@@ -12,5 +12,9 @@ final class ChatViewSourceTests: XCTestCase {
 
         XCTAssertTrue(source.contains("@State private var isNearBottom = true"))
         XCTAssertTrue(source.contains("!isNearBottom"))
+        XCTAssertTrue(source.contains("if hasActiveConversation"))
+        XCTAssertTrue(source.contains("chatEmptyState"))
+        XCTAssertFalse(source.contains("Picker(\"Model\""))
+        XCTAssertFalse(source.contains("ChatModelSelectionStore"))
     }
 }

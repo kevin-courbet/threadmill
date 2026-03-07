@@ -7,13 +7,13 @@ struct ThreadSessionTabsProvider {
     let terminalSessionIDs: [String]
     let selectedTerminalSessionID: String?
     let presets: [Preset]
-    let chatAgents: [OCAgent]
+    let chatHarnesses: [ChatHarness]
     let chatTitle: (ChatConversation, Int) -> String
     let onSelectChatConversation: (String) -> Void
     let onSelectTerminalSession: (String) -> Void
     let onArchiveChatConversations: ([String]) -> Void
     let onCloseTerminalSessions: ([String]) -> Void
-    let onCreateChatConversation: (String?) -> Void
+    let onCreateChatConversation: (ChatHarness?) -> Void
     let onAddDefaultTerminalSession: () -> Void
     let onAddTerminalSession: (String) -> Void
 
@@ -57,12 +57,12 @@ struct ThreadSessionTabsProvider {
                 }
             }
         case TabItem.chat.id:
-            if chatAgents.isEmpty {
+            if chatHarnesses.isEmpty {
                 return []
             }
-            return chatAgents.map { agent in
-                SessionAddMenuItem(id: agent.id, title: agent.name) {
-                    onCreateChatConversation(agent.id)
+            return chatHarnesses.map { harness in
+                SessionAddMenuItem(id: harness.id, title: harness.title) {
+                    onCreateChatConversation(harness)
                 }
             }
         default:
@@ -75,7 +75,7 @@ struct ThreadSessionTabsProvider {
         case TabItem.terminal.id:
             return "Start Terminal (click) or choose preset (hold)"
         case TabItem.chat.id:
-            return "New conversation (click) or choose agent (hold)"
+            return "New coding session (click) or choose harness (hold)"
         default:
             return "Add session"
         }
@@ -168,7 +168,7 @@ struct ThreadModeSessionTabs: View {
     @Binding var terminalSessionIDs: [String]
     @Binding var selectedTerminalSessionID: String?
     @Binding var chatReloadToken: Int
-    let chatAgents: [OCAgent]
+    let chatHarnesses: [ChatHarness]
     let tabStateManager: ThreadTabStateManager
     let isTerminalModeSelected: () -> Bool
 
@@ -180,7 +180,7 @@ struct ThreadModeSessionTabs: View {
             terminalSessionIDs: terminalSessionIDs,
             selectedTerminalSessionID: selectedTerminalSessionID,
             presets: appState.presets,
-            chatAgents: chatAgents,
+            chatHarnesses: chatHarnesses,
             chatTitle: ChatModeActions.chatTitle,
             onSelectChatConversation: { selectedChatConversationID = $0 },
             onSelectTerminalSession: { selectedTerminalSessionID = $0 },
@@ -212,7 +212,7 @@ struct ThreadModeSessionTabs: View {
                     chatReloadToken: $chatReloadToken,
                     tabStateManager: tabStateManager,
                     errorMessageBinding: $chatActionErrorMessage,
-                    agentID: $0
+                    harness: $0
                 )
             },
             onAddDefaultTerminalSession: {

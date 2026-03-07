@@ -4,6 +4,8 @@ struct ChatModeContent: View {
     @Environment(AppState.self) private var appState
 
     let thread: ThreadModel
+    let chatHarnesses: [ChatHarness]
+    let onCreateConversationWithHarness: (ChatHarness) -> Void
     let selectedConversationID: String?
     let reloadToken: Int
     let onConversationStateChange: ([ChatConversation], ChatConversation?) -> Void
@@ -23,6 +25,8 @@ struct ChatModeContent: View {
                 selectedConversationID: selectedConversationID,
                 reloadToken: reloadToken,
                 showsConversationTabBar: false,
+                chatHarnesses: chatHarnesses,
+                onCreateConversationWithHarness: onCreateConversationWithHarness,
                 onConversationStateChange: onConversationStateChange
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -83,42 +87,13 @@ enum ChatModeActions {
         tabStateManager.setSelectedSessionID(selectedChatConversationIDBinding.wrappedValue, modeID: TabItem.chat.id, threadID: thread.id)
     }
 
-    static func refreshChatAgents(
-        for thread: ThreadModel,
-        appState: AppState,
-        chatAgents: Binding<[OCAgent]>
-    ) async {
-        let expectedThreadID = thread.id
-
-        guard let openCodeClient = appState.openCodeClient else {
-            guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
-                return
-            }
-            chatAgents.wrappedValue = []
-            return
-        }
-
-        do {
-            let agents = try await openCodeClient.getAgents(directory: thread.worktreePath)
-            guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
-                return
-            }
-            chatAgents.wrappedValue = agents
-        } catch {
-            guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
-                return
-            }
-            chatAgents.wrappedValue = []
-        }
-    }
-
     static func createChatConversation(
         appState: AppState,
         selectedChatConversationIDBinding: Binding<String?>,
         chatReloadToken: Binding<Int>,
         tabStateManager: ThreadTabStateManager,
         errorMessageBinding: Binding<String?> = .constant(nil),
-        agentID: String? = nil
+        harness: ChatHarness? = nil
     ) {
         guard
             let thread = appState.selectedThread,
@@ -129,13 +104,17 @@ enum ChatModeActions {
 
         Task {
             do {
-                let selectedModel = ChatModelSelectionStore.selectedModel(threadID: thread.id)
-                let conversation = try await chatConversationService.createConversation(
-                    threadID: thread.id,
-                    directory: thread.worktreePath,
-                    agentID: agentID,
-                    model: selectedModel
-                )
+                let selectedHarness = harness ?? .openCodeServe
+                let conversation: ChatConversation
+
+                switch selectedHarness {
+                case .openCodeServe:
+                    conversation = try await chatConversationService.createConversation(
+                        threadID: thread.id,
+                        directory: thread.worktreePath
+                    )
+                }
+
                 await MainActor.run {
                     errorMessageBinding.wrappedValue = nil
                     selectedChatConversationIDBinding.wrappedValue = conversation.id
@@ -227,8 +206,8 @@ enum ChatModeActions {
             return title
         }
         if index == 0 {
-            return "New chat"
+            return "New session"
         }
-        return "Chat \(index + 1)"
+        return "Session \(index + 1)"
     }
 }

@@ -12,7 +12,7 @@ struct ThreadDetailView: View {
     @State private var chatConversations: [ChatConversation] = []
     @State private var selectedChatConversationID: String?
     @State private var chatReloadToken = 0
-    @State private var chatAgents: [OCAgent] = []
+    private let chatHarnesses = ChatHarness.allCases
     @State private var tabStateManager = ThreadTabStateManager()
     private var isUITestMode: Bool { ProcessInfo.processInfo.environment["THREADMILL_UI_TEST_MODE"] == "1" }
     private var isMockTerminalEnabled: Bool {
@@ -35,7 +35,7 @@ struct ThreadDetailView: View {
                                 terminalSessionIDs: $terminalSessionIDs,
                                 selectedTerminalSessionID: $selectedTerminalSessionID,
                                 chatReloadToken: $chatReloadToken,
-                                chatAgents: chatAgents,
+                                chatHarnesses: chatHarnesses,
                                 tabStateManager: tabStateManager,
                                 isTerminalModeSelected: { selectedTab == TabItem.terminal.id }
                             )
@@ -101,7 +101,21 @@ struct ThreadDetailView: View {
     private func activeModeContent(thread: ThreadModel) -> some View {
         switch selectedTab {
         case TabItem.chat.id:
-            ChatModeContent(thread: thread, selectedConversationID: selectedChatConversationID, reloadToken: chatReloadToken) { conversations, current in
+            ChatModeContent(
+                thread: thread,
+                chatHarnesses: chatHarnesses,
+                onCreateConversationWithHarness: { harness in
+                    ChatModeActions.createChatConversation(
+                        appState: appState,
+                        selectedChatConversationIDBinding: $selectedChatConversationID,
+                        chatReloadToken: $chatReloadToken,
+                        tabStateManager: tabStateManager,
+                        harness: harness
+                    )
+                },
+                selectedConversationID: selectedChatConversationID,
+                reloadToken: chatReloadToken
+            ) { conversations, current in
                 ChatModeActions.handleChatConversationStateUpdate(conversations, current, appState: appState, selectedChatConversationIDBinding: $selectedChatConversationID, chatConversations: $chatConversations, tabStateManager: tabStateManager)
             }
         case TabItem.terminal.id:
@@ -170,8 +184,6 @@ struct ThreadDetailView: View {
         selectedTerminalSessionID = (persistedTerminalSelection != nil && terminalSessionIDs.contains(persistedTerminalSelection!)) ? persistedTerminalSelection : terminalSessionIDs.first
         selectedChatConversationID = tabStateManager.selectedSessionID(modeID: TabItem.chat.id, threadID: thread.id)
         await ChatModeActions.refreshChatConversations(for: thread, appState: appState, chatConversations: $chatConversations, selectedChatConversationIDBinding: $selectedChatConversationID, tabStateManager: tabStateManager)
-        guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else { return }
-        await ChatModeActions.refreshChatAgents(for: thread, appState: appState, chatAgents: $chatAgents)
         guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else { return }
         if selectedTab == TabItem.terminal.id {
             TerminalModeActions.attachSelectedTerminalIfNeeded(appState: appState, selectedTerminalSessionID: selectedTerminalSessionID)

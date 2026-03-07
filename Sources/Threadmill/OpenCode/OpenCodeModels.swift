@@ -164,47 +164,6 @@ struct OCMessagePart: Codable, Identifiable, Equatable {
     }
 }
 
-struct OCProvider: Codable, Identifiable, Equatable {
-    let id: String
-    let name: String
-    let models: [OCModel]
-}
-
-struct OCModel: Codable, Identifiable, Equatable {
-    let id: String
-    let name: String
-}
-
-struct OCAgent: Codable, Identifiable, Equatable {
-    let id: String
-    let name: String
-    let description: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case id
-        case name
-        case description
-    }
-
-    init(id: String, name: String, description: String? = nil) {
-        self.id = id
-        self.name = name
-        self.description = description
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let name = try container.decode(String.self, forKey: .name)
-        let id = try container.decodeIfPresent(String.self, forKey: .id) ?? name
-
-        self.init(
-            id: id,
-            name: name,
-            description: try container.decodeIfPresent(String.self, forKey: .description)
-        )
-    }
-}
-
 struct OCDiff: Codable, Equatable {
     let files: [OCDiffFile]
 }
