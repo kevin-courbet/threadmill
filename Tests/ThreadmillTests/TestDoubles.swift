@@ -516,6 +516,7 @@ final class MockOpenCodeClient: OpenCodeManaging {
     private(set) var abortedSessions: [(sessionID: String, directory: String)] = []
     private(set) var diffRequests: [(sessionID: String, directory: String)] = []
     private(set) var streamedDirectories: [String] = []
+    private(set) var invalidateCallCount = 0
 
     func listSessions(directory: String) async throws -> [OCSession] {
         listedDirectories.append(directory)
@@ -568,5 +569,9 @@ final class MockOpenCodeClient: OpenCodeManaging {
     func streamEvents(directory: String) -> AsyncStream<OCEvent> {
         streamedDirectories.append(directory)
         return eventStream
+    }
+
+    func invalidate() {
+        invalidateCallCount += 1
     }
 }

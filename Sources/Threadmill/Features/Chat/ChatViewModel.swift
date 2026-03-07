@@ -14,10 +14,8 @@ final class ChatViewModel {
 
     private let openCodeClient: any OpenCodeManaging
     private let chatConversationService: any ChatConversationManaging
-    private let ensureOpenCodeRunning: (() async throws -> Void)?
     private var activeThreadID: String?
     private var activeDirectory: String?
-    private var hasEnsuredOpenCodeRunning = false
     private var eventStreamDirectory: String?
     private var eventStreamTask: Task<Void, Never>?
     private var eventStreamToken = UUID()
@@ -26,12 +24,10 @@ final class ChatViewModel {
 
     init(
         openCodeClient: any OpenCodeManaging,
-        chatConversationService: any ChatConversationManaging,
-        ensureOpenCodeRunning: (() async throws -> Void)? = nil
+        chatConversationService: any ChatConversationManaging
     ) {
         self.openCodeClient = openCodeClient
         self.chatConversationService = chatConversationService
-        self.ensureOpenCodeRunning = ensureOpenCodeRunning
     }
 
     @MainActor deinit {
@@ -56,7 +52,6 @@ final class ChatViewModel {
         activeDirectory = directory
 
         do {
-            try await ensureOpenCodeRunningIfNeeded()
             startEventStreamIfNeeded(directory: directory)
 
             conversations = try await chatConversationService.listConversations(threadID: threadID)
@@ -296,15 +291,6 @@ final class ChatViewModel {
                 await self.handleEvent(event, directory: directory)
             }
         }
-    }
-
-    private func ensureOpenCodeRunningIfNeeded() async throws {
-        guard !hasEnsuredOpenCodeRunning else {
-            return
-        }
-
-        try await ensureOpenCodeRunning?()
-        hasEnsuredOpenCodeRunning = true
     }
 
     private func handleEvent(_ event: OCEvent, directory: String) async {

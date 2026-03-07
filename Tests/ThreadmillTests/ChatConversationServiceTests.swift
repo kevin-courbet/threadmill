@@ -3,47 +3,123 @@ import XCTest
 
 @MainActor
 final class ChatConversationServiceTests: XCTestCase {
-    func testCreateConversationInitializesCreatedSession() async throws {
-        let databaseManager = MockDatabaseManager()
-        let openCodeClient = MockOpenCodeClient()
+    func testCreateConversationCallsCreateThenInitAndPersistsLinkedSession() async throws {
+        let openCode = MockOpenCodeClient()
+        let database = MockDatabaseManager()
+
         let createdSession = OCSession(
-            id: "ses_1",
+            id: "ses_new",
             slug: nil,
             title: "",
-            directory: "/tmp/worktree",
+            directory: "/home/wsl/dev/project",
             projectID: "proj_1",
             version: nil,
             parentID: nil,
             time: nil,
             summary: nil
         )
+        let initializedSession = OCSession(
+            id: "ses_new",
+            slug: nil,
+            title: "",
+            directory: "/home/wsl/dev/project",
+            projectID: "proj_1",
+            version: "1",
+            parentID: nil,
+            time: nil,
+            summary: nil
+        )
 
-        openCodeClient.createSessionResult = .success(createdSession)
-        openCodeClient.initSessionResult = .success(createdSession)
+        openCode.createSessionResult = .success(createdSession)
+        openCode.initSessionResult = .success(initializedSession)
 
-        let service = ChatConversationService(databaseManager: databaseManager, openCodeClient: openCodeClient)
-        let conversation = try await service.createConversation(threadID: "thread_1", directory: "/tmp/worktree")
+        let service = ChatConversationService(
+            databaseManager: database,
+            openCodeClient: openCode
+        )
 
-        XCTAssertEqual(openCodeClient.createdSessionsInDirectories, ["/tmp/worktree"])
-        XCTAssertEqual(openCodeClient.createdSessions.first, "/tmp/worktree")
-        XCTAssertEqual(openCodeClient.initializedSessions.count, 1)
-        XCTAssertEqual(openCodeClient.initializedSessions.first?.id, "ses_1")
-        XCTAssertEqual(conversation.opencodeSessionID, "ses_1")
+        let conversation = try await service.createConversation(
+            threadID: "thread_1",
+            directory: "/home/wsl/dev/project"
+        )
+
+        // Verify createSession was called with correct directory
+        XCTAssertEqual(openCode.createdSessionsInDirectories, ["/home/wsl/dev/project"])
+
+        // Verify initSession was called with the session ID from createSession
+        XCTAssertEqual(openCode.initializedSessions.count, 1)
+        XCTAssertEqual(openCode.initializedSessions.first?.id, "ses_new")
+        XCTAssertEqual(openCode.initializedSessions.first?.directory, "/home/wsl/dev/project")
+
+        // Verify conversation was saved to database with linked session
+        XCTAssertEqual(database.conversations.count, 1)
+        XCTAssertEqual(database.conversations.first?.id, conversation.id)
+        XCTAssertEqual(database.conversations.first?.opencodeSessionID, "ses_new")
+        XCTAssertEqual(database.conversations.first?.threadID, "thread_1")
     }
 
-    func testCreateConversationDoesNotPersistWhenSessionCreationFails() async {
-        let databaseManager = MockDatabaseManager()
-        let openCodeClient = MockOpenCodeClient()
-        openCodeClient.createSessionResult = .failure(TestError.forcedFailure)
+    func testCreateConversationPropagatesCreateSessionError() async {
+        let openCode = MockOpenCodeClient()
+        let database = MockDatabaseManager()
 
-        let service = ChatConversationService(databaseManager: databaseManager, openCodeClient: openCodeClient)
+        openCode.createSessionResult = .failure(OpenCodeClientError.unexpectedStatusCode(503))
+
+        let service = ChatConversationService(
+            databaseManager: database,
+            openCodeClient: openCode
+        )
 
         do {
-            _ = try await service.createConversation(threadID: "thread_1", directory: "/tmp/worktree")
-            XCTFail("Expected createConversation to throw")
+            _ = try await service.createConversation(
+                threadID: "thread_1",
+                directory: "/home/wsl/dev/project"
+            )
+            XCTFail("Expected error to be thrown")
         } catch {
-            XCTAssertEqual(databaseManager.conversations.count, 0)
-            XCTAssertEqual(openCodeClient.initializedSessions.count, 0)
+            XCTAssertTrue(error is OpenCodeClientError)
         }
+
+        // Nothing should be saved to database
+        XCTAssertTrue(database.conversations.isEmpty)
+        // initSession should not have been called
+        XCTAssertTrue(openCode.initializedSessions.isEmpty)
+    }
+
+    func testCreateConversationPropagatesInitSessionError() async {
+        let openCode = MockOpenCodeClient()
+        let database = MockDatabaseManager()
+
+        let createdSession = OCSession(
+            id: "ses_new",
+            slug: nil,
+            title: "",
+            directory: "/home/wsl/dev/project",
+            projectID: "proj_1",
+            version: nil,
+            parentID: nil,
+            time: nil,
+            summary: nil
+        )
+        openCode.createSessionResult = .success(createdSession)
+        openCode.initSessionResult = .failure(OpenCodeClientError.unexpectedStatusCode(500))
+
+        let service = ChatConversationService(
+            databaseManager: database,
+            openCodeClient: openCode
+        )
+
+        do {
+            _ = try await service.createConversation(
+                threadID: "thread_1",
+                directory: "/home/wsl/dev/project"
+            )
+            XCTFail("Expected error to be thrown")
+        } catch {
+            XCTAssertTrue(error is OpenCodeClientError)
+        }
+
+        // createSession was called, but nothing saved
+        XCTAssertEqual(openCode.createdSessionsInDirectories.count, 1)
+        XCTAssertTrue(database.conversations.isEmpty)
     }
 }

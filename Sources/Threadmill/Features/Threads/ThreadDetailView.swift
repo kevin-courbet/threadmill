@@ -29,6 +29,7 @@ struct ThreadDetailView: View {
                     if showsModeSessionTabs {
                         ToolbarItem(placement: .navigation) {
                             ThreadModeSessionTabs(
+                                thread: thread,
                                 selectedTab: selectedTab,
                                 chatConversations: $chatConversations,
                                 selectedChatConversationID: $selectedChatConversationID,
@@ -106,6 +107,7 @@ struct ThreadDetailView: View {
                 chatHarnesses: chatHarnesses,
                 onCreateConversationWithHarness: { harness in
                     ChatModeActions.createChatConversation(
+                        thread: thread,
                         appState: appState,
                         selectedChatConversationIDBinding: $selectedChatConversationID,
                         chatReloadToken: $chatReloadToken,

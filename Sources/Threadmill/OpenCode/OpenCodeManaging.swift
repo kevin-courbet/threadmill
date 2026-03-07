@@ -11,4 +11,5 @@ protocol OpenCodeManaging: AnyObject {
     func getSessionDiff(sessionID: String, directory: String) async throws -> OCDiff
     func healthCheck() async throws -> Bool
     func streamEvents(directory: String) -> AsyncStream<OCEvent>
+    func invalidate()
 }

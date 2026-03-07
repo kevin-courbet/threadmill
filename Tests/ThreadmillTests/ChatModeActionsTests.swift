@@ -47,6 +47,7 @@ final class ChatModeActionsTests: XCTestCase {
         let tabStateManager = ThreadTabStateManager()
 
         ChatModeActions.createChatConversation(
+            thread: thread,
             appState: appState,
             selectedChatConversationIDBinding: Binding(
                 get: { selectedConversationID },
@@ -110,6 +111,7 @@ final class ChatModeActionsTests: XCTestCase {
         let tabStateManager = ThreadTabStateManager()
 
         ChatModeActions.createChatConversation(
+            thread: thread,
             appState: appState,
             selectedChatConversationIDBinding: Binding(
                 get: { selectedConversationID },
@@ -209,5 +211,70 @@ final class ChatModeActionsTests: XCTestCase {
         XCTAssertTrue(didSurfaceError)
         XCTAssertEqual(selectedConversationID, "conversation-1")
         XCTAssertEqual(reloadToken, 2)
+    }
+
+    func testCreateChatConversationUsesThreadContextWhenSelectionChanges() async {
+        let appState = AppState()
+        let database = MockDatabaseManager()
+        let connection = MockDaemonConnection()
+        let syncService = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+        let chatConversationService = MockChatConversationService()
+        let openCodeClient = MockOpenCodeClient()
+
+        let pool = makeSingleRemoteConnectionPool(connection: connection)
+        appState.configure(
+            connectionPool: pool,
+            databaseManager: database,
+            syncService: syncService,
+            multiplexer: multiplexer,
+            openCodeClient: openCodeClient,
+            chatConversationService: chatConversationService
+        )
+
+        let thread = ThreadModel(
+            id: "thread-1",
+            projectId: "project-1",
+            name: "feature/chat",
+            branch: "feature/chat",
+            worktreePath: "/tmp/worktree",
+            status: .active,
+            sourceType: "new_feature",
+            createdAt: Date(),
+            tmuxSession: "tm_thread-1",
+            portOffset: nil
+        )
+        appState.threads = [thread]
+        appState.selectedThreadID = nil
+
+        var createdConversation = ChatConversation(threadID: thread.id)
+        createdConversation.id = "conversation-2"
+        chatConversationService.createConversationResult = .success(createdConversation)
+
+        var selectedConversationID: String?
+        var reloadToken = 0
+        let tabStateManager = ThreadTabStateManager()
+
+        ChatModeActions.createChatConversation(
+            thread: thread,
+            appState: appState,
+            selectedChatConversationIDBinding: Binding(
+                get: { selectedConversationID },
+                set: { selectedConversationID = $0 }
+            ),
+            chatReloadToken: Binding(
+                get: { reloadToken },
+                set: { reloadToken = $0 }
+            ),
+            tabStateManager: tabStateManager,
+            harness: .openCodeServe
+        )
+
+        let didSelectConversation = await waitForCondition {
+            selectedConversationID == "conversation-2" && reloadToken == 1
+        }
+
+        XCTAssertTrue(didSelectConversation)
+        XCTAssertEqual(chatConversationService.createdConversations.first?.threadID, "thread-1")
     }
 }

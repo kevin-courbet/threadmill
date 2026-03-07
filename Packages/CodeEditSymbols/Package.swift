@@ -15,7 +15,6 @@ let package = Package(
     ],
     dependencies: [
         .package(
-            name: "SnapshotTesting",
             url: "https://github.com/pointfreeco/swift-snapshot-testing.git",
             from: "1.9.0"
         ),
@@ -31,7 +30,7 @@ let package = Package(
             name: "CodeEditSymbolsTests",
             dependencies: [
                 "CodeEditSymbols",
-                "SnapshotTesting"
+                .product(name: "SnapshotTesting", package: "swift-snapshot-testing")
             ]
         ),
     ]

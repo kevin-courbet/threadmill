@@ -28,6 +28,7 @@ final class OpenCodeClient: OpenCodeManaging {
     private let username: String?
     private let password: String?
     private let session: URLSession
+    private let sseSession: URLSession
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
 
@@ -38,16 +39,28 @@ final class OpenCodeClient: OpenCodeManaging {
         return allowed
     }()
 
+    /// Dedicated URLSession for SSE streams. Long-lived SSE connections must not
+    /// share the same connection pool as regular data requests — otherwise they
+    /// exhaust `httpMaximumConnectionsPerHost` and starve short-lived API calls.
+    private static func makeSSESession() -> URLSession {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = TimeInterval.infinity
+        config.timeoutIntervalForResource = TimeInterval.infinity
+        return URLSession(configuration: config)
+    }
+
     init(
         baseURL: URL = URL(string: "http://127.0.0.1:4101")!,
         username: String? = nil,
         password: String? = nil,
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        sseSession: URLSession? = nil
     ) {
         self.baseURL = baseURL
         self.username = username
         self.password = password
         self.session = session
+        self.sseSession = sseSession ?? Self.makeSSESession()
     }
 
     func listSessions(directory: String) async throws -> [OCSession] {
@@ -129,7 +142,7 @@ final class OpenCodeClient: OpenCodeManaging {
                     var request = try makeRequest(pathComponents: ["event"], method: "GET", directory: directory, body: nil)
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
-                    let (bytes, response) = try await session.bytes(for: request)
+                    let (bytes, response) = try await sseSession.bytes(for: request)
                     try validateResponse(response)
 
                     var parser = OCSSEParser()
@@ -152,6 +165,10 @@ final class OpenCodeClient: OpenCodeManaging {
                 task.cancel()
             }
         }
+    }
+
+    func invalidate() {
+        sseSession.invalidateAndCancel()
     }
 
     private func getProvidersPayload(directory: String) async throws -> OCProvidersPayload {

@@ -162,6 +162,7 @@ struct ThreadModeSessionTabs: View {
     @Environment(AppState.self) private var appState
     @State private var chatActionErrorMessage: String?
 
+    let thread: ThreadModel
     let selectedTab: String
     @Binding var chatConversations: [ChatConversation]
     @Binding var selectedChatConversationID: String?
@@ -207,6 +208,7 @@ struct ThreadModeSessionTabs: View {
             },
             onCreateChatConversation: {
                 ChatModeActions.createChatConversation(
+                    thread: thread,
                     appState: appState,
                     selectedChatConversationIDBinding: $selectedChatConversationID,
                     chatReloadToken: $chatReloadToken,

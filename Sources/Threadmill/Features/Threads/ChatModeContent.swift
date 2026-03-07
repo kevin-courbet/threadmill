@@ -85,6 +85,7 @@ enum ChatModeActions {
     }
 
     static func createChatConversation(
+        thread: ThreadModel,
         appState: AppState,
         selectedChatConversationIDBinding: Binding<String?>,
         chatReloadToken: Binding<Int>,
@@ -92,39 +93,36 @@ enum ChatModeActions {
         errorMessageBinding: Binding<String?> = .constant(nil),
         harness: ChatHarness? = nil
     ) {
-        guard
-            let thread = appState.selectedThread,
-            let chatConversationService = appState.chatConversationService
-        else {
-            NSLog("threadmill-chat: createConversation guard failed selectedThread=%@ chatConversationService=%@",
-                  appState.selectedThread?.id ?? "nil",
-                  appState.chatConversationService == nil ? "nil" : "present")
+        guard let chatConversationService = appState.chatConversationService else {
+            errorMessageBinding.wrappedValue = "Chat conversation service unavailable."
+            NSLog("threadmill-chat: createConversation aborted, service unavailable")
             return
         }
+
+        let threadID = thread.id
+        let directory = thread.worktreePath
 
         Task {
             do {
                 let selectedHarness = harness ?? .openCodeServe
-                NSLog("threadmill-chat: createConversation start harness=%@ thread=%@ dir=%@", "\(selectedHarness)", thread.id, thread.worktreePath)
                 let conversation: ChatConversation
 
                 switch selectedHarness {
                 case .openCodeServe:
                     conversation = try await chatConversationService.createConversation(
-                        threadID: thread.id,
-                        directory: thread.worktreePath
+                        threadID: threadID,
+                        directory: directory
                     )
                 }
 
-                NSLog("threadmill-chat: createConversation success id=%@", conversation.id)
                 await MainActor.run {
                     errorMessageBinding.wrappedValue = nil
                     selectedChatConversationIDBinding.wrappedValue = conversation.id
-                    tabStateManager.setSelectedSessionID(conversation.id, modeID: TabItem.chat.id, threadID: thread.id)
+                    tabStateManager.setSelectedSessionID(conversation.id, modeID: TabItem.chat.id, threadID: threadID)
                     chatReloadToken.wrappedValue += 1
                 }
             } catch {
-                NSLog("threadmill-chat: createConversation failed error=%@", "\(error)")
+                NSLog("threadmill-chat: createConversation failed: %@", "\(error)")
                 await MainActor.run {
                     errorMessageBinding.wrappedValue = error.localizedDescription
                 }

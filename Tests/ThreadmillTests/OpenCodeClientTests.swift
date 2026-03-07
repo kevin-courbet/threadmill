@@ -337,14 +337,19 @@ final class OpenCodeClientTests: XCTestCase {
     }
 
     private func makeClient(username: String? = nil, password: String? = nil) -> OpenCodeClient {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [TestURLProtocol.self]
-        let session = URLSession(configuration: configuration)
+        let dataConfiguration = URLSessionConfiguration.ephemeral
+        dataConfiguration.protocolClasses = [TestURLProtocol.self]
+        let sseConfiguration = URLSessionConfiguration.ephemeral
+        sseConfiguration.protocolClasses = [TestURLProtocol.self]
+
+        let session = URLSession(configuration: dataConfiguration)
+        let sseSession = URLSession(configuration: sseConfiguration)
         return OpenCodeClient(
             baseURL: URL(string: "http://127.0.0.1:4101")!,
             username: username,
             password: password,
-            session: session
+            session: session,
+            sseSession: sseSession
         )
     }
 }
