@@ -58,18 +58,13 @@ struct RepoSection: View {
                 Text(repo.name)
                     .font(.system(size: 13, weight: .semibold))
                     .lineLimit(1)
-                Text(repo.owner)
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                if !repo.owner.isEmpty {
+                    Text(repo.owner)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
-
-            Text("\(threads.count)")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.white.opacity(0.06), in: Capsule())
 
             Spacer(minLength: 0)
 

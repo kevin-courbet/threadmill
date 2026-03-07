@@ -38,6 +38,25 @@ struct Repo: Codable, FetchableRecord, PersistableRecord, Identifiable, Equatabl
 }
 
 extension Repo {
+    static let defaultWorkspaceID = "__threadmill_default_workspace__"
+
+    static var defaultWorkspace: Repo {
+        Repo(
+            id: defaultWorkspaceID,
+            owner: "",
+            name: "Cross-project",
+            fullName: "Cross-project",
+            cloneURL: "threadmill://cross-project",
+            defaultBranch: "main",
+            isPrivate: true,
+            cachedAt: .distantPast
+        )
+    }
+
+    var isDefaultWorkspace: Bool {
+        id == Self.defaultWorkspaceID
+    }
+
     private static let avatarPalette: [Color] = [.purple, .green, .teal, .pink, .blue, .orange, .red, .indigo, .mint, .cyan]
 
     var avatarColorIndex: Int {

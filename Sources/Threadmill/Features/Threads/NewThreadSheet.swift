@@ -19,11 +19,16 @@ private enum NewThreadSourceType: String, CaseIterable, Identifiable {
     }
 }
 
+private enum NewThreadTarget {
+    case repo(Repo)
+    case project(Project)
+}
+
 struct NewThreadSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
 
-    let repo: Repo
+    private let target: NewThreadTarget
 
     @State private var selectedRemoteID: String?
     @State private var name = ""
@@ -34,58 +39,76 @@ struct NewThreadSheet: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
+    init(repo: Repo) {
+        target = .repo(repo)
+    }
+
+    init(project: Project) {
+        target = .project(project)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("New Thread")
                 .font(.title3.weight(.semibold))
 
             Form {
-                LabeledContent("Repository") {
-                    Text(repo.fullName)
+                if let targetRepo {
+                    LabeledContent("Repository") {
+                        Text(targetRepo.fullName)
+                    }
+
+                    Picker("Remote", selection: $selectedRemoteID) {
+                        ForEach(appState.remotes) { remote in
+                            Text(remote.name).tag(Optional(remote.id))
+                        }
+                    }
+                    .accessibilityIdentifier("sheet.new-thread.remote-picker")
+                    .accessibilityLabel("Sheet New Thread Remote")
                 }
 
-                Picker("Remote", selection: $selectedRemoteID) {
-                    ForEach(appState.remotes) { remote in
-                        Text(remote.name).tag(Optional(remote.id))
+                if let targetProject {
+                    LabeledContent("Project") {
+                        Text(targetProject.name)
                     }
                 }
-                .accessibilityIdentifier("sheet.new-thread.remote-picker")
-                .accessibilityLabel("Sheet New Thread Remote")
 
                 TextField("Thread name", text: $name)
                     .accessibilityIdentifier("sheet.new-thread.name-input")
                     .accessibilityLabel("Sheet New Thread Name")
 
-                Picker("Source", selection: $sourceType) {
-                    ForEach(NewThreadSourceType.allCases) { type in
-                        Text(type.label).tag(type)
+                if shouldShowSourcePicker {
+                    Picker("Source", selection: $sourceType) {
+                        ForEach(NewThreadSourceType.allCases) { type in
+                            Text(type.label).tag(type)
+                        }
                     }
-                }
-                .accessibilityIdentifier("sheet.new-thread.source-picker")
-                .accessibilityLabel("Sheet New Thread Source")
+                    .accessibilityIdentifier("sheet.new-thread.source-picker")
+                    .accessibilityLabel("Sheet New Thread Source")
 
-                if sourceType == .existingBranch {
-                    if branches.isEmpty {
-                        Button("Load Branches") {
-                            Task {
-                                await loadBranches()
+                    if sourceType == .existingBranch {
+                        if branches.isEmpty {
+                            Button("Load Branches") {
+                                Task {
+                                    await loadBranches()
+                                }
                             }
                         }
-                    }
 
-                    Picker("Branch", selection: $selectedBranch) {
-                        ForEach(branches, id: \.self) { branch in
-                            Text(branch).tag(branch)
+                        Picker("Branch", selection: $selectedBranch) {
+                            ForEach(branches, id: \.self) { branch in
+                                Text(branch).tag(branch)
+                            }
                         }
+                        .accessibilityIdentifier("sheet.new-thread.branch-picker")
+                        .accessibilityLabel("Sheet New Thread Branch")
                     }
-                    .accessibilityIdentifier("sheet.new-thread.branch-picker")
-                    .accessibilityLabel("Sheet New Thread Branch")
-                }
 
-                if sourceType == .pullRequest {
-                    TextField("PR URL", text: $prURL)
-                        .accessibilityIdentifier("sheet.new-thread.pr-url-input")
-                        .accessibilityLabel("Sheet New Thread PR URL")
+                    if sourceType == .pullRequest {
+                        TextField("PR URL", text: $prURL)
+                            .accessibilityIdentifier("sheet.new-thread.pr-url-input")
+                            .accessibilityLabel("Sheet New Thread PR URL")
+                    }
                 }
 
                 if let errorMessage {
@@ -118,9 +141,15 @@ struct NewThreadSheet: View {
         .frame(width: 520)
         .accessibilityIdentifier("sheet.new-thread")
         .onAppear {
-            selectedRemoteID = selectedRemoteID ?? appState.remotes.first?.id
+            guard targetRepo != nil else {
+                return
+            }
+            selectedRemoteID = selectedRemoteID ?? appState.selectedWorkspaceRemoteID ?? appState.remotes.first?.id
         }
         .onChange(of: selectedRemoteID) { _, _ in
+            guard targetRepo != nil else {
+                return
+            }
             branches = []
             selectedBranch = ""
             if sourceType == .existingBranch {
@@ -131,11 +160,25 @@ struct NewThreadSheet: View {
         }
     }
 
-    private var isCreateDisabled: Bool {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty, selectedRemote != nil, !isLoading else {
+    private var shouldShowSourcePicker: Bool {
+        switch target {
+        case .repo(let repo):
+            return !repo.isDefaultWorkspace
+        case .project:
             return true
         }
+    }
+
+    private var isCreateDisabled: Bool {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, !isLoading else {
+            return true
+        }
+
+        if targetRepo != nil, selectedRemote == nil {
+            return true
+        }
+
         switch sourceType {
         case .newFeature:
             return false
@@ -147,20 +190,27 @@ struct NewThreadSheet: View {
     }
 
     private func loadBranches() async {
-        guard let remote = selectedRemote else {
-            return
-        }
         isLoading = true
         defer { isLoading = false }
 
         do {
             errorMessage = nil
+
             let projectID: String
-            if let existingProjectID = appState.projectId(for: repo, on: remote) {
-                projectID = existingProjectID
-            } else {
-                projectID = try await appState.ensureRepoOnRemote(repo: repo, remote: remote)
+            switch target {
+            case .repo(let repo):
+                guard let remote = selectedRemote else {
+                    return
+                }
+                if let existingProjectID = appState.projectId(for: repo, on: remote) {
+                    projectID = existingProjectID
+                } else {
+                    projectID = try await appState.ensureRepoOnRemote(repo: repo, remote: remote)
+                }
+            case .project(let project):
+                projectID = project.id
             }
+
             branches = try await appState.branches(for: projectID)
             if selectedBranch.isEmpty {
                 selectedBranch = branches.first ?? ""
@@ -171,9 +221,6 @@ struct NewThreadSheet: View {
     }
 
     private func createThread() async {
-        guard let remote = selectedRemote else {
-            return
-        }
         isLoading = true
         defer { isLoading = false }
 
@@ -193,18 +240,54 @@ struct NewThreadSheet: View {
                 prURL = self.prURL
             }
 
-            try await appState.createThread(
-                repo: repo,
-                remote: remote,
-                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                sourceType: sourceType.rawValue,
-                branch: branch,
-                prURL: prURL
-            )
+            let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            switch target {
+            case .repo(let repo):
+                guard let remote = selectedRemote else {
+                    return
+                }
+                try await appState.createThread(
+                    repo: repo,
+                    remote: remote,
+                    name: trimmedName,
+                    sourceType: sourceType.rawValue,
+                    branch: branch,
+                    prURL: prURL
+                )
+            case .project(let project):
+                try await appState.createThread(
+                    projectID: project.id,
+                    name: trimmedName,
+                    sourceType: sourceType.rawValue,
+                    branch: branch,
+                    prURL: prURL
+                )
+            }
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    var preselectedRepo: Repo? {
+        if case .repo(let repo) = target {
+            return repo
+        }
+        return nil
+    }
+
+    private var targetRepo: Repo? {
+        if case .repo(let repo) = target {
+            return repo
+        }
+        return nil
+    }
+
+    private var targetProject: Project? {
+        if case .project(let project) = target {
+            return project
+        }
+        return nil
     }
 
     private var selectedRemote: Remote? {

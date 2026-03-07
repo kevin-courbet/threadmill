@@ -4,6 +4,7 @@ import Observation
 enum AppStateError: LocalizedError {
     case connectionManagerUnavailable
     case invalidGitStatusResponse
+    case invalidProjectResponse
     case provisioningUnavailable
 
     var errorDescription: String? {
@@ -12,6 +13,8 @@ enum AppStateError: LocalizedError {
             "Connection to spindle is unavailable."
         case .invalidGitStatusResponse:
             "Invalid response for file.git_status."
+        case .invalidProjectResponse:
+            "Invalid response while preparing the project."
         case .provisioningUnavailable:
             "Provisioning service is unavailable."
         }
@@ -48,6 +51,14 @@ final class AppState {
 
     var isNewThreadSheetPresented = false
     var alertMessage: String?
+    var selectedWorkspaceRemoteID: String? {
+        didSet {
+            guard oldValue != selectedWorkspaceRemoteID, selectedThreadID == nil else {
+                return
+            }
+            updateActiveRemoteConnection()
+        }
+    }
     var selectedThreadID: String? {
         didSet {
             ensureSelectedPresetIsValid()
@@ -103,6 +114,10 @@ final class AppState {
         return remotes.first?.id
     }
 
+    var defaultWorkspaceRepo: Repo? {
+        repos.first(where: \.isDefaultWorkspace)
+    }
+
     func connectionForSelectedThread() -> (any ConnectionManaging)? {
         guard let selectedThreadID else {
             return nil
@@ -128,7 +143,12 @@ final class AppState {
         }
 
         return repos
-            .sorted { $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending }
+            .sorted { lhs, rhs in
+                if lhs.isDefaultWorkspace != rhs.isDefaultWorkspace {
+                    return lhs.isDefaultWorkspace
+                }
+                return lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName) == .orderedAscending
+            }
             .map { repo in
                 let rows = (grouped[repo.id] ?? []).sorted { $0.createdAt > $1.createdAt }
                 return (repo, rows)
@@ -211,8 +231,12 @@ final class AppState {
             remotes = try databaseManager.allRemotes()
             reconcileConnectionPool(previousRemotes: previousRemotes, currentRemotes: remotes)
             repos = try databaseManager.allRepos()
+            injectDefaultWorkspaceRepo()
             projects = try databaseManager.allProjects()
             threads = try databaseManager.allThreads()
+            if selectedWorkspaceRemoteID == nil {
+                selectedWorkspaceRemoteID = remotes.first?.id
+            }
             pruneDetachedThreadEndpoints()
             ensureValidSelection()
             ensureSelectedPresetIsValid()
@@ -597,9 +621,8 @@ final class AppState {
             projectID: projectID,
             repoID: repo.id,
             remoteID: remote.id,
-            repoOwner: repo.owner,
-            repoName: repo.name,
-            remoteCloneRoot: remote.cloneRoot,
+            projectName: repo.name,
+            remotePath: Remote.joinedRemotePath(root: remote.cloneRoot, owner: repo.owner, repoName: repo.name),
             defaultBranch: repo.defaultBranch
         )
         return projectID
@@ -613,6 +636,27 @@ final class AppState {
         branch: String?,
         prURL: String? = nil
     ) async throws {
+        if repo.isDefaultWorkspace {
+            let path = remote.defaultWorkspacePath
+            let projectID = try await ensureDefaultWorkspaceOnRemote(remote: remote)
+            try await createThread(
+                projectID: projectID,
+                name: name,
+                sourceType: "main_checkout",
+                branch: branch,
+                prURL: prURL
+            )
+            linkProject(
+                projectID: projectID,
+                repoID: Repo.defaultWorkspaceID,
+                remoteID: remote.id,
+                projectName: Repo.defaultWorkspace.name,
+                remotePath: path,
+                defaultBranch: Repo.defaultWorkspace.defaultBranch
+            )
+            return
+        }
+
         let projectID = try await ensureRepoOnRemote(repo: repo, remote: remote)
         try await createThread(
             projectID: projectID,
@@ -1070,20 +1114,21 @@ final class AppState {
         projectID: String,
         repoID: String,
         remoteID: String,
-        repoOwner: String,
-        repoName: String,
-        remoteCloneRoot: String,
+        projectName: String,
+        remotePath: String,
         defaultBranch: String
     ) {
         if let projectIndex = projects.firstIndex(where: { $0.id == projectID }) {
             projects[projectIndex].repoId = repoID
             projects[projectIndex].remoteId = remoteID
+            projects[projectIndex].name = projectName
+            projects[projectIndex].remotePath = remotePath
         } else {
             projects.append(
                 Project(
                     id: projectID,
-                    name: repoName,
-                    remotePath: Remote.joinedRemotePath(root: remoteCloneRoot, owner: repoOwner, repoName: repoName),
+                    name: projectName,
+                    remotePath: remotePath,
                     defaultBranch: defaultBranch,
                     presets: [],
                     remoteId: remoteID,
@@ -1104,6 +1149,10 @@ final class AppState {
            let remoteID = remoteIDForThread(id: selectedThreadID)
         {
             return remoteID
+        }
+
+        if let selectedWorkspaceRemoteID {
+            return selectedWorkspaceRemoteID
         }
 
         if let activeRemoteID = connectionPool?.activeRemoteId {
@@ -1138,6 +1187,46 @@ final class AppState {
                 self?.connectionStatus = activeConnection.state
             }
         }
+    }
+
+    private func injectDefaultWorkspaceRepo() {
+        guard !repos.contains(where: \.isDefaultWorkspace) else {
+            return
+        }
+        repos.insert(.defaultWorkspace, at: 0)
+    }
+
+    private func ensureDefaultWorkspaceOnRemote(remote: Remote) async throws -> String {
+        if let projectID = projects.first(where: { $0.repoId == Repo.defaultWorkspaceID && $0.remoteId == remote.id })?.id {
+            return projectID
+        }
+
+        let path = remote.defaultWorkspacePath
+        let lookup = try await lookupProject(path: path, on: remote.id)
+        let projectID: String
+
+        if let existingProjectID = lookup.projectId {
+            projectID = existingProjectID
+        } else {
+            guard let connection = connectionPool?.connection(for: remote.id) else {
+                throw AppStateError.connectionManagerUnavailable
+            }
+            let result = try await connection.request(method: "project.add", params: ["path": path], timeout: 20)
+            guard let payload = result as? [String: Any], let createdProjectID = payload["id"] as? String else {
+                throw AppStateError.invalidProjectResponse
+            }
+            projectID = createdProjectID
+        }
+
+        linkProject(
+            projectID: projectID,
+            repoID: Repo.defaultWorkspaceID,
+            remoteID: remote.id,
+            projectName: Repo.defaultWorkspace.name,
+            remotePath: path,
+            defaultBranch: Repo.defaultWorkspace.defaultBranch
+        )
+        return projectID
     }
 
     private func startStatsTimer() {

@@ -3,7 +3,7 @@ import SwiftUI
 struct SidebarView: View {
     @Environment(AppState.self) private var appState
     @Binding var showingAddRepoSheet: Bool
-    @State private var newThreadRepo: Repo?
+    @State private var newThreadTarget: NewThreadTarget?
 
     private var isUITestMode: Bool {
         ProcessInfo.processInfo.environment["THREADMILL_UI_TEST_MODE"] == "1"
@@ -34,7 +34,7 @@ struct SidebarView: View {
                             canCreateThread: !appState.remotes.isEmpty,
                             selectedThreadID: $bindableState.selectedThreadID,
                             onNewThread: { repo in
-                                newThreadRepo = repo
+                                newThreadTarget = .repo(repo)
                             },
                             onCancelThreadCreation: { thread in
                                 Task { await appState.cancelThreadCreation(threadID: thread.id) }
@@ -54,10 +54,10 @@ struct SidebarView: View {
                         ProjectSection(
                             project: project,
                             threads: threads,
-                            canCreateThread: preselectedRepoForNewThread(from: project, repos: appState.repos) != nil && !appState.remotes.isEmpty,
+                            canCreateThread: !appState.remotes.isEmpty,
                             selectedThreadID: $bindableState.selectedThreadID,
                             onNewThread: { project in
-                                newThreadRepo = preselectedRepoForNewThread(from: project, repos: appState.repos)
+                                newThreadTarget = .project(project)
                             },
                             onCancelThreadCreation: { thread in
                                 Task { await appState.cancelThreadCreation(threadID: thread.id) }
@@ -117,7 +117,9 @@ struct SidebarView: View {
                     .accessibilityLabel("Automation Open Add Project")
 
                     Button("Automation New Thread") {
-                        newThreadRepo = appState.repos.first
+                        if let repo = appState.defaultWorkspaceRepo ?? appState.repos.first {
+                            newThreadTarget = .repo(repo)
+                        }
                     }
                     .accessibilityIdentifier("automation.open-new-thread")
                     .accessibilityLabel("Automation Open New Thread")
@@ -138,16 +140,21 @@ struct SidebarView: View {
         .background(sidebarBackground)
         .sheet(
             isPresented: Binding(
-                get: { newThreadRepo != nil },
+                get: { newThreadTarget != nil },
                 set: { isPresented in
                     if !isPresented {
-                        newThreadRepo = nil
+                        newThreadTarget = nil
                     }
                 }
             )
         ) {
-            if let newThreadRepo {
-                NewThreadSheet(repo: newThreadRepo)
+            if let newThreadTarget {
+                switch newThreadTarget {
+                case .repo(let repo):
+                    NewThreadSheet(repo: repo)
+                case .project(let project):
+                    NewThreadSheet(project: project)
+                }
             }
         }
     }
@@ -165,9 +172,7 @@ private enum SidebarItem: Identifiable {
     }
 }
 
-func preselectedRepoForNewThread(from project: Project, repos: [Repo]) -> Repo? {
-    guard let repoID = project.repoId else {
-        return nil
-    }
-    return repos.first(where: { $0.id == repoID })
+private enum NewThreadTarget {
+    case repo(Repo)
+    case project(Project)
 }

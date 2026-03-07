@@ -34,6 +34,14 @@ struct Remote: Codable, FetchableRecord, PersistableRecord, Identifiable, Equata
 }
 
 extension Remote {
+    var defaultWorkspacePath: String {
+        let normalizedRoot = cloneRoot.hasSuffix("/") && cloneRoot.count > 1
+            ? String(cloneRoot.dropLast())
+            : cloneRoot
+        let parent = (normalizedRoot as NSString).deletingLastPathComponent
+        return parent.isEmpty ? "/" : parent
+    }
+
     static func joinedRemotePath(root: String, owner: String, repoName: String) -> String {
         let normalizedRoot: String
         if root.isEmpty || root == "/" {

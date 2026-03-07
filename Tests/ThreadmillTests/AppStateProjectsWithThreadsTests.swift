@@ -206,7 +206,8 @@ final class AppStateProjectsWithThreadsTests: XCTestCase {
         )
         appState.reloadFromDatabase()
 
-        XCTAssertEqual(appState.reposWithThreads.count, 2)
+        XCTAssertEqual(appState.reposWithThreads.count, 3)
+        XCTAssertEqual(appState.reposWithThreads.first(where: { $0.0.id == Repo.defaultWorkspaceID })?.1.map(\.id), [])
         XCTAssertEqual(appState.reposWithThreads.first(where: { $0.0.id == repoWithThread.id })?.1.map(\.id), ["thread-repo"])
         XCTAssertEqual(appState.reposWithThreads.first(where: { $0.0.id == repoWithoutThread.id })?.1.map(\.id), [])
         XCTAssertEqual(appState.projectsWithThreads.map(\.0.id), ["project-orphan"])

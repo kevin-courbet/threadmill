@@ -19,6 +19,13 @@ final class ProjectSectionTests: XCTestCase {
         XCTAssertTrue(source.contains("ForEach(sidebarItems)"))
     }
 
+    func testSidebarDoesNotDisableProjectThreadCreationBehindRepoMapping() throws {
+        let source = try loadSource(at: "Sources/Threadmill/Features/Projects/SidebarView.swift")
+
+        XCTAssertFalse(source.contains("preselectedRepoForNewThread(from: project, repos: appState.repos) != nil"))
+        XCTAssertTrue(source.contains("canCreateThread: !appState.remotes.isEmpty"))
+    }
+
     private func loadSource(at relativePath: String) throws -> String {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

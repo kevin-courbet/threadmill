@@ -22,6 +22,6 @@ final class SidebarNewThreadFlowTests: XCTestCase {
         onNewThread(repo)
         let sheet = NewThreadSheet(repo: newThreadRepo!)
 
-        XCTAssertEqual(sheet.repo.id, repo.id)
+        XCTAssertEqual(sheet.preselectedRepo?.id, repo.id)
     }
 }

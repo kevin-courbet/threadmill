@@ -11,32 +11,16 @@ struct ContentView: View {
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 400)
         } detail: {
             if appState.repos.isEmpty && appState.projects.isEmpty {
-                VStack(spacing: 14) {
-                    Image(systemName: "folder.badge.plus")
-                        .font(.system(size: 44, weight: .regular))
-                        .foregroundStyle(.secondary)
-                    Text("Add a repository to get started")
-                        .font(.title3.weight(.semibold))
-                    Button("Add Repository") {
-                        showingAddRepoSheet = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("empty-state.add-repository-button")
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                defaultWorkspaceEmptyState
             } else if appState.selectedThread != nil {
                 ThreadDetailView()
             } else {
-                ContentUnavailableView(
-                    "Select a Thread",
-                    systemImage: "terminal",
-                    description: Text("Choose a thread from the sidebar to open terminal presets.")
-                )
+                defaultWorkspaceEmptyState
             }
         }
         .navigationSplitViewStyle(.balanced)
         .sheet(isPresented: Bindable(appState).isNewThreadSheetPresented) {
-            if let repo = appState.repos.first {
+            if let repo = appState.defaultWorkspaceRepo ?? appState.repos.first {
                 NewThreadSheet(repo: repo)
             }
         }
@@ -59,6 +43,34 @@ struct ContentView: View {
             Text(appState.alertMessage ?? "")
         }
         .background { keyboardShortcuts }
+    }
+
+    @ViewBuilder
+    private var defaultWorkspaceEmptyState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "sparkles.rectangle.stack")
+                .font(.system(size: 40, weight: .regular))
+                .foregroundStyle(.secondary)
+
+            Text("Where do you want to run this?")
+                .font(.title3.weight(.semibold))
+
+            if appState.remotes.isEmpty {
+                Text("Configure a remote in Settings to start using Cross-project.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                Picker("Remote", selection: Bindable(appState).selectedWorkspaceRemoteID) {
+                    ForEach(appState.remotes) { remote in
+                        Text(remote.name).tag(Optional(remote.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: 220)
+                .accessibilityIdentifier("default-workspace.remote-picker")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
