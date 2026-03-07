@@ -104,13 +104,6 @@ final class ChatViewModel {
             return
         }
 
-        do {
-            try await ensureOpenCodeRunningIfNeeded()
-        } catch {
-            lastError = error.localizedDescription
-            return
-        }
-
         guard let sessionID = currentConversation?.opencodeSessionID, !sessionID.isEmpty else {
             lastError = "Start a coding session before sending a prompt."
             return
@@ -138,7 +131,6 @@ final class ChatViewModel {
         }
 
         do {
-            try await ensureOpenCodeRunningIfNeeded()
             try await openCodeClient.abort(sessionID: sessionID, directory: directory)
         } catch {
             lastError = error.localizedDescription
@@ -178,7 +170,6 @@ final class ChatViewModel {
         activeDirectory = resolvedDirectory
 
         do {
-            try await ensureOpenCodeRunningIfNeeded()
             startEventStreamIfNeeded(directory: resolvedDirectory)
             let newConversation = try await chatConversationService.createConversation(
                 threadID: resolvedThreadID,
@@ -240,7 +231,6 @@ final class ChatViewModel {
             }
 
             do {
-                try await self.ensureOpenCodeRunningIfNeeded()
                 let loadedMessages = try await self.openCodeClient.getMessages(sessionID: sessionID, directory: directory)
                 guard !Task.isCancelled else {
                     return

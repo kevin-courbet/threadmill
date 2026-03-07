@@ -26,8 +26,12 @@ final class ChatConversationService: ChatConversationManaging {
 
     func createConversation(threadID: String, directory: String) async throws -> ChatConversation {
         var conversation = ChatConversation(threadID: threadID)
+        NSLog("threadmill-chat: opencode createSession dir=%@", directory)
         let session = try await openCodeClient.createSession(directory: directory)
+        NSLog("threadmill-chat: opencode createSession ok id=%@", session.id)
+        NSLog("threadmill-chat: opencode initSession id=%@", session.id)
         let initializedSession = try await openCodeClient.initSession(id: session.id, directory: directory)
+        NSLog("threadmill-chat: opencode initSession ok id=%@", initializedSession.id)
         conversation.linkSession(initializedSession.id)
         try databaseManager.saveConversation(conversation)
         return conversation

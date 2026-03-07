@@ -203,22 +203,25 @@ private struct SessionTabButton<Content: View>: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            content
-                .padding(.leading, 6)
-                .padding(.trailing, 12)
-                .padding(.vertical, 6)
-                .background(
-                    isSelected
-                        ? Color(nsColor: .separatorColor)
-                        : (isHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear),
-                    in: Capsule()
-                )
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovering = hovering
-        }
+        // Content is laid out directly (not inside a Button label) so nested
+        // buttons (e.g. close) receive their own clicks.
+        content
+            .padding(.leading, 6)
+            .padding(.trailing, 12)
+            .padding(.vertical, 6)
+            .background(
+                isSelected
+                    ? Color(nsColor: .separatorColor)
+                    : (isHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear),
+                in: Capsule()
+            )
+            .contentShape(Capsule())
+            .onTapGesture(perform: action)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(.default, action)
+            .onHover { hovering in
+                isHovering = hovering
+            }
     }
 }
 
@@ -279,7 +282,8 @@ private struct NewTabButton: View {
     let addButtonHelp: String
     let addButtonAccessibilityID: String
 
-    @State private var isHovering = false
+    @State private var isPlusHovering = false
+    @State private var isChevronHovering = false
     @State private var clickTrigger = 0
 
     var body: some View {
@@ -292,7 +296,7 @@ private struct NewTabButton: View {
             }
             .buttonStyle(.plain)
             .onHover { hovering in
-                isHovering = hovering
+                isPlusHovering = hovering
             }
             .help(addButtonHelp)
             .accessibilityIdentifier(addButtonAccessibilityID)
@@ -312,7 +316,7 @@ private struct NewTabButton: View {
                 }
                 .buttonStyle(.plain)
                 .onHover { hovering in
-                    isHovering = hovering
+                    isPlusHovering = hovering
                 }
                 .help(addButtonHelp)
                 .accessibilityIdentifier(addButtonAccessibilityID)
@@ -334,7 +338,7 @@ private struct NewTabButton: View {
                 .menuIndicator(.hidden)
                 .buttonStyle(.plain)
                 .onHover { hovering in
-                    isHovering = hovering
+                    isChevronHovering = hovering
                 }
                 .help(addButtonHelp)
                 .accessibilityIdentifier("\(addButtonAccessibilityID).menu")
@@ -349,7 +353,7 @@ private struct NewTabButton: View {
             .font(.system(size: 9, weight: .semibold))
             .frame(width: 16, height: 24)
             .background(
-                isHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear,
+                isChevronHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear,
                 in: RoundedRectangle(cornerRadius: 8, style: .continuous)
             )
     }
@@ -359,7 +363,7 @@ private struct NewTabButton: View {
             .font(.system(size: 11))
             .frame(width: 24, height: 24)
             .background(
-                isHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear,
+                isPlusHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear,
                 in: Circle()
             )
     }

@@ -138,28 +138,6 @@ final class ChatViewModelTests: XCTestCase {
         XCTAssertEqual(text, "Hello")
     }
 
-    func testLoadConversationsEnsuresOpenCodeBeforeFirstRequest() async {
-        let mock = MockOpenCodeClient()
-        let conversations = MockChatConversationService()
-        conversations.listConversationsResult = .success([])
-        conversations.createConversationResult = .failure(TestError.forcedFailure)
-
-        var ensureCalls = 0
-        let viewModel = ChatViewModel(
-            openCodeClient: mock,
-            chatConversationService: conversations,
-            ensureOpenCodeRunning: {
-                ensureCalls += 1
-            }
-        )
-
-        await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
-        await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
-
-        XCTAssertEqual(ensureCalls, 1)
-        XCTAssertEqual(conversations.listedThreadIDs, ["thread_1", "thread_1"])
-    }
-
     func testSelectConversationIgnoresStaleMessageLoadResults() async {
         let mock = MockOpenCodeClient()
         let conversations = MockChatConversationService()

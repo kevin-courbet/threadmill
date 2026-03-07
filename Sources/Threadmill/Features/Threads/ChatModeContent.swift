@@ -19,9 +19,6 @@ struct ChatModeContent: View {
                 directory: thread.worktreePath,
                 openCodeClient: openCodeClient,
                 chatConversationService: chatConversationService,
-                ensureOpenCodeRunning: {
-                    try await appState.ensureOpenCodeRunning()
-                },
                 selectedConversationID: selectedConversationID,
                 reloadToken: reloadToken,
                 showsConversationTabBar: false,
@@ -99,12 +96,16 @@ enum ChatModeActions {
             let thread = appState.selectedThread,
             let chatConversationService = appState.chatConversationService
         else {
+            NSLog("threadmill-chat: createConversation guard failed selectedThread=%@ chatConversationService=%@",
+                  appState.selectedThread?.id ?? "nil",
+                  appState.chatConversationService == nil ? "nil" : "present")
             return
         }
 
         Task {
             do {
                 let selectedHarness = harness ?? .openCodeServe
+                NSLog("threadmill-chat: createConversation start harness=%@ thread=%@ dir=%@", "\(selectedHarness)", thread.id, thread.worktreePath)
                 let conversation: ChatConversation
 
                 switch selectedHarness {
@@ -115,6 +116,7 @@ enum ChatModeActions {
                     )
                 }
 
+                NSLog("threadmill-chat: createConversation success id=%@", conversation.id)
                 await MainActor.run {
                     errorMessageBinding.wrappedValue = nil
                     selectedChatConversationIDBinding.wrappedValue = conversation.id
@@ -122,6 +124,7 @@ enum ChatModeActions {
                     chatReloadToken.wrappedValue += 1
                 }
             } catch {
+                NSLog("threadmill-chat: createConversation failed error=%@", "\(error)")
                 await MainActor.run {
                     errorMessageBinding.wrappedValue = error.localizedDescription
                 }

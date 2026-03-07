@@ -26,7 +26,6 @@ struct ChatView: View {
         directory: String,
         openCodeClient: any OpenCodeManaging,
         chatConversationService: any ChatConversationManaging,
-        ensureOpenCodeRunning: (() async throws -> Void)? = nil,
         selectedConversationID: String? = nil,
         reloadToken: Int = 0,
         showsConversationTabBar: Bool = true,
@@ -44,8 +43,7 @@ struct ChatView: View {
         self.onConversationStateChange = onConversationStateChange
         _viewModel = State(initialValue: ChatViewModel(
             openCodeClient: openCodeClient,
-            chatConversationService: chatConversationService,
-            ensureOpenCodeRunning: ensureOpenCodeRunning
+            chatConversationService: chatConversationService
         ))
     }
 

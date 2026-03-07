@@ -14,4 +14,16 @@ final class SessionTabsScrollViewSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("Image(systemName: \"chevron.down\")"))
         XCTAssertFalse(source.contains("primaryAction:"))
     }
+
+    func testSessionTabButtonRestoresButtonAccessibilityTraits() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Views/Components/SessionTabsScrollView.swift")
+        let source = try String(contentsOf: sourcePath, encoding: .utf8)
+
+        XCTAssertTrue(source.contains(".accessibilityAddTraits(.isButton)"))
+        XCTAssertTrue(source.contains(".accessibilityAction(.default, action)"))
+    }
 }
