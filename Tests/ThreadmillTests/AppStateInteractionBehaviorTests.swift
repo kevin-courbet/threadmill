@@ -107,6 +107,81 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertEqual(database.linkedProjects.count, 1)
     }
 
+    func testCreateThreadForCrossProjectWorkspaceRejectsRepoLinkedLookupProject() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let remote = Remote(
+            id: "remote-1",
+            name: "beast",
+            host: "beast",
+            daemonPort: 19990,
+            useSSHTunnel: true,
+            cloneRoot: "/home/wsl/dev"
+        )
+        let repo = Repo(
+            id: "repo-1",
+            owner: "anomalyco",
+            name: "threadmill",
+            fullName: "anomalyco/threadmill",
+            cloneURL: "git@github.com:anomalyco/threadmill.git",
+            defaultBranch: "main",
+            isPrivate: true,
+            cachedAt: Date(timeIntervalSince1970: 1)
+        )
+        let existingProject = Project(
+            id: "project-1",
+            name: repo.name,
+            remotePath: "/home/wsl",
+            defaultBranch: "main",
+            presets: [PresetConfig(name: "terminal", command: "$SHELL", cwd: nil)],
+            remoteId: remote.id,
+            repoId: repo.id
+        )
+        database.remotes = [remote]
+        database.repos = [repo]
+        database.projects = [existingProject]
+
+        connection.requestHandler = { method, _, _ in
+            switch method {
+            case "project.lookup":
+                return [
+                    "exists": true,
+                    "is_git_repo": true,
+                    "project_id": existingProject.id,
+                ]
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+
+        do {
+            try await appState.createThread(
+                repo: .defaultWorkspace,
+                remote: remote,
+                name: "scratch",
+                sourceType: "main_checkout",
+                branch: nil
+            )
+            XCTFail("Expected hijack protection to reject relink")
+        } catch let error as AppStateError {
+            guard case let .defaultWorkspaceProjectAlreadyLinked(projectID, repoID) = error else {
+                return XCTFail("Unexpected AppStateError: \(error)")
+            }
+            XCTAssertEqual(projectID, existingProject.id)
+            XCTAssertEqual(repoID, repo.id)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertEqual(connection.requests.map(\.method), ["project.lookup"])
+        XCTAssertTrue(database.linkedProjects.isEmpty)
+    }
+
     func testCloseThreadRemovesItFromSidebar() async {
         let connection = MockDaemonConnection(state: .connected)
         let database = MockDatabaseManager()

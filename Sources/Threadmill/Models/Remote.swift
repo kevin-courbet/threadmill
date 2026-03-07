@@ -33,11 +33,19 @@ struct Remote: Codable, FetchableRecord, PersistableRecord, Identifiable, Equata
     }
 }
 
+extension String {
+    var normalizedRemotePath: String {
+        var normalized = self
+        while normalized.count > 1 && normalized.hasSuffix("/") {
+            normalized.removeLast()
+        }
+        return normalized
+    }
+}
+
 extension Remote {
     var defaultWorkspacePath: String {
-        let normalizedRoot = cloneRoot.hasSuffix("/") && cloneRoot.count > 1
-            ? String(cloneRoot.dropLast())
-            : cloneRoot
+        let normalizedRoot = cloneRoot.normalizedRemotePath
         let parent = (normalizedRoot as NSString).deletingLastPathComponent
         return parent.isEmpty ? "/" : parent
     }

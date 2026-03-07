@@ -5,6 +5,7 @@ enum AppStateError: LocalizedError {
     case connectionManagerUnavailable
     case invalidGitStatusResponse
     case invalidProjectResponse
+    case defaultWorkspaceProjectAlreadyLinked(projectID: String, repoID: String)
     case provisioningUnavailable
 
     var errorDescription: String? {
@@ -15,6 +16,8 @@ enum AppStateError: LocalizedError {
             "Invalid response for file.git_status."
         case .invalidProjectResponse:
             "Invalid response while preparing the project."
+        case let .defaultWorkspaceProjectAlreadyLinked(projectID, repoID):
+            "Project \(projectID) is already linked to repo \(repoID), refusing to relink as cross-project workspace."
         case .provisioningUnavailable:
             "Provisioning service is unavailable."
         }
@@ -40,9 +43,17 @@ final class AppState {
             }
         }
     }
-    var remotes: [Remote] = []
+    var remotes: [Remote] = [] {
+        didSet {
+            rebuildWorkspacePathsByRemoteID()
+        }
+    }
     var repos: [Repo] = []
-    var projects: [Project] = []
+    var projects: [Project] = [] {
+        didSet {
+            rebuildProjectsByID()
+        }
+    }
     var threads: [ThreadModel] = []
     var systemStats: SystemStatsResult?
     private var statsTask: Task<Void, Never>?
@@ -85,6 +96,8 @@ final class AppState {
     private var attachedEndpoints: [AttachmentKey: RelayEndpoint] = [:]
     private var pendingAttachTasks: [AttachmentKey: Task<Void, Never>] = [:]
     private var permanentAttachFailures: Set<AttachmentKey> = []
+    private var workspacePathsByRemoteID: [String: String] = [:]
+    private var projectsByID: [String: Project] = [:]
 
     init(statsPollingEnabled: Bool = false, statsRefreshInterval: TimeInterval = 5) {
         self.statsPollingEnabled = statsPollingEnabled
@@ -104,7 +117,7 @@ final class AppState {
         guard let projectID = selectedThread?.projectId else {
             return nil
         }
-        return projects.first { $0.id == projectID }
+        return projectsByID[projectID]
     }
 
     var activeRemoteID: String? {
@@ -118,18 +131,38 @@ final class AppState {
         repos.first(where: \.isDefaultWorkspace)
     }
 
+    private func rebuildWorkspacePathsByRemoteID() {
+        workspacePathsByRemoteID = Dictionary(
+            remotes.map { remote in
+                (remote.id, remote.defaultWorkspacePath.normalizedRemotePath)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    private func rebuildProjectsByID() {
+        projectsByID = Dictionary(
+            projects.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
     private func isDefaultWorkspaceProject(_ project: Project) -> Bool {
         if project.repoId == Repo.defaultWorkspaceID {
             return true
         }
 
+        if project.repoId != nil {
+            return false
+        }
+
         guard let remoteID = project.remoteId,
-              let remote = remotes.first(where: { $0.id == remoteID })
+              let workspacePath = workspacePathsByRemoteID[remoteID]
         else {
             return false
         }
 
-        return project.remotePath == remote.defaultWorkspacePath
+        return project.remotePath.normalizedRemotePath == workspacePath
     }
 
     func connectionForSelectedThread() -> (any ConnectionManaging)? {
@@ -151,7 +184,6 @@ final class AppState {
     }
 
     var reposWithThreads: [(Repo, [ThreadModel])] {
-        let projectsByID = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0) })
         let grouped: [String?: [ThreadModel]] = Dictionary(grouping: visibleThreads) { thread -> String? in
             guard let project = projectsByID[thread.projectId] else {
                 return nil
@@ -1128,7 +1160,7 @@ final class AppState {
     }
 
     private func remoteIDForProject(id projectID: String) -> String? {
-        projects.first(where: { $0.id == projectID })?.remoteId
+        projectsByID[projectID]?.remoteId
     }
 
     private func linkProject(
@@ -1139,7 +1171,11 @@ final class AppState {
         remotePath: String,
         defaultBranch: String
     ) {
+        var shouldPersistLink = true
+
         if let projectIndex = projects.firstIndex(where: { $0.id == projectID }) {
+            let existingProject = projects[projectIndex]
+            shouldPersistLink = existingProject.repoId != repoID || existingProject.remoteId != remoteID
             projects[projectIndex].repoId = repoID
             projects[projectIndex].remoteId = remoteID
             projects[projectIndex].name = projectName
@@ -1156,6 +1192,10 @@ final class AppState {
                     repoId: repoID
                 )
             )
+        }
+
+        guard shouldPersistLink else {
+            return
         }
 
         do {
@@ -1184,9 +1224,25 @@ final class AppState {
     }
 
     private var visibleThreads: [ThreadModel] {
-        threads.filter { thread in
-            thread.status != .closed
-                && thread.status != .failed
+        return threads.filter { thread in
+            guard thread.status != .closed, thread.status != .failed else {
+                return false
+            }
+
+            guard thread.sourceType == "main_checkout" else {
+                return true
+            }
+
+            guard let project = projectsByID[thread.projectId] else {
+                NSLog(
+                    "threadmill-state: main_checkout thread %@ references unknown project %@",
+                    thread.id,
+                    thread.projectId
+                )
+                return false
+            }
+
+            return isDefaultWorkspaceProject(project)
         }
     }
 
@@ -1236,6 +1292,9 @@ final class AppState {
             guard let remoteID = project.remoteId else {
                 continue
             }
+            guard project.repoId == nil || project.repoId == Repo.defaultWorkspaceID else {
+                continue
+            }
             linkProject(
                 projectID: project.id,
                 repoID: Repo.defaultWorkspaceID,
@@ -1257,6 +1316,20 @@ final class AppState {
         let projectID: String
 
         if let existingProjectID = lookup.projectId {
+            if let existingProject = projectsByID[existingProjectID],
+               let existingRepoID = existingProject.repoId,
+               existingRepoID != Repo.defaultWorkspaceID
+            {
+                NSLog(
+                    "threadmill-state: refusing to relink project %@ already linked to repo %@ as cross-project workspace",
+                    existingProjectID,
+                    existingRepoID
+                )
+                throw AppStateError.defaultWorkspaceProjectAlreadyLinked(
+                    projectID: existingProjectID,
+                    repoID: existingRepoID
+                )
+            }
             projectID = existingProjectID
         } else {
             guard let connection = connectionPool?.connection(for: remote.id) else {
