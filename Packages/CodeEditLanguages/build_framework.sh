@@ -39,6 +39,8 @@ xcodebuild \
     -configuration Release \
     ARCHS="arm64 x86_64" \
     ONLY_ACTIVE_ARCH=NO \
+    GCC_GENERATE_DEBUGGING_SYMBOLS=NO \
+    STRIP_INSTALLED_PRODUCT=YES \
     $QUIET_FLAG clean build &> $QUIET_OUTPUT
 status "Build complete!"
 
@@ -137,6 +139,8 @@ for lang in $LIST ; do
 done
 
 status "Language queries copied to package resources!"
+
+cd $OLD_PWD
 
 # Clone the neovim-treesitter repository, which has more language query files than
 # the language repos contain by default and use query files.

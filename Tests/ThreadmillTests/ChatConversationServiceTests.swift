@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class ChatConversationServiceTests: XCTestCase {
-    func testCreateConversationCallsCreateThenInitAndPersistsLinkedSession() async throws {
+    func testCreateConversationLinksSessionAndSavesImmediatelyThenInitsInBackground() async throws {
         let openCode = MockOpenCodeClient()
         let database = MockDatabaseManager()
 
@@ -43,19 +43,20 @@ final class ChatConversationServiceTests: XCTestCase {
             directory: "/home/wsl/dev/project"
         )
 
-        // Verify createSession was called with correct directory
+        // createSession called with correct directory
         XCTAssertEqual(openCode.createdSessionsInDirectories, ["/home/wsl/dev/project"])
 
-        // Verify initSession was called with the session ID from createSession
-        XCTAssertEqual(openCode.initializedSessions.count, 1)
-        XCTAssertEqual(openCode.initializedSessions.first?.id, "ses_new")
-        XCTAssertEqual(openCode.initializedSessions.first?.directory, "/home/wsl/dev/project")
-
-        // Verify conversation was saved to database with linked session
+        // Conversation saved immediately with linked session (before init completes)
         XCTAssertEqual(database.conversations.count, 1)
         XCTAssertEqual(database.conversations.first?.id, conversation.id)
         XCTAssertEqual(database.conversations.first?.opencodeSessionID, "ses_new")
         XCTAssertEqual(database.conversations.first?.threadID, "thread_1")
+
+        // initSession fires in background — wait for it to complete
+        let initCalled = await waitForCondition { openCode.initializedSessions.count == 1 }
+        XCTAssertTrue(initCalled)
+        XCTAssertEqual(openCode.initializedSessions.first?.id, "ses_new")
+        XCTAssertEqual(openCode.initializedSessions.first?.directory, "/home/wsl/dev/project")
     }
 
     func testCreateConversationPropagatesCreateSessionError() async {
@@ -85,7 +86,7 @@ final class ChatConversationServiceTests: XCTestCase {
         XCTAssertTrue(openCode.initializedSessions.isEmpty)
     }
 
-    func testCreateConversationPropagatesInitSessionError() async {
+    func testCreateConversationSavesEvenWhenInitSessionFailsInBackground() async throws {
         let openCode = MockOpenCodeClient()
         let database = MockDatabaseManager()
 
@@ -108,18 +109,19 @@ final class ChatConversationServiceTests: XCTestCase {
             openCodeClient: openCode
         )
 
-        do {
-            _ = try await service.createConversation(
-                threadID: "thread_1",
-                directory: "/home/wsl/dev/project"
-            )
-            XCTFail("Expected error to be thrown")
-        } catch {
-            XCTAssertTrue(error is OpenCodeClientError)
-        }
+        // createConversation succeeds — initSession failure is background-only
+        let conversation = try await service.createConversation(
+            threadID: "thread_1",
+            directory: "/home/wsl/dev/project"
+        )
 
-        // createSession was called, but nothing saved
-        XCTAssertEqual(openCode.createdSessionsInDirectories.count, 1)
-        XCTAssertTrue(database.conversations.isEmpty)
+        // Conversation saved with session linked
+        XCTAssertEqual(database.conversations.count, 1)
+        XCTAssertEqual(database.conversations.first?.opencodeSessionID, "ses_new")
+        XCTAssertEqual(conversation.threadID, "thread_1")
+
+        // Background init was attempted (and failed silently)
+        let initCalled = await waitForCondition { openCode.initializedSessions.count == 1 }
+        XCTAssertTrue(initCalled)
     }
 }

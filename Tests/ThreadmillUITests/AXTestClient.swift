@@ -82,6 +82,11 @@ final class AXTestClient {
         }
     }
 
+    func findElementWithIdentifierPrefix(_ prefix: String) -> AXUIElement? {
+        var visited = Set<UnsafeRawPointer>()
+        return searchByIdentifierPrefix(element: appElement, prefix: prefix, visited: &visited)
+    }
+
     func debugDumpTitles(limit: Int = 200) {
         var visited = Set<UnsafeRawPointer>()
         var lines: [String] = []
@@ -112,6 +117,26 @@ final class AXTestClient {
 
         for child in childElements(of: element) {
             if let found = search(element: child, identifier: identifier, visited: &visited) {
+                return found
+            }
+        }
+
+        return nil
+    }
+
+    private func searchByIdentifierPrefix(element: AXUIElement, prefix: String, visited: inout Set<UnsafeRawPointer>) -> AXUIElement? {
+        let pointer = UnsafeRawPointer(Unmanaged.passUnretained(element).toOpaque())
+        guard visited.insert(pointer).inserted else {
+            return nil
+        }
+
+        if let currentID = attribute(element: element, name: kAXIdentifierAttribute as CFString) as? String,
+           currentID.hasPrefix(prefix) {
+            return element
+        }
+
+        for child in childElements(of: element) {
+            if let found = searchByIdentifierPrefix(element: child, prefix: prefix, visited: &visited) {
                 return found
             }
         }

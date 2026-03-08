@@ -187,6 +187,7 @@ struct ChatView: View {
                         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("chat.harness.\(harness.id)")
                 }
             }
 
@@ -198,6 +199,7 @@ struct ChatView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
+        .accessibilityIdentifier("chat.empty-state")
     }
 
     private func startConversation(using harness: ChatHarness) {

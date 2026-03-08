@@ -6,6 +6,7 @@ enum OpenCodeClientError: LocalizedError {
     case unexpectedStatusCode(Int)
     case missingDefaultModel
     case invalidSSEPayload
+    case sessionInvalidated
 
     var errorDescription: String? {
         switch self {
@@ -19,6 +20,8 @@ enum OpenCodeClientError: LocalizedError {
             "Unable to determine a default provider/model for session initialization."
         case .invalidSSEPayload:
             "Received invalid UTF-8 from OpenCode SSE stream."
+        case .sessionInvalidated:
+            "OpenCode client has been invalidated."
         }
     }
 }
@@ -27,10 +30,13 @@ final class OpenCodeClient: OpenCodeManaging {
     private let baseURL: URL
     private let username: String?
     private let password: String?
+    private let preferredProviderID: String
+    private let preferredModelID: String
     private let session: URLSession
     private let sseSession: URLSession
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
+    private(set) var isInvalidated = false
 
     private static let directoryHeaderAllowedCharacters = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
     private static let pathComponentAllowedCharacters: CharacterSet = {
@@ -49,17 +55,31 @@ final class OpenCodeClient: OpenCodeManaging {
         return URLSession(configuration: config)
     }
 
+    /// Dedicated URLSession for regular data requests. Using `.shared` causes
+    /// connection pool starvation when combined with SSE streams to the same host,
+    /// even when SSE uses its own session — `.shared`'s internal connection
+    /// management can still deadlock under concurrent load.
+    private static func makeDataSession() -> URLSession {
+        let config = URLSessionConfiguration.default
+        config.httpMaximumConnectionsPerHost = 10
+        return URLSession(configuration: config)
+    }
+
     init(
         baseURL: URL = URL(string: "http://127.0.0.1:4101")!,
         username: String? = nil,
         password: String? = nil,
-        session: URLSession = .shared,
+        preferredProviderID: String = "anthropic",
+        preferredModelID: String = "claude-opus-4-6",
+        session: URLSession? = nil,
         sseSession: URLSession? = nil
     ) {
         self.baseURL = baseURL
         self.username = username
         self.password = password
-        self.session = session
+        self.preferredProviderID = preferredProviderID
+        self.preferredModelID = preferredModelID
+        self.session = session ?? Self.makeDataSession()
         self.sseSession = sseSession ?? Self.makeSSESession()
     }
 
@@ -79,7 +99,6 @@ final class OpenCodeClient: OpenCodeManaging {
     }
 
     func initSession(id: String, directory: String) async throws -> OCSession {
-        let sessionID = id
         let providers = try await getProvidersPayload(directory: directory)
         guard let model = defaultModel(from: providers) else {
             throw OpenCodeClientError.missingDefaultModel
@@ -91,7 +110,7 @@ final class OpenCodeClient: OpenCodeManaging {
             messageID: Self.makeMessageID()
         )
         let body = try encoder.encode(initRequest)
-        _ = try await performDataRequest(pathComponents: ["session", sessionID, "init"], method: "POST", directory: directory, body: body)
+        _ = try await performDataRequest(pathComponents: ["session", id, "init"], method: "POST", directory: directory, body: body)
 
         return try await getSession(id: id, directory: directory)
     }
@@ -168,6 +187,8 @@ final class OpenCodeClient: OpenCodeManaging {
     }
 
     func invalidate() {
+        isInvalidated = true
+        session.invalidateAndCancel()
         sseSession.invalidateAndCancel()
     }
 
@@ -183,6 +204,11 @@ final class OpenCodeClient: OpenCodeManaging {
     }
 
     private func defaultModel(from payload: OCProvidersPayload) -> OCMessageModel? {
+        // Prefer configured model if its provider is connected
+        if payload.connected.contains(preferredProviderID) {
+            return OCMessageModel(providerID: preferredProviderID, modelID: preferredModelID)
+        }
+
         for providerID in payload.connected {
             if let modelID = payload.defaultModelByProvider[providerID] {
                 return OCMessageModel(providerID: providerID, modelID: modelID)
@@ -203,6 +229,7 @@ final class OpenCodeClient: OpenCodeManaging {
     }
 
     private func performDataRequest(pathComponents: [String], method: String, directory: String?, body: Data? = nil) async throws -> Data {
+        guard !isInvalidated else { throw OpenCodeClientError.sessionInvalidated }
         let request = try makeRequest(pathComponents: pathComponents, method: method, directory: directory, body: body)
         let (data, response) = try await session.data(for: request)
         try validateResponse(response)

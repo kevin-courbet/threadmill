@@ -95,7 +95,6 @@ enum ChatModeActions {
     ) {
         guard let chatConversationService = appState.chatConversationService else {
             errorMessageBinding.wrappedValue = "Chat conversation service unavailable."
-            NSLog("threadmill-chat: createConversation aborted, service unavailable")
             return
         }
 
@@ -122,7 +121,6 @@ enum ChatModeActions {
                     chatReloadToken.wrappedValue += 1
                 }
             } catch {
-                NSLog("threadmill-chat: createConversation failed: %@", "\(error)")
                 await MainActor.run {
                     errorMessageBinding.wrappedValue = error.localizedDescription
                 }
