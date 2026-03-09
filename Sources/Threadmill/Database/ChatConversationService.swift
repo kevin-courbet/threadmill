@@ -29,16 +29,6 @@ final class ChatConversationService: ChatConversationManaging {
         let session = try await openCodeClient.createSession(directory: directory)
         conversation.linkSession(session.id)
         try databaseManager.saveConversation(conversation)
-
-        // /init blocks until the agent's first turn completes (can take minutes
-        // due to rate limits or tool-approval questions). Fire it in the background
-        // so the UI returns immediately. The SSE event stream (already connected
-        // by ChatViewModel before this call) delivers real-time state updates.
-        let client = openCodeClient
-        Task { @MainActor in
-            _ = try? await client.initSession(id: session.id, directory: directory)
-        }
-
         return conversation
     }
 
