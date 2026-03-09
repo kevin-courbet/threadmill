@@ -7,7 +7,10 @@ struct AutomationControlsView: View {
     @Binding var selectedTab: String
     @Binding var terminalSessionIDs: [String]
     @Binding var selectedTerminalSessionID: String?
+    let chatConversations: [ChatConversation]
+    @Binding var selectedChatConversationID: String?
     let onAttachSelectedTerminalIfNeeded: () -> Void
+    let onArchiveChatConversation: (String) -> Void
 
     var body: some View {
         VStack(spacing: 2) {
@@ -50,6 +53,26 @@ struct AutomationControlsView: View {
             }
             .accessibilityIdentifier("automation.close-selected-thread")
             .accessibilityLabel("Automation Close Selected")
+
+            Button("Automation Switch Chat") {
+                selectedTab = TabItem.chat.id
+            }
+            .accessibilityIdentifier("automation.switch-chat")
+            .accessibilityLabel("Automation Switch Chat")
+
+            ForEach(chatConversations) { conversation in
+                Button("Automation Select Chat \(conversation.id)") {
+                    selectedChatConversationID = conversation.id
+                }
+                .accessibilityIdentifier("automation.select-chat.\(conversation.id)")
+                .accessibilityLabel("Automation Select Chat \(conversation.id)")
+
+                Button("Automation Close Chat \(conversation.id)") {
+                    onArchiveChatConversation(conversation.id)
+                }
+                .accessibilityIdentifier("automation.close-chat.\(conversation.id)")
+                .accessibilityLabel("Automation Close Chat \(conversation.id)")
+            }
 
             ForEach(appState.presets, id: \.name) { preset in
                 Button("Automation Preset \(preset.name)") {

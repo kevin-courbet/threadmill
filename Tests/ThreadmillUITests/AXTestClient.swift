@@ -21,6 +21,10 @@ final class AXTestClient {
         }
     }
 
+    func hasElement(identifier: String) -> Bool {
+        element(identifier: identifier) != nil
+    }
+
     func waitUntilMissing(identifier: String, timeout: TimeInterval = 10) throws {
         _ = try wait(timeout: timeout, description: "Element \(identifier) still present") {
             element(identifier: identifier) == nil ? true : nil

@@ -22,24 +22,15 @@ struct ThreadDetailView: View {
 
     var body: some View {
         if let thread = appState.selectedThread {
-            VStack(spacing: 0) { thread.status == .active ? AnyView(activeModeContent(thread: thread)) : AnyView(InactiveThreadView(thread: thread)) }
+            VStack(spacing: 0) {
+                if thread.status == .active { activeModeContent(thread: thread) } else { InactiveThreadView(thread: thread) }
+            }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .toolbar {
                     ToolbarItem(placement: .navigation) { modePicker }
                     if showsModeSessionTabs {
                         ToolbarItem(placement: .navigation) {
-                            ThreadModeSessionTabs(
-                                thread: thread,
-                                selectedTab: selectedTab,
-                                chatConversations: $chatConversations,
-                                selectedChatConversationID: $selectedChatConversationID,
-                                terminalSessionIDs: $terminalSessionIDs,
-                                selectedTerminalSessionID: $selectedTerminalSessionID,
-                                chatReloadToken: $chatReloadToken,
-                                chatHarnesses: chatHarnesses,
-                                tabStateManager: tabStateManager,
-                                isTerminalModeSelected: { selectedTab == TabItem.terminal.id }
-                            )
+                            modeSessionTabs(thread: thread)
                         }
                     }
                     ToolbarItem(placement: .automatic) {
@@ -54,9 +45,27 @@ struct ThreadDetailView: View {
                 }
                 .overlay(alignment: .bottomLeading) {
                     if isUITestMode {
-                        AutomationControlsView(thread: thread, selectedTab: $selectedTab, terminalSessionIDs: $terminalSessionIDs, selectedTerminalSessionID: $selectedTerminalSessionID) {
-                            TerminalModeActions.attachSelectedTerminalIfNeeded(appState: appState, selectedTerminalSessionID: selectedTerminalSessionID)
-                        }
+                        AutomationControlsView(
+                            thread: thread,
+                            selectedTab: $selectedTab,
+                            terminalSessionIDs: $terminalSessionIDs,
+                            selectedTerminalSessionID: $selectedTerminalSessionID,
+                            chatConversations: chatConversations,
+                            selectedChatConversationID: $selectedChatConversationID,
+                            onAttachSelectedTerminalIfNeeded: {
+                                TerminalModeActions.attachSelectedTerminalIfNeeded(appState: appState, selectedTerminalSessionID: selectedTerminalSessionID)
+                            },
+                            onArchiveChatConversation: { conversationID in
+                                ChatModeActions.archiveChatConversations(
+                                    [conversationID],
+                                    appState: appState,
+                                    chatConversations: { chatConversations },
+                                    selectedChatConversationIDBinding: $selectedChatConversationID,
+                                    chatReloadToken: $chatReloadToken,
+                                    tabStateManager: tabStateManager
+                                )
+                            }
+                        )
                         .padding(8)
                     }
                 }
@@ -86,6 +95,21 @@ struct ThreadDetailView: View {
         } else {
             EmptyView()
         }
+    }
+
+    private func modeSessionTabs(thread: ThreadModel) -> some View {
+        ThreadModeSessionTabs(
+            thread: thread,
+            selectedTab: selectedTab,
+            chatConversations: $chatConversations,
+            selectedChatConversationID: $selectedChatConversationID,
+            terminalSessionIDs: $terminalSessionIDs,
+            selectedTerminalSessionID: $selectedTerminalSessionID,
+            chatReloadToken: $chatReloadToken,
+            chatHarnesses: chatHarnesses,
+            tabStateManager: tabStateManager,
+            isTerminalModeSelected: { selectedTab == TabItem.terminal.id }
+        )
     }
 
     private var modePicker: some View {

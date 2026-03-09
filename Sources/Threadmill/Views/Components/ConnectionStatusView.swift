@@ -30,7 +30,6 @@ struct ConnectionStatusView: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityIdentifier("connection.status")
         .accessibilityLabel("Connection")
         .accessibilityValue(status.label)
     }

@@ -9,7 +9,7 @@ final class ChatViewModelTests: XCTestCase {
         let conversation = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "First", time: 1)
         let message = OCMessage(id: "msg_1", sessionID: "ses_1", role: "assistant")
 
-        conversations.listConversationsResult = .success([conversation])
+        conversations.activeConversationsResult = .success([conversation])
         mock.getMessagesResult = .success([message])
 
         let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
@@ -18,7 +18,7 @@ final class ChatViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.conversations.map(\.id), [conversation.id])
         XCTAssertEqual(viewModel.currentConversation?.id, conversation.id)
         XCTAssertEqual(viewModel.messages.map(\.id), [message.id])
-        XCTAssertEqual(conversations.listedThreadIDs, ["thread_1"])
+        XCTAssertEqual(conversations.activeThreadIDs, ["thread_1"])
         XCTAssertEqual(mock.fetchedMessages.first?.sessionID, "ses_1")
     }
 
@@ -26,7 +26,7 @@ final class ChatViewModelTests: XCTestCase {
         let mock = MockOpenCodeClient()
         let conversations = MockChatConversationService()
 
-        conversations.listConversationsResult = .success([])
+        conversations.activeConversationsResult = .success([])
 
         let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
         await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
@@ -41,7 +41,7 @@ final class ChatViewModelTests: XCTestCase {
         let conversations = MockChatConversationService()
         let onlyConversation = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "", time: 1)
 
-        conversations.listConversationsResult = .success([onlyConversation])
+        conversations.activeConversationsResult = .success([onlyConversation])
         mock.getMessagesResult = .success([])
 
         let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
@@ -68,6 +68,24 @@ final class ChatViewModelTests: XCTestCase {
 
         XCTAssertEqual(conversations.createdConversations.first?.threadID, "thread_1")
         XCTAssertEqual(conversations.createdConversations.first?.directory, "/tmp/worktree")
+    }
+
+    func testLoadConversationsExcludesArchivedConversations() async {
+        let mock = MockOpenCodeClient()
+        let conversations = MockChatConversationService()
+        let active = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "Active", time: 2)
+
+        // activeConversations returns only non-archived; loadConversations must use it
+        conversations.activeConversationsResult = .success([active])
+        mock.getMessagesResult = .success([])
+
+        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
+
+        XCTAssertEqual(viewModel.conversations.map(\.id), ["conv_1"])
+        XCTAssertTrue(conversations.activeThreadIDs.contains("thread_1"))
+        // listConversations must NOT be called — it returns archived conversations too
+        XCTAssertTrue(conversations.listedThreadIDs.isEmpty)
     }
 
     func testChatViewModelSourceDoesNotReferenceProviderModelPickerState() throws {
@@ -101,7 +119,7 @@ final class ChatViewModelTests: XCTestCase {
         let conversations = MockChatConversationService()
         let conversation = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "", time: 1)
 
-        conversations.listConversationsResult = .success([conversation])
+        conversations.activeConversationsResult = .success([conversation])
         mock.getMessagesResult = .success([])
 
         var continuation: AsyncStream<OCEvent>.Continuation?
@@ -144,7 +162,7 @@ final class ChatViewModelTests: XCTestCase {
         let firstConversation = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "First", time: 1)
         let secondConversation = makeConversation(id: "conv_2", threadID: "thread_1", sessionID: "ses_2", title: "Second", time: 2)
 
-        conversations.listConversationsResult = .success([firstConversation, secondConversation])
+        conversations.activeConversationsResult = .success([firstConversation, secondConversation])
         mock.getMessagesHandler = { sessionID, _ in
             if sessionID == "ses_1" {
                 try await Task.sleep(nanoseconds: 150_000_000)
@@ -173,7 +191,7 @@ final class ChatViewModelTests: XCTestCase {
     func testLoadConversationsRestartsEventStreamAfterStreamCompletes() async {
         let mock = MockOpenCodeClient()
         let conversations = MockChatConversationService()
-        conversations.listConversationsResult = .success([])
+        conversations.activeConversationsResult = .success([])
         conversations.createConversationResult = .failure(TestError.forcedFailure)
         mock.eventStream = AsyncStream { continuation in
             continuation.finish()
@@ -201,7 +219,7 @@ final class ChatViewModelTests: XCTestCase {
         let conversations = MockChatConversationService()
         let conversation = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "First", time: 1)
 
-        conversations.listConversationsResult = .success([conversation])
+        conversations.activeConversationsResult = .success([conversation])
         mock.getMessagesResult = .success([])
 
         let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
@@ -217,7 +235,7 @@ final class ChatViewModelTests: XCTestCase {
         let conversations = MockChatConversationService()
         let untitledConversation = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "", time: 1)
 
-        conversations.listConversationsResult = .success([untitledConversation])
+        conversations.activeConversationsResult = .success([untitledConversation])
         mock.getMessagesResult = .success([])
 
         var continuation: AsyncStream<OCEvent>.Continuation?

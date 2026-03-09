@@ -181,7 +181,10 @@ enum ChatModeActions {
     ) {
         chatConversations.wrappedValue = conversations
 
-        if let current {
+        // Only trust current if it still exists in the active conversations list.
+        // After archiving, the VM may still hold a stale currentConversation reference
+        // until loadConversations completes — don't let it override the selection.
+        if let current, conversations.contains(where: { $0.id == current.id }) {
             selectedChatConversationIDBinding.wrappedValue = current.id
             guard let thread = appState.selectedThread else {
                 return

@@ -5,20 +5,32 @@ struct ContentView: View {
     @Environment(GitHubAuthManager.self) private var gitHubAuthManager
     @State private var showingAddRepoSheet = false
 
+    private var isUITestMode: Bool {
+        ProcessInfo.processInfo.environment["THREADMILL_UI_TEST_MODE"] == "1"
+    }
+
     var body: some View {
-        NavigationSplitView {
-            SidebarView(showingAddRepoSheet: $showingAddRepoSheet)
-                .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 400)
-        } detail: {
-            if appState.repos.isEmpty && appState.projects.isEmpty {
-                defaultWorkspaceEmptyState
-            } else if appState.selectedThread != nil {
-                ThreadDetailView()
+        // NavigationSplitView detail pane is invisible to Accessibility when
+        // launched as a non-bundled process (e2e tests). Fall back to HStack.
+        Group {
+            if isUITestMode {
+                HStack(spacing: 0) {
+                    SidebarView(showingAddRepoSheet: $showingAddRepoSheet)
+                        .frame(width: 280)
+                    Divider()
+                    detailContent
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } else {
-                defaultWorkspaceEmptyState
+                NavigationSplitView {
+                    SidebarView(showingAddRepoSheet: $showingAddRepoSheet)
+                        .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 400)
+                } detail: {
+                    detailContent
+                }
+                .navigationSplitViewStyle(.balanced)
             }
         }
-        .navigationSplitViewStyle(.balanced)
         .sheet(isPresented: Bindable(appState).isNewThreadSheetPresented) {
             if let repo = appState.defaultWorkspaceRepo ?? appState.repos.first {
                 NewThreadSheet(repo: repo)
@@ -43,6 +55,17 @@ struct ContentView: View {
             Text(appState.alertMessage ?? "")
         }
         .background { keyboardShortcuts }
+    }
+
+    @ViewBuilder
+    private var detailContent: some View {
+        if appState.repos.isEmpty && appState.projects.isEmpty {
+            defaultWorkspaceEmptyState
+        } else if appState.selectedThread != nil {
+            ThreadDetailView()
+        } else {
+            defaultWorkspaceEmptyState
+        }
     }
 
     @ViewBuilder

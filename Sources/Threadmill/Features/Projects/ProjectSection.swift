@@ -184,6 +184,7 @@ struct ProjectSection: View {
             .onTapGesture {
                 selectedThreadID = thread.id
             }
+            .tag(thread.id)
             .accessibilityIdentifier("thread.row.\(thread.id)")
             .background(isSelected ? Color.white.opacity(0.1) : .clear)
             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))

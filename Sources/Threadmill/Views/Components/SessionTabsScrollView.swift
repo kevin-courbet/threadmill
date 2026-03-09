@@ -102,6 +102,7 @@ struct SessionTabsScrollView: View {
                     SessionCloseButton {
                         onClose(tab.id)
                     }
+                    .accessibilityIdentifier("session.tab.close.\(tab.id)")
                 }
 
                 if let icon = tab.icon, !icon.isEmpty {

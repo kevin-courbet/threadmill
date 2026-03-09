@@ -277,4 +277,74 @@ final class ChatModeActionsTests: XCTestCase {
         XCTAssertTrue(didSelectConversation)
         XCTAssertEqual(chatConversationService.createdConversations.first?.threadID, "thread-1")
     }
+
+    func testStateUpdateDoesNotReSelectArchivedConversation() {
+        let appState = AppState()
+        let database = MockDatabaseManager()
+        let connection = MockDaemonConnection()
+        let syncService = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+        let openCodeClient = MockOpenCodeClient()
+        let chatConversationService = MockChatConversationService()
+
+        let pool = makeSingleRemoteConnectionPool(connection: connection)
+        appState.configure(
+            connectionPool: pool,
+            databaseManager: database,
+            syncService: syncService,
+            multiplexer: multiplexer,
+            openCodeClient: openCodeClient,
+            chatConversationService: chatConversationService
+        )
+
+        let thread = ThreadModel(
+            id: "thread-1",
+            projectId: "project-1",
+            name: "feature/chat",
+            branch: "feature/chat",
+            worktreePath: "/tmp/worktree",
+            status: .active,
+            sourceType: "new_feature",
+            createdAt: Date(),
+            tmuxSession: "tm_thread-1",
+            portOffset: nil
+        )
+        appState.threads = [thread]
+        appState.selectedThreadID = thread.id
+
+        let makeConversation: (String) -> ChatConversation = { id in
+            var c = ChatConversation(threadID: thread.id)
+            c.id = id
+            return c
+        }
+
+        // Simulate: conversation-1 was archived, conversation-2 survives.
+        // The VM still holds conversation-1 as currentConversation (stale).
+        let survivingConversations = [makeConversation("conversation-2")]
+        let staleCurrentConversation = makeConversation("conversation-1")
+
+        var selectedConversationID: String? = "conversation-2"
+        var chatConversations: [ChatConversation] = []
+        let tabStateManager = ThreadTabStateManager()
+
+        ChatModeActions.handleChatConversationStateUpdate(
+            survivingConversations,
+            staleCurrentConversation,
+            appState: appState,
+            selectedChatConversationIDBinding: Binding(
+                get: { selectedConversationID },
+                set: { selectedConversationID = $0 }
+            ),
+            chatConversations: Binding(
+                get: { chatConversations },
+                set: { chatConversations = $0 }
+            ),
+            tabStateManager: tabStateManager
+        )
+
+        // Must NOT re-select the archived conversation-1
+        XCTAssertEqual(selectedConversationID, "conversation-2")
+        XCTAssertEqual(chatConversations.count, 1)
+        XCTAssertEqual(chatConversations.first?.id, "conversation-2")
+    }
 }

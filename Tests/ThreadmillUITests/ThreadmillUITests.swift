@@ -6,6 +6,84 @@ import XCTest
 
 @MainActor
 final class ThreadmillUITests: XCTestCase {
+    func testChatSessionTabCloseRemovesTabAndKeepsOtherSelected() throws {
+        try requireUIE2EEnabledAndTrusted()
+
+        let mockServer = MockSpindleServer()
+        try mockServer.start()
+        defer {
+            mockServer.stop()
+        }
+
+        let appPath = try locateThreadmillExecutable()
+        let dbRoot = URL(fileURLWithPath: "/tmp/threadmill-ui-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dbRoot, withIntermediateDirectories: true)
+        let dbPath = dbRoot.appendingPathComponent("threadmill.db").path
+
+        // MockSpindleServer provides thread-main (project-main) by default.
+        // Seed DB with 2 chat conversations linked to that thread.
+        let conversationA = "conv-a-\(UUID().uuidString)"
+        let conversationB = "conv-b-\(UUID().uuidString)"
+        try seedDatabase(dbPath: dbPath, port: mockServer.port, repos: [])
+        try seedChatConversations(
+            dbPath: dbPath,
+            threadID: "thread-main",
+            conversations: [
+                (id: conversationA, title: "Session A", opencodeSessionID: "fake-oc-a"),
+                (id: conversationB, title: "Session B", opencodeSessionID: "fake-oc-b"),
+            ]
+        )
+        defer {
+            try? FileManager.default.removeItem(at: dbRoot)
+        }
+
+        let appProcess = Process()
+        appProcess.executableURL = appPath
+        appProcess.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        appProcess.environment = launchEnvironment(port: mockServer.port, dbPath: dbPath)
+        try appProcess.run()
+        defer {
+            if appProcess.isRunning {
+                appProcess.terminate()
+                appProcess.waitUntilExit()
+            }
+        }
+
+        NSRunningApplication(processIdentifier: appProcess.processIdentifier)?.activate(options: [])
+        let ax = AXTestClient(pid: appProcess.processIdentifier)
+
+        // Wait for connection and thread auto-selection
+        try ax.waitForValueContains(identifier: "connection.status", value: "connected", timeout: 20)
+
+        // Thread-main is auto-selected by ensureValidSelection(). Default mode is
+        // chat, so the chat view should already be visible. Wait for automation buttons
+        // that prove conversations loaded from the seeded DB.
+        _ = try ax.waitForIdentifier("automation.select-chat.\(conversationA)", timeout: 20)
+        _ = try ax.waitForIdentifier("automation.select-chat.\(conversationB)", timeout: 5)
+
+        // Select conversation B
+        try ax.click(identifier: "automation.select-chat.\(conversationB)", timeout: 5)
+
+        // Close conversation A via automation button (triggers archiveChatConversations)
+        try ax.click(identifier: "automation.close-chat.\(conversationA)", timeout: 5)
+
+        // Verify: conversation A disappears AND stays gone after settling.
+        // The bug: archive briefly removes it, but ChatViewModel.loadConversations
+        // (triggered by reloadToken change) re-fetches including archived conversations,
+        // then publishConversationState pushes them back into chatConversations.
+        try ax.waitUntilMissing(identifier: "automation.select-chat.\(conversationA)", timeout: 10)
+
+        // Wait for any async reload cycles to complete, then assert still gone.
+        RunLoop.current.run(until: Date().addingTimeInterval(2.0))
+        XCTAssertFalse(
+            ax.hasElement(identifier: "automation.select-chat.\(conversationA)"),
+            "Conversation A reappeared after close — archived conversation leaked back through reload"
+        )
+
+        // Verify: conversation B still exists
+        _ = try ax.waitForIdentifier("automation.select-chat.\(conversationB)", timeout: 5)
+    }
+
     func testMacOSUIE2EFlowWithReconnect() throws {
         try requireUIE2EEnabledAndTrusted()
 
@@ -291,6 +369,25 @@ final class ThreadmillUITests: XCTestCase {
 
         for repo in repos {
             try database.saveRepo(repo)
+        }
+    }
+
+    private func seedChatConversations(
+        dbPath: String,
+        threadID: String,
+        conversations: [(id: String, title: String, opencodeSessionID: String)]
+    ) throws {
+        let database = try DatabaseManager(databasePath: dbPath)
+        for conv in conversations {
+            let conversation = ChatConversation(
+                id: conv.id,
+                threadID: threadID,
+                opencodeSessionID: conv.opencodeSessionID,
+                title: conv.title,
+                createdAt: Date(),
+                isArchived: false
+            )
+            try database.saveConversation(conversation)
         }
     }
 

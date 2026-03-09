@@ -54,7 +54,7 @@ final class ChatViewModel {
         do {
             startEventStreamIfNeeded(directory: directory)
 
-            conversations = try await chatConversationService.listConversations(threadID: threadID)
+            conversations = try await chatConversationService.activeConversations(threadID: threadID)
             conversations.sort { $0.updatedAt > $1.updatedAt }
 
             if conversations.isEmpty {

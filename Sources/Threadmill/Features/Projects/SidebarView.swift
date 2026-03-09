@@ -24,7 +24,7 @@ struct SidebarView: View {
         @Bindable var bindableState = appState
 
         VStack(spacing: 0) {
-            List {
+            List(selection: $bindableState.selectedThreadID) {
                 ForEach(sidebarItems) { item in
                     switch item {
                     case .repo(let repo, let threads):
@@ -117,6 +117,13 @@ struct SidebarView: View {
 
             if isUITestMode {
                 VStack(spacing: 2) {
+                    // Sidebar-level connection status for e2e tests (detail toolbar
+                    // is invisible until NavigationSplitView renders the detail pane).
+                    Text("Connection: \(appState.connectionStatus.label)")
+                        .font(.caption2)
+                        .accessibilityIdentifier("connection.status")
+                        .accessibilityValue(appState.connectionStatus.label)
+
                     Button("Automation Add Project") {
                         showingAddRepoSheet = true
                     }
