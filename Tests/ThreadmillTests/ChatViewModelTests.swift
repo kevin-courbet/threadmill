@@ -12,7 +12,7 @@ final class ChatViewModelTests: XCTestCase {
         conversations.activeConversationsResult = .success([conversation])
         mock.getMessagesResult = .success([message])
 
-        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        let viewModel = ChatViewModel(chatHarnessRegistry: .openCode(client: mock), chatConversationService: conversations)
         await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
 
         XCTAssertEqual(viewModel.conversations.map(\.id), [conversation.id])
@@ -28,7 +28,7 @@ final class ChatViewModelTests: XCTestCase {
 
         conversations.activeConversationsResult = .success([])
 
-        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        let viewModel = ChatViewModel(chatHarnessRegistry: .openCode(client: mock), chatConversationService: conversations)
         await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
 
         XCTAssertTrue(conversations.createdConversations.isEmpty)
@@ -44,7 +44,7 @@ final class ChatViewModelTests: XCTestCase {
         conversations.activeConversationsResult = .success([onlyConversation])
         mock.getMessagesResult = .success([])
 
-        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        let viewModel = ChatViewModel(chatHarnessRegistry: .openCode(client: mock), chatConversationService: conversations)
         await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
         await viewModel.archiveConversation(onlyConversation)
 
@@ -62,12 +62,13 @@ final class ChatViewModelTests: XCTestCase {
         conversations.createConversationResult = .success(created)
         mock.getMessagesResult = .success([])
 
-        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        let viewModel = ChatViewModel(chatHarnessRegistry: .openCode(client: mock), chatConversationService: conversations)
 
-        await viewModel.createConversation(threadID: "thread_1", directory: "/tmp/worktree")
+        await viewModel.createConversation(threadID: "thread_1", directory: "/tmp/worktree", harness: .openCodeServe)
 
         XCTAssertEqual(conversations.createdConversations.first?.threadID, "thread_1")
         XCTAssertEqual(conversations.createdConversations.first?.directory, "/tmp/worktree")
+        XCTAssertEqual(conversations.createdConversations.first?.harness, .openCodeServe)
     }
 
     func testLoadConversationsExcludesArchivedConversations() async {
@@ -79,7 +80,7 @@ final class ChatViewModelTests: XCTestCase {
         conversations.activeConversationsResult = .success([active])
         mock.getMessagesResult = .success([])
 
-        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        let viewModel = ChatViewModel(chatHarnessRegistry: .openCode(client: mock), chatConversationService: conversations)
         await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
 
         XCTAssertEqual(viewModel.conversations.map(\.id), ["conv_1"])
@@ -108,8 +109,8 @@ final class ChatViewModelTests: XCTestCase {
 
         conversations.createConversationResult = .success(created)
 
-        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
-        await viewModel.createConversation(threadID: "thread_1", directory: "/tmp/worktree")
+        let viewModel = ChatViewModel(chatHarnessRegistry: .openCode(client: mock), chatConversationService: conversations)
+        await viewModel.createConversation(threadID: "thread_1", directory: "/tmp/worktree", harness: .openCodeServe)
 
         XCTAssertEqual(mock.streamedDirectories, ["/tmp/worktree"])
     }
@@ -127,7 +128,7 @@ final class ChatViewModelTests: XCTestCase {
             continuation = streamContinuation
         }
 
-        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        let viewModel = ChatViewModel(chatHarnessRegistry: .openCode(client: mock), chatConversationService: conversations)
         await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
         await viewModel.sendPrompt(text: "hello")
 
@@ -171,7 +172,7 @@ final class ChatViewModelTests: XCTestCase {
             return [OCMessage(id: "msg_fresh", sessionID: sessionID, role: "assistant")]
         }
 
-        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        let viewModel = ChatViewModel(chatHarnessRegistry: .openCode(client: mock), chatConversationService: conversations)
         let loadTask = Task {
             await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
         }
@@ -197,7 +198,7 @@ final class ChatViewModelTests: XCTestCase {
             continuation.finish()
         }
 
-        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        let viewModel = ChatViewModel(chatHarnessRegistry: .openCode(client: mock), chatConversationService: conversations)
         await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
         let streamFinished = await waitForCondition {
             mock.streamedDirectories.count == 1
@@ -222,7 +223,7 @@ final class ChatViewModelTests: XCTestCase {
         conversations.activeConversationsResult = .success([conversation])
         mock.getMessagesResult = .success([])
 
-        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        let viewModel = ChatViewModel(chatHarnessRegistry: .openCode(client: mock), chatConversationService: conversations)
         await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
         await viewModel.abort()
 
@@ -243,7 +244,7 @@ final class ChatViewModelTests: XCTestCase {
             continuation = streamContinuation
         }
 
-        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        let viewModel = ChatViewModel(chatHarnessRegistry: .openCode(client: mock), chatConversationService: conversations)
         await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
 
         continuation?.yield(.sessionUpdated(OCSession(
@@ -271,7 +272,7 @@ final class ChatViewModelTests: XCTestCase {
         var conversation = ChatConversation(threadID: threadID, title: title)
         let timestamp = Date(timeIntervalSince1970: time)
         conversation.id = id
-        conversation.opencodeSessionID = sessionID
+        conversation.sessionID = sessionID
         conversation.createdAt = timestamp
         conversation.updatedAt = timestamp
         conversation.isArchived = false

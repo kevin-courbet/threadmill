@@ -27,7 +27,8 @@ final class ChatConversationTests: XCTestCase {
 
         XCTAssertEqual(storedConversation.threadID, threadID)
         XCTAssertEqual(storedConversation.title, "Updated title")
-        XCTAssertEqual(storedConversation.opencodeSessionID, "session-1")
+        XCTAssertEqual(storedConversation.sessionID, "session-1")
+        XCTAssertEqual(storedConversation.harnessID, ChatHarness.openCodeServe.id)
         XCTAssertTrue(storedConversation.isArchived)
 
         let active = try dbQueue.read { db in
@@ -58,7 +59,7 @@ final class ChatConversationTests: XCTestCase {
         }
 
         XCTAssertEqual(threadConversations.count, 2)
-        XCTAssertEqual(Set(threadConversations.map(\.opencodeSessionID)), Set(["session-a", "session-b"]))
+        XCTAssertEqual(Set(threadConversations.map(\.sessionID)), Set(["session-a", "session-b"]))
     }
 
     private func makeDatabaseQueue() throws -> DatabaseQueue {
@@ -67,7 +68,8 @@ final class ChatConversationTests: XCTestCase {
             try db.create(table: "chatConversation") { table in
                 table.column("id", .text).notNull().primaryKey()
                 table.column("threadID", .text).notNull()
-                table.column("opencodeSessionID", .text)
+                table.column("harnessID", .text).notNull().defaults(to: ChatHarness.openCodeServe.id)
+                table.column("sessionID", .text)
                 table.column("title", .text).notNull().defaults(to: "")
                 table.column("createdAt", .double).notNull()
                 table.column("updatedAt", .double).notNull()

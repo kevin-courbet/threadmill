@@ -73,7 +73,7 @@ protocol DatabaseManaging: AnyObject {
 
 @MainActor
 protocol ChatConversationManaging: AnyObject {
-    func createConversation(threadID: String, directory: String) async throws -> ChatConversation
+    func createConversation(threadID: String, directory: String, harness: ChatHarness) async throws -> ChatConversation
     func listConversations(threadID: String) async throws -> [ChatConversation]
     func activeConversations(threadID: String) async throws -> [ChatConversation]
     func archiveConversation(id: String) async throws

@@ -29,8 +29,8 @@ final class ThreadmillUITests: XCTestCase {
             dbPath: dbPath,
             threadID: "thread-main",
             conversations: [
-                (id: conversationA, title: "Session A", opencodeSessionID: "fake-oc-a"),
-                (id: conversationB, title: "Session B", opencodeSessionID: "fake-oc-b"),
+                (id: conversationA, title: "Session A", sessionID: "fake-oc-a"),
+                (id: conversationB, title: "Session B", sessionID: "fake-oc-b"),
             ]
         )
         defer {
@@ -375,14 +375,15 @@ final class ThreadmillUITests: XCTestCase {
     private func seedChatConversations(
         dbPath: String,
         threadID: String,
-        conversations: [(id: String, title: String, opencodeSessionID: String)]
+        conversations: [(id: String, title: String, sessionID: String)]
     ) throws {
         let database = try DatabaseManager(databasePath: dbPath)
         for conv in conversations {
             let conversation = ChatConversation(
                 id: conv.id,
                 threadID: threadID,
-                opencodeSessionID: conv.opencodeSessionID,
+                harnessID: ChatHarness.openCodeServe.id,
+                sessionID: conv.sessionID,
                 title: conv.title,
                 createdAt: Date(),
                 isArchived: false

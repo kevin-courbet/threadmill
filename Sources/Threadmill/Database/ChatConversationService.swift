@@ -17,16 +17,17 @@ enum ChatConversationServiceError: LocalizedError {
 @MainActor
 final class ChatConversationService: ChatConversationManaging {
     private let databaseManager: any DatabaseManaging
-    private let openCodeClient: any OpenCodeManaging
+    private let chatHarnessRegistry: ChatHarnessRegistry
 
-    init(databaseManager: any DatabaseManaging, openCodeClient: any OpenCodeManaging) {
+    init(databaseManager: any DatabaseManaging, chatHarnessRegistry: ChatHarnessRegistry) {
         self.databaseManager = databaseManager
-        self.openCodeClient = openCodeClient
+        self.chatHarnessRegistry = chatHarnessRegistry
     }
 
-    func createConversation(threadID: String, directory: String) async throws -> ChatConversation {
-        var conversation = ChatConversation(threadID: threadID)
-        let session = try await openCodeClient.createSession(directory: directory)
+    func createConversation(threadID: String, directory: String, harness: ChatHarness) async throws -> ChatConversation {
+        let runtime = try chatHarnessRegistry.runtime(for: harness)
+        var conversation = ChatConversation(threadID: threadID, harness: harness)
+        let session = try await runtime.createSession(directory: directory)
         conversation.linkSession(session.id)
         try databaseManager.saveConversation(conversation)
         return conversation
@@ -59,16 +60,22 @@ final class ChatConversationService: ChatConversationManaging {
     }
 
     func verifySession(conversation: ChatConversation) async throws -> Bool {
-        guard let sessionID = conversation.opencodeSessionID else {
+        guard let sessionID = conversation.sessionID else {
             return false
         }
+
+        guard let harness = conversation.harness else {
+            throw ChatHarnessRegistryError.unsupportedHarness(conversation.harnessID)
+        }
+
+        let runtime = try chatHarnessRegistry.runtime(for: harness)
 
         guard let directory = try databaseManager.allThreads().first(where: { $0.id == conversation.threadID })?.worktreePath else {
             throw ChatConversationServiceError.threadNotFound(conversation.threadID)
         }
 
         do {
-            _ = try await openCodeClient.getSession(id: sessionID, directory: directory)
+            _ = try await runtime.getSession(id: sessionID, directory: directory)
             return true
         } catch {
             return false

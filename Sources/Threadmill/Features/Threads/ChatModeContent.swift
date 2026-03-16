@@ -11,13 +11,13 @@ struct ChatModeContent: View {
     let onConversationStateChange: ([ChatConversation], ChatConversation?) -> Void
 
     var body: some View {
-        if let openCodeClient = appState.openCodeClient,
+        if let chatHarnessRegistry = appState.chatHarnessRegistry,
            let chatConversationService = appState.chatConversationService
         {
             ChatView(
                 threadID: thread.id,
                 directory: thread.worktreePath,
-                openCodeClient: openCodeClient,
+                chatHarnessRegistry: chatHarnessRegistry,
                 chatConversationService: chatConversationService,
                 selectedConversationID: selectedConversationID,
                 reloadToken: reloadToken,
@@ -104,15 +104,11 @@ enum ChatModeActions {
         Task {
             do {
                 let selectedHarness = harness ?? .openCodeServe
-                let conversation: ChatConversation
-
-                switch selectedHarness {
-                case .openCodeServe:
-                    conversation = try await chatConversationService.createConversation(
-                        threadID: threadID,
-                        directory: directory
-                    )
-                }
+                let conversation = try await chatConversationService.createConversation(
+                    threadID: threadID,
+                    directory: directory,
+                    harness: selectedHarness
+                )
 
                 await MainActor.run {
                     errorMessageBinding.wrappedValue = nil

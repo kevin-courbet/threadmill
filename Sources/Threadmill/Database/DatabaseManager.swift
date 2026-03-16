@@ -474,6 +474,38 @@ final class DatabaseManager: DatabaseManaging {
             try db.execute(sql: "CREATE UNIQUE INDEX IF NOT EXISTS idx_remotes_default_true ON remotes(is_default) WHERE is_default = 1")
         }
 
+        migrator.registerMigration("v9_chat_harness_runtime") { db in
+            let hasHarnessIDColumn = try Int.fetchOne(
+                db,
+                sql: "SELECT 1 FROM pragma_table_info('chatConversation') WHERE name = 'harnessID' LIMIT 1"
+            ) != nil
+            if !hasHarnessIDColumn {
+                try db.alter(table: "chatConversation") { table in
+                    table.add(column: "harnessID", .text).notNull().defaults(to: ChatHarness.openCodeServe.id)
+                }
+            }
+
+            let hasSessionIDColumn = try Int.fetchOne(
+                db,
+                sql: "SELECT 1 FROM pragma_table_info('chatConversation') WHERE name = 'sessionID' LIMIT 1"
+            ) != nil
+            if !hasSessionIDColumn {
+                try db.alter(table: "chatConversation") { table in
+                    table.add(column: "sessionID", .text)
+                }
+            }
+
+            let hasOpenCodeSessionColumn = try Int.fetchOne(
+                db,
+                sql: "SELECT 1 FROM pragma_table_info('chatConversation') WHERE name = 'opencodeSessionID' LIMIT 1"
+            ) != nil
+            if hasOpenCodeSessionColumn {
+                try db.execute(
+                    sql: "UPDATE chatConversation SET sessionID = opencodeSessionID WHERE sessionID IS NULL AND opencodeSessionID IS NOT NULL"
+                )
+            }
+        }
+
         try migrator.migrate(dbQueue)
     }
 

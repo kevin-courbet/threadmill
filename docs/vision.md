@@ -110,6 +110,7 @@ ports:
 
 - [x] Multi-conversation per thread (GRDB-persisted)
 - [x] opencode serve HTTP API integration
+- [x] Harness runtime protocol + registry (conversation-level `harnessID` + `sessionID`)
 - [x] Thinking/COT display
 - [x] Enter=send, Shift+Enter=newline
 - [x] Session tabs for multiple conversations

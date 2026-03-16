@@ -24,7 +24,7 @@ struct ChatView: View {
     init(
         threadID: String,
         directory: String,
-        openCodeClient: any OpenCodeManaging,
+        chatHarnessRegistry: ChatHarnessRegistry,
         chatConversationService: any ChatConversationManaging,
         selectedConversationID: String? = nil,
         reloadToken: Int = 0,
@@ -42,7 +42,7 @@ struct ChatView: View {
         self.onCreateConversationWithHarness = onCreateConversationWithHarness
         self.onConversationStateChange = onConversationStateChange
         _viewModel = State(initialValue: ChatViewModel(
-            openCodeClient: openCodeClient,
+            chatHarnessRegistry: chatHarnessRegistry,
             chatConversationService: chatConversationService
         ))
     }
@@ -209,7 +209,7 @@ struct ChatView: View {
         }
 
         Task {
-            await viewModel.createConversation(threadID: threadID, directory: directory)
+            await viewModel.createConversation(threadID: threadID, directory: directory, harness: harness)
         }
     }
 
@@ -221,7 +221,11 @@ struct ChatView: View {
 
             Button {
                 Task {
-                    await viewModel.createConversation(threadID: threadID, directory: directory)
+                    await viewModel.createConversation(
+                        threadID: threadID,
+                        directory: directory,
+                        harness: .openCodeServe
+                    )
                 }
             } label: {
                 Image(systemName: "plus")

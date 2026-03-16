@@ -84,6 +84,36 @@ final class DatabaseRemoteTests: XCTestCase {
         XCTAssertEqual(project.remoteId, beast.id)
     }
 
+    func testMigrationV9BackfillsChatSessionAndHarnessColumns() throws {
+        let dbPath = try makeTempDatabasePath()
+        let dbQueue = try DatabaseQueue(path: dbPath)
+        try applyLegacyMigrationsUpToV5(dbQueue)
+
+        try dbQueue.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO chatConversation (id, threadID, opencodeSessionID, title, createdAt, updatedAt, isArchived)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    "conversation-1",
+                    "thread-1",
+                    "session-legacy-1",
+                    "Legacy",
+                    Date().timeIntervalSince1970,
+                    Date().timeIntervalSince1970,
+                    false,
+                ]
+            )
+        }
+
+        let database = try DatabaseManager(databasePath: dbPath)
+        let conversation = try XCTUnwrap(try database.conversation(id: "conversation-1"))
+
+        XCTAssertEqual(conversation.harnessID, ChatHarness.openCodeServe.id)
+        XCTAssertEqual(conversation.sessionID, "session-legacy-1")
+    }
+
     func testEnsureDefaultRemoteExistsSeedsBeastWhenTableIsEmpty() throws {
         let dbPath = try makeTempDatabasePath()
         let database = try DatabaseManager(databasePath: dbPath)

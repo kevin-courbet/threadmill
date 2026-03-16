@@ -12,21 +12,22 @@ final class ChatViewModel {
 
     var lastError: String?
 
-    private let openCodeClient: any OpenCodeManaging
+    private let chatHarnessRegistry: ChatHarnessRegistry
     private let chatConversationService: any ChatConversationManaging
     private var activeThreadID: String?
     private var activeDirectory: String?
     private var eventStreamDirectory: String?
+    private var eventStreamHarnessID: String?
     private var eventStreamTask: Task<Void, Never>?
     private var eventStreamToken = UUID()
     private var messageLoadTask: Task<Void, Never>?
     private var messageLoadToken = UUID()
 
     init(
-        openCodeClient: any OpenCodeManaging,
+        chatHarnessRegistry: ChatHarnessRegistry,
         chatConversationService: any ChatConversationManaging
     ) {
-        self.openCodeClient = openCodeClient
+        self.chatHarnessRegistry = chatHarnessRegistry
         self.chatConversationService = chatConversationService
     }
 
@@ -52,12 +53,13 @@ final class ChatViewModel {
         activeDirectory = directory
 
         do {
-            startEventStreamIfNeeded(directory: directory)
-
             conversations = try await chatConversationService.activeConversations(threadID: threadID)
             conversations.sort { $0.updatedAt > $1.updatedAt }
 
             if conversations.isEmpty {
+                if let defaultHarness = chatHarnessRegistry.availableHarnesses.first {
+                    startEventStreamIfNeeded(harness: defaultHarness, directory: directory)
+                }
                 currentConversation = nil
                 messages = []
                 streamingParts = [:]
@@ -73,8 +75,18 @@ final class ChatViewModel {
                 currentConversation = conversations.first
             }
 
-            if let sessionID = currentConversation?.opencodeSessionID, !sessionID.isEmpty {
-                await loadMessages(sessionID: sessionID, directory: directory)
+            guard let selectedConversation = currentConversation else {
+                return
+            }
+
+            if let harness = selectedConversation.harness {
+                startEventStreamIfNeeded(harness: harness, directory: directory)
+            } else {
+                throw ChatHarnessRegistryError.unsupportedHarness(selectedConversation.harnessID)
+            }
+
+            if let sessionID = selectedConversation.sessionID, !sessionID.isEmpty {
+                await loadMessages(conversation: selectedConversation, sessionID: sessionID, directory: directory)
             } else {
                 messages = []
                 streamingParts = [:]
@@ -99,17 +111,32 @@ final class ChatViewModel {
             return
         }
 
-        guard let sessionID = currentConversation?.opencodeSessionID, !sessionID.isEmpty else {
+        guard let conversation = currentConversation else {
             lastError = "Start a coding session before sending a prompt."
+            return
+        }
+
+        guard let sessionID = conversation.sessionID, !sessionID.isEmpty else {
+            lastError = "Start a coding session before sending a prompt."
+            return
+        }
+
+        let runtime: any ChatHarnessRuntime
+        do {
+            runtime = try runtimeForConversation(conversation)
+            if let harness = conversation.harness {
+                startEventStreamIfNeeded(harness: harness, directory: directory)
+            }
+        } catch {
+            lastError = error.localizedDescription
             return
         }
 
         isGenerating = true
         lastError = nil
-        startEventStreamIfNeeded(directory: directory)
 
         do {
-            try await openCodeClient.sendPrompt(sessionID: sessionID, prompt: prompt, directory: directory)
+            try await runtime.sendPrompt(sessionID: sessionID, prompt: prompt, directory: directory)
         } catch {
             isGenerating = false
             lastError = error.localizedDescription
@@ -118,15 +145,24 @@ final class ChatViewModel {
 
     func abort() async {
         guard
-            let sessionID = currentConversation?.opencodeSessionID,
+            let conversation = currentConversation,
+            let sessionID = conversation.sessionID,
             !sessionID.isEmpty,
             let directory = activeDirectory
         else {
             return
         }
 
+        let runtime: any ChatHarnessRuntime
         do {
-            try await openCodeClient.abort(sessionID: sessionID, directory: directory)
+            runtime = try runtimeForConversation(conversation)
+        } catch {
+            lastError = error.localizedDescription
+            return
+        }
+
+        do {
+            try await runtime.abort(sessionID: sessionID, directory: directory)
         } catch {
             lastError = error.localizedDescription
         }
@@ -148,12 +184,23 @@ final class ChatViewModel {
         streamingParts = [:]
         isGenerating = false
 
-        if let sessionID = selected.opencodeSessionID, !sessionID.isEmpty {
-            await loadMessages(sessionID: sessionID, directory: directory)
+        if let harness = selected.harness {
+            startEventStreamIfNeeded(harness: harness, directory: directory)
+        } else {
+            lastError = ChatHarnessRegistryError.unsupportedHarness(selected.harnessID).localizedDescription
+            return
+        }
+
+        if let sessionID = selected.sessionID, !sessionID.isEmpty {
+            await loadMessages(conversation: selected, sessionID: sessionID, directory: directory)
         }
     }
 
-    func createConversation(threadID: String? = nil, directory: String? = nil) async {
+    func createConversation(
+        threadID: String? = nil,
+        directory: String? = nil,
+        harness: ChatHarness = .openCodeServe
+    ) async {
         guard
             let resolvedThreadID = threadID ?? activeThreadID,
             let resolvedDirectory = directory ?? activeDirectory
@@ -165,11 +212,13 @@ final class ChatViewModel {
         activeDirectory = resolvedDirectory
 
         do {
-            startEventStreamIfNeeded(directory: resolvedDirectory)
             let newConversation = try await chatConversationService.createConversation(
                 threadID: resolvedThreadID,
-                directory: resolvedDirectory
+                directory: resolvedDirectory,
+                harness: harness
             )
+
+            startEventStreamIfNeeded(harness: harness, directory: resolvedDirectory)
 
             upsertConversation(newConversation)
             currentConversation = newConversation
@@ -177,8 +226,8 @@ final class ChatViewModel {
             streamingParts = [:]
             isGenerating = false
 
-            if let sessionID = newConversation.opencodeSessionID, !sessionID.isEmpty {
-                await loadMessages(sessionID: sessionID, directory: resolvedDirectory)
+            if let sessionID = newConversation.sessionID, !sessionID.isEmpty {
+                await loadMessages(conversation: newConversation, sessionID: sessionID, directory: resolvedDirectory)
             }
         } catch {
             lastError = error.localizedDescription
@@ -215,7 +264,17 @@ final class ChatViewModel {
         }
     }
 
-    private func loadMessages(sessionID: String, directory: String) async {
+    private func loadMessages(conversation: ChatConversation, sessionID: String, directory: String) async {
+        let runtime: any ChatHarnessRuntime
+        do {
+            runtime = try runtimeForConversation(conversation)
+        } catch {
+            messages = []
+            streamingParts = [:]
+            lastError = error.localizedDescription
+            return
+        }
+
         messageLoadTask?.cancel()
         let token = UUID()
         messageLoadToken = token
@@ -226,13 +285,13 @@ final class ChatViewModel {
             }
 
             do {
-                let loadedMessages = try await self.openCodeClient.getMessages(sessionID: sessionID, directory: directory)
+                let loadedMessages = try await runtime.getMessages(sessionID: sessionID, directory: directory)
                 guard !Task.isCancelled else {
                     return
                 }
                 guard
                     self.messageLoadToken == token,
-                    self.currentConversation?.opencodeSessionID == sessionID,
+                    self.currentConversation?.id == conversation.id,
                     self.activeDirectory == directory
                 else {
                     return
@@ -244,7 +303,7 @@ final class ChatViewModel {
             } catch {
                 guard
                     self.messageLoadToken == token,
-                    self.currentConversation?.opencodeSessionID == sessionID,
+                    self.currentConversation?.id == conversation.id,
                     self.activeDirectory == directory
                 else {
                     return
@@ -263,17 +322,26 @@ final class ChatViewModel {
         }
     }
 
-    private func startEventStreamIfNeeded(directory: String) {
-        if eventStreamDirectory == directory, eventStreamTask != nil {
+    private func startEventStreamIfNeeded(harness: ChatHarness, directory: String) {
+        if eventStreamDirectory == directory, eventStreamHarnessID == harness.id, eventStreamTask != nil {
+            return
+        }
+
+        let runtime: any ChatHarnessRuntime
+        do {
+            runtime = try chatHarnessRegistry.runtime(for: harness)
+        } catch {
+            lastError = error.localizedDescription
             return
         }
 
         eventStreamTask?.cancel()
         eventStreamDirectory = directory
+        eventStreamHarnessID = harness.id
         let token = UUID()
         eventStreamToken = token
 
-        let eventStream = openCodeClient.streamEvents(directory: directory)
+        let eventStream = runtime.streamEvents(directory: directory)
         eventStreamTask = Task { @MainActor [weak self] in
             defer {
                 if let self, self.eventStreamToken == token {
@@ -300,17 +368,20 @@ final class ChatViewModel {
 
         switch event {
         case let .sessionUpdated(session):
-            await applyAutoTitleIfNeeded(from: session)
+            await applyAutoTitleIfNeeded(from: ChatHarnessSession(id: session.id, title: session.title))
 
         case let .messageUpdated(message):
-            guard message.sessionID == currentConversation?.opencodeSessionID else {
+            guard message.sessionID == currentConversation?.sessionID else {
                 return
             }
             upsertMessage(message, preserveExistingParts: true)
 
             if message.role.caseInsensitiveCompare("assistant") == .orderedSame {
                 Task { @MainActor [weak self] in
-                    await self?.refreshConversationTitleIfNeeded(sessionID: message.sessionID, directory: directory)
+                    guard let self else {
+                        return
+                    }
+                    await self.refreshConversationTitleIfNeeded(conversationID: self.currentConversation?.id, directory: directory)
                 }
             }
 
@@ -318,7 +389,7 @@ final class ChatViewModel {
             applyPartUpdate(update)
 
         case let .sessionStatus(statusEvent):
-            guard statusEvent.sessionID == currentConversation?.opencodeSessionID else {
+            guard statusEvent.sessionID == currentConversation?.sessionID else {
                 return
             }
 
@@ -338,7 +409,7 @@ final class ChatViewModel {
     }
 
     private func applyPartUpdate(_ update: OCMessagePartUpdate) {
-        guard let sessionID = currentConversation?.opencodeSessionID else {
+        guard let sessionID = currentConversation?.sessionID else {
             return
         }
 
@@ -426,26 +497,38 @@ final class ChatViewModel {
         }
     }
 
-    private func refreshConversationTitleIfNeeded(sessionID: String, directory: String) async {
-        guard shouldAutoTitleConversation(forSessionID: sessionID) else {
+    private func refreshConversationTitleIfNeeded(conversationID: String?, directory: String) async {
+        guard let conversationID,
+              let conversation = conversations.first(where: { $0.id == conversationID }),
+              shouldAutoTitleConversation(conversationID: conversationID),
+              let sessionID = conversation.sessionID,
+              !sessionID.isEmpty
+        else {
+            return
+        }
+
+        let runtime: any ChatHarnessRuntime
+        do {
+            runtime = try runtimeForConversation(conversation)
+        } catch {
             return
         }
 
         do {
-            let session = try await openCodeClient.getSession(id: sessionID, directory: directory)
+            let session = try await runtime.getSession(id: sessionID, directory: directory)
             await applyAutoTitleIfNeeded(from: session)
         } catch {
             return
         }
     }
 
-    private func applyAutoTitleIfNeeded(from session: OCSession) async {
+    private func applyAutoTitleIfNeeded(from session: ChatHarnessSession) async {
         let generatedTitle = session.title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !generatedTitle.isEmpty else {
             return
         }
 
-        guard let index = conversations.firstIndex(where: { $0.opencodeSessionID == session.id }) else {
+        guard let index = conversations.firstIndex(where: { $0.sessionID == session.id }) else {
             return
         }
 
@@ -470,12 +553,19 @@ final class ChatViewModel {
         }
     }
 
-    private func shouldAutoTitleConversation(forSessionID sessionID: String) -> Bool {
-        guard let conversation = conversations.first(where: { $0.opencodeSessionID == sessionID }) else {
+    private func shouldAutoTitleConversation(conversationID: String) -> Bool {
+        guard let conversation = conversations.first(where: { $0.id == conversationID }) else {
             return false
         }
 
         return conversation.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func runtimeForConversation(_ conversation: ChatConversation) throws -> any ChatHarnessRuntime {
+        guard let harness = conversation.harness else {
+            throw ChatHarnessRegistryError.unsupportedHarness(conversation.harnessID)
+        }
+        return try chatHarnessRegistry.runtime(for: harness)
     }
 }
 

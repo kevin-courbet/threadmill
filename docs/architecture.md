@@ -88,7 +88,7 @@ All terminal sessions kept alive in ZStack with opacity/allowsHitTesting toggle.
 
 ### Chat Multi-Session
 
-`ChatConversation` records persisted in GRDB per thread. Each conversation maps to an opencode serve session. Multiple conversations shown as session tabs.
+`ChatConversation` records persisted in GRDB per thread. Each conversation stores `harness_id` + `session_id`, and chat I/O routes through a harness runtime registry (currently OpenCode Serve). Multiple conversations shown as session tabs.
 
 ### Browser
 
@@ -202,7 +202,7 @@ Preset entries contain:
 
 `Sources/Threadmill/Models/ChatConversation.swift`:
 
-- `id` (UUID), `threadID`, `opencodeSessionID`
+- `id` (UUID), `threadID`, `harnessID`, `sessionID`
 - `title`, `createdAt`, `updatedAt`
 - `isArchived`
 
@@ -221,6 +221,7 @@ Preset entries contain:
 - v3: port_offset column
 - v4: chat_conversation table
 - v5: browser_session table
+- v9: chat harness/session migration (`harnessID`, `sessionID` + backfill from `opencodeSessionID`)
 
 ## Project Config (`.threadmill.yml`)
 

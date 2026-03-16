@@ -23,18 +23,20 @@ final class ChatConversationServiceTests: XCTestCase {
 
         let service = ChatConversationService(
             databaseManager: database,
-            openCodeClient: openCode
+            chatHarnessRegistry: ChatHarnessRegistry.openCode(client: openCode)
         )
 
         let conversation = try await service.createConversation(
             threadID: "thread_1",
-            directory: "/home/wsl/dev/project"
+            directory: "/home/wsl/dev/project",
+            harness: .openCodeServe
         )
 
         XCTAssertEqual(openCode.createdSessionsInDirectories, ["/home/wsl/dev/project"])
         XCTAssertEqual(database.conversations.count, 1)
         XCTAssertEqual(database.conversations.first?.id, conversation.id)
-        XCTAssertEqual(database.conversations.first?.opencodeSessionID, "ses_new")
+        XCTAssertEqual(database.conversations.first?.sessionID, "ses_new")
+        XCTAssertEqual(database.conversations.first?.harnessID, ChatHarness.openCodeServe.id)
         XCTAssertEqual(database.conversations.first?.threadID, "thread_1")
         // /init must NOT be called — it sends opencode's default canned prompt
         XCTAssertTrue(openCode.initializedSessions.isEmpty)
@@ -48,13 +50,14 @@ final class ChatConversationServiceTests: XCTestCase {
 
         let service = ChatConversationService(
             databaseManager: database,
-            openCodeClient: openCode
+            chatHarnessRegistry: ChatHarnessRegistry.openCode(client: openCode)
         )
 
         do {
             _ = try await service.createConversation(
                 threadID: "thread_1",
-                directory: "/home/wsl/dev/project"
+                directory: "/home/wsl/dev/project",
+                harness: .openCodeServe
             )
             XCTFail("Expected error to be thrown")
         } catch {
@@ -86,16 +89,18 @@ final class ChatConversationServiceTests: XCTestCase {
 
         let service = ChatConversationService(
             databaseManager: database,
-            openCodeClient: openCode
+            chatHarnessRegistry: ChatHarnessRegistry.openCode(client: openCode)
         )
 
         let conversation = try await service.createConversation(
             threadID: "thread_1",
-            directory: "/home/wsl/dev/project"
+            directory: "/home/wsl/dev/project",
+            harness: .openCodeServe
         )
 
         XCTAssertEqual(database.conversations.count, 1)
-        XCTAssertEqual(conversation.opencodeSessionID, "ses_new")
+        XCTAssertEqual(conversation.sessionID, "ses_new")
+        XCTAssertEqual(conversation.harnessID, ChatHarness.openCodeServe.id)
         XCTAssertTrue(openCode.initializedSessions.isEmpty)
     }
 }

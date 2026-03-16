@@ -84,6 +84,7 @@ final class AppState {
     }
     var selectedEndpoint: RelayEndpoint?
     private(set) var openCodeClient: (any OpenCodeManaging)?
+    private(set) var chatHarnessRegistry: ChatHarnessRegistry?
     private(set) var chatConversationService: (any ChatConversationManaging)?
     private(set) var fileService: (any FileBrowsing)?
 
@@ -250,6 +251,7 @@ final class AppState {
         multiplexer: any TerminalMultiplexing,
         provisioningService: (any Provisioning)? = nil,
         openCodeClient: any OpenCodeManaging = OpenCodeClient(),
+        chatHarnessRegistry: ChatHarnessRegistry? = nil,
         chatConversationService: (any ChatConversationManaging)? = nil,
         fileService: (any FileBrowsing)? = nil
     ) {
@@ -259,6 +261,7 @@ final class AppState {
         self.syncService = syncService
         self.multiplexer = multiplexer
         self.openCodeClient = openCodeClient
+        self.chatHarnessRegistry = chatHarnessRegistry ?? ChatHarnessRegistry.openCode(client: openCodeClient)
         self.chatConversationService = chatConversationService
         self.fileService = fileService ?? FileService(connectionProvider: { [weak self] in
             self?.connectionForSelectedThread() ?? self?.defaultConnectionManager()
@@ -1418,7 +1421,7 @@ final class AppState {
 
     func shutdown() {
         stopStatsTimer()
-        openCodeClient?.invalidate()
+        chatHarnessRegistry?.invalidateAll()
     }
 
     // MARK: - Keyboard shortcut actions

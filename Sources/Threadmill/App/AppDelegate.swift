@@ -70,9 +70,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 remoteId: selectedRemote.id
             )
             let provisioningService = ProvisioningService(connectionPool: connectionPool)
+            let chatHarnessRegistry = ChatHarnessRegistry.openCode(client: openCodeClient)
             let chatConversationService = ChatConversationService(
                 databaseManager: databaseManager,
-                openCodeClient: openCodeClient
+                chatHarnessRegistry: chatHarnessRegistry
             )
 
             self.databaseManager = databaseManager
@@ -91,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 multiplexer: multiplexer,
                 provisioningService: provisioningService,
                 openCodeClient: openCodeClient,
+                chatHarnessRegistry: chatHarnessRegistry,
                 chatConversationService: chatConversationService
             )
             appState.reloadFromDatabase()

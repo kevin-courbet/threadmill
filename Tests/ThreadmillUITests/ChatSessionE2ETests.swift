@@ -30,7 +30,7 @@ final class ChatSessionE2ETests: XCTestCase {
         databaseManager = try DatabaseManager(databasePath: dbPath)
         chatConversationService = ChatConversationService(
             databaseManager: databaseManager,
-            openCodeClient: openCodeClient
+            chatHarnessRegistry: .openCode(client: openCodeClient)
         )
     }
 
@@ -51,20 +51,22 @@ final class ChatSessionE2ETests: XCTestCase {
         let start = Date()
         let conversation = try await chatConversationService.createConversation(
             threadID: "integration-test-thread",
-            directory: directory
+            directory: directory,
+            harness: .openCodeServe
         )
         let elapsed = Date().timeIntervalSince(start)
 
         // Session was created and linked
         XCTAssertFalse(conversation.id.isEmpty)
-        XCTAssertNotNil(conversation.opencodeSessionID)
-        XCTAssertFalse(conversation.opencodeSessionID!.isEmpty)
+        XCTAssertNotNil(conversation.sessionID)
+        XCTAssertFalse(conversation.sessionID!.isEmpty)
         XCTAssertEqual(conversation.threadID, "integration-test-thread")
+        XCTAssertEqual(conversation.harnessID, ChatHarness.openCodeServe.id)
 
         // Conversation persisted to DB
         let persisted = try databaseManager.conversation(id: conversation.id)
         XCTAssertNotNil(persisted)
-        XCTAssertEqual(persisted?.opencodeSessionID, conversation.opencodeSessionID)
+        XCTAssertEqual(persisted?.sessionID, conversation.sessionID)
 
         // The critical assertion: returned in under 5 seconds
         XCTAssertLessThan(elapsed, 5.0, "createConversation took \(elapsed)s — should return instantly with fire-and-forget /init")
@@ -76,10 +78,11 @@ final class ChatSessionE2ETests: XCTestCase {
 
         let conversation = try await chatConversationService.createConversation(
             threadID: "integration-test-thread-2",
-            directory: directory
+            directory: directory,
+            harness: .openCodeServe
         )
 
-        let sessionID = try XCTUnwrap(conversation.opencodeSessionID)
+        let sessionID = try XCTUnwrap(conversation.sessionID)
 
         // The session should be fetchable from opencode serve
         let session = try await openCodeClient.getSession(id: sessionID, directory: directory)
@@ -92,9 +95,10 @@ final class ChatSessionE2ETests: XCTestCase {
 
         let conversation = try await chatConversationService.createConversation(
             threadID: "integration-test-thread-3",
-            directory: directory
+            directory: directory,
+            harness: .openCodeServe
         )
-        let sessionID = try XCTUnwrap(conversation.opencodeSessionID)
+        let sessionID = try XCTUnwrap(conversation.sessionID)
 
         // Wait briefly for /init background task to fire and log
         try await Task.sleep(nanoseconds: 2_000_000_000)
