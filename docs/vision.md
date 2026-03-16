@@ -37,6 +37,7 @@ Everything below is split into implemented vs planned.
 - [x] Presets map to tmux windows
 - [x] Start/stop/restart over RPC
 - [x] Process events streamed (`preset.process_event`)
+- [x] Incremental preset output stream (`preset.output`)
 - [x] Multi-session terminals (ZStack keep-alive, tab switching preserves state)
 
 Current preset format:
@@ -82,6 +83,9 @@ ports:
 ### 7) Transport and Persistence
 
 - [x] Single SSH tunnel + single WebSocket for RPC/events/terminal data
+- [x] Connection session handshake (`session.hello`) with capability negotiation
+- [x] Structured JSON-RPC error model (`error.data.kind/retryable/details`)
+- [x] Ordered state delta operations (`state.delta.operations[]` + `op_id`)
 - [x] tmux persistence survives app disconnects and daemon restarts
 - [x] Daemon state persisted in `threads.json` and reconciled at startup
 - [x] Scrollback replay on reconnect via `tmux capture-pane`

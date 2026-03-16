@@ -119,6 +119,7 @@ Operational commands are exposed in `Taskfile.yml`:
 
 JSON-RPC 2.0 methods currently routed by `rpc_router.rs`:
 
+- `session.hello`
 - `ping`
 - `state.snapshot`
 - `project.list`, `project.add`, `project.clone`, `project.remove`, `project.branches`, `project.browse`
@@ -136,6 +137,7 @@ Daemon events currently emitted:
 - `project.removed`
 - `state.delta`
 - `preset.process_event`
+- `preset.output`
 - `project.clone_progress`
 
 Defined but not currently emitted by daemon:
@@ -152,6 +154,19 @@ There is currently **no enforced daemon auth layer** on localhost WebSocket acce
 
 - Daemon is expected to listen on localhost and usually be reached via SSH tunnel from macOS.
 - `threadmill-cli` can include `auth_token` if `~/.config/threadmill/auth_token` exists, but current daemon routing does not enforce it.
+- A protocol session handshake is required: client must call `session.hello` before stateful RPC methods.
+
+## Error Model
+
+- JSON-RPC failures use structured errors: `code`, `message`, optional `data`.
+- `data.kind` carries stable domain tags (for example `terminal.session_missing`) used by the app for deterministic behavior.
+- `data.retryable` + `data.details` provide machine-readable recovery hints.
+
+## State Delta Model
+
+- `state.delta` now streams ordered `operations` (not `changes`).
+- Every operation includes an `op_id` and typed payload.
+- Threadmill applies `thread.status_changed` and `preset.output` operations immediately and falls back to full sync for broader mutations.
 
 ## State Model
 

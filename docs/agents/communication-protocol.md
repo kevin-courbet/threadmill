@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-02
+updated: 2026-03-17
 ---
 
 # Communication Protocol
@@ -24,22 +24,22 @@ Threadmill (macOS)                      Spindle (beast/WSL2)
 
 1. Threadmill starts SSH tunnel (unless `THREADMILL_DISABLE_SSH_TUNNEL`): local `<daemonPort>` -> remote `<daemonPort>`.
 2. Threadmill opens WebSocket (`ws://127.0.0.1:<daemonPort>` when tunneled, otherwise `ws://<host>:<daemonPort>`).
-3. Threadmill sends `ping`; daemon returns `"pong"`; state becomes connected.
+3. Threadmill sends `session.hello`; daemon returns negotiated `session_id` + capabilities.
 4. `onConnected` runs `TerminalMultiplexer.reattachAll()`.
 5. `SyncService.syncFromDaemon()` fetches `project.list` then `thread.list` and refreshes local cache/UI.
 6. Client keeps a 30s ping loop while connected.
 
 ## Activity Diagrams
 
-### Connection establishment (tunnel -> ws -> ping -> sync)
+### Connection establishment (tunnel -> ws -> session.hello -> sync)
 
 ```text
 Threadmill              SSH Tunnel                  Spindle
     |                       |                          |
     | start tunnel          |------------------------->|
     | ws connect            |=========================>|
-    | ping                  |------------------------->|
-    |<----------------------|                    pong  |
+    | session.hello         |------------------------->|
+    |<----------------------|      {session_id,...}    |
     | state=connected       |                          |
     | reattachAll()         |=========================>|
     | project.list          |------------------------->|
@@ -163,7 +163,12 @@ Server notification (event):
 
 `PresetProcessEvent`
 ```json
-{"thread_id":"<uuid>","preset":"terminal","event":"started|exited|crashed","exit_code":1}
+{"thread_id":"<uuid>","preset":"terminal","event":"started|exited|crashed","exit_code":1,"crash_context":{"signal":"SIGSEGV","reason":"segfault","last_output":["...","..."]}}
+```
+
+`PresetOutputEvent`
+```json
+{"thread_id":"<uuid>","preset":"dev-server","stream":"stdout|stderr","chunk":"line of output"}
 ```
 
 `FileBrowserEntry`
@@ -182,6 +187,10 @@ Server notification (event):
 ```
 
 ## RPC Methods (exactly dispatched in `rpc_router.rs`)
+
+`session.hello`
+- Params: `{"client":{"name":"threadmill-macos","version":"<string>"},"protocol_version":"2026-03-17","capabilities":["..."]}`
+- Result: `{"session_id":"<string>","protocol_version":"2026-03-17","capabilities":["..."],"state_version":<u64>}`
 
 `ping`
 - Params: omitted, `null`, or `{}`
@@ -304,18 +313,22 @@ Server notification (event):
 `preset.process_event`
 - Params: `PresetProcessEvent`
 
+`preset.output`
+- Params: `PresetOutputEvent`
+
 `state.delta`
 - Params:
 ```json
 {
   "state_version": 42,
-  "changes": [
-    {"type":"project.added","project": Project},
-    {"type":"project.removed","project_id":"<uuid>"},
-    {"type":"thread.created","thread": Thread},
-    {"type":"thread.removed","thread_id":"<uuid>"},
-    {"type":"thread.status_changed","thread_id":"<uuid>","old":"creating","new":"active"},
-    {"type":"preset.process_event","thread_id":"<uuid>","preset":"terminal","event":"started|exited|crashed","exit_code":1}
+  "operations": [
+    {"op_id":"op-1","type":"project.added","project": Project},
+    {"op_id":"op-2","type":"project.removed","project_id":"<uuid>"},
+    {"op_id":"op-3","type":"thread.created","thread": Thread},
+    {"op_id":"op-4","type":"thread.removed","thread_id":"<uuid>"},
+    {"op_id":"op-5","type":"thread.status_changed","thread_id":"<uuid>","old":"creating","new":"active"},
+    {"op_id":"op-6","type":"preset.process_event","thread_id":"<uuid>","preset":"terminal","event":"started|exited|crashed","exit_code":1},
+    {"op_id":"op-7","type":"preset.output","thread_id":"<uuid>","preset":"dev-server","stream":"stderr","chunk":"stack trace"}
   ]
 }
 ```
@@ -331,8 +344,14 @@ Server notification (event):
 
 ## Error Codes and Behavior
 
-- Current daemon uses one JSON-RPC error code: `-1`.
-- Error payload: `{"code":-1,"message":"..."}`.
+- Daemon returns structured JSON-RPC errors with `code`, `message`, and optional `data`.
+- Error payload shape: `{"code":-32041,"message":"...","data":{"kind":"terminal.session_missing","retryable":false,"details":{...}}}`.
+- Common codes:
+  - `-32601` method not found (`rpc.method_not_found`)
+  - `-32602` invalid params (`rpc.invalid_params`)
+  - `-32000` session not initialized (`session.not_initialized`)
+  - `-32004` domain object not found (`thread.not_found`, etc)
+  - `-32041` terminal attach session missing (`terminal.session_missing`)
 - Invalid JSON or wrong `jsonrpc` returns an error response with `id: null` if request id is unavailable.
 - For notifications (no `id`), daemon does not send error responses; failures are only logged server-side.
 
@@ -358,7 +377,10 @@ Server notification (event):
 - `thread.status_changed`: update local thread status, attach/detach behavior by status.
 - `thread.progress`: log and mark failed when progress indicates failure.
 - `project.clone_progress`: log clone progress.
-- `thread.created`, `thread.removed`, `project.added`, `project.removed`, `state.delta`, `preset.process_event`: schedule full sync.
+- `state.delta`: apply known operations (`thread.status_changed`, `preset.output`) and sync for broader mutations.
+- `preset.process_event`: capture crash context logs and schedule sync.
+- `preset.output`: buffer last output lines per thread/preset for crash diagnostics.
+- `thread.created`, `thread.removed`, `project.added`, `project.removed`: schedule full sync.
 
 Unknown events are ignored.
 
