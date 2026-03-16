@@ -3,7 +3,7 @@
   "$id": "https://threadmill.dev/protocol/threadmill-rpc.schema.json",
   "title": "Threadmill RPC Protocol",
   "description": "JSON-RPC 2.0 protocol between Threadmill (macOS app) and Spindle (daemon). This schema covers text (JSON) frames only. Binary frames (terminal I/O) use a raw wire format documented in docs/agents/communication-protocol.md.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "$defs": {
     "EmptyParams": {
       "oneOf": [
@@ -52,8 +52,27 @@
         },
         "message": {
           "type": "string"
+        },
+        "data": {
+          "$ref": "#/$defs/RpcErrorData"
         }
       }
+    },
+    "RpcErrorData": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "details": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
     },
     "JsonRpcResponse": {
       "type": "object",
@@ -278,6 +297,55 @@
         },
         "exit_code": {
           "type": "integer"
+        },
+        "crash_context": {
+          "$ref": "#/$defs/PresetCrashContext"
+        }
+      }
+    },
+    "PresetCrashContext": {
+      "type": "object",
+      "properties": {
+        "signal": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "last_output": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "PresetOutputEvent": {
+      "type": "object",
+      "required": [
+        "thread_id",
+        "preset",
+        "stream",
+        "chunk"
+      ],
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "preset": {
+          "type": "string"
+        },
+        "stream": {
+          "type": "string",
+          "enum": [
+            "stdout",
+            "stderr"
+          ]
+        },
+        "chunk": {
+          "type": "string"
         }
       }
     },
@@ -311,6 +379,66 @@
         }
       }
     },
+    "SessionHelloParams": {
+      "type": "object",
+      "required": [
+        "client",
+        "protocol_version",
+        "capabilities"
+      ],
+      "properties": {
+        "client": {
+          "type": "object",
+          "required": [
+            "name",
+            "version"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          }
+        },
+        "protocol_version": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "SessionHelloResult": {
+      "type": "object",
+      "required": [
+        "session_id",
+        "protocol_version",
+        "capabilities",
+        "state_version"
+      ],
+      "properties": {
+        "session_id": {
+          "type": "string"
+        },
+        "protocol_version": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state_version": {
+          "$ref": "#/$defs/StateVersion"
+        }
+      }
+    },
     "OpencodeStatusResult": {
       "type": "object",
       "required": [
@@ -332,15 +460,19 @@
         }
       }
     },
-    "StateDeltaChange": {
+    "StateDeltaOperation": {
       "oneOf": [
         {
           "type": "object",
           "required": [
+            "op_id",
             "type",
             "project"
           ],
           "properties": {
+            "op_id": {
+              "type": "string"
+            },
             "type": {
               "const": "project.added"
             },
@@ -352,10 +484,14 @@
         {
           "type": "object",
           "required": [
+            "op_id",
             "type",
             "project_id"
           ],
           "properties": {
+            "op_id": {
+              "type": "string"
+            },
             "type": {
               "const": "project.removed"
             },
@@ -368,10 +504,14 @@
         {
           "type": "object",
           "required": [
+            "op_id",
             "type",
             "thread"
           ],
           "properties": {
+            "op_id": {
+              "type": "string"
+            },
             "type": {
               "const": "thread.created"
             },
@@ -383,10 +523,14 @@
         {
           "type": "object",
           "required": [
+            "op_id",
             "type",
             "thread_id"
           ],
           "properties": {
+            "op_id": {
+              "type": "string"
+            },
             "type": {
               "const": "thread.removed"
             },
@@ -399,12 +543,16 @@
         {
           "type": "object",
           "required": [
+            "op_id",
             "type",
             "thread_id",
             "old",
             "new"
           ],
           "properties": {
+            "op_id": {
+              "type": "string"
+            },
             "type": {
               "const": "thread.status_changed"
             },
@@ -423,12 +571,16 @@
         {
           "type": "object",
           "required": [
+            "op_id",
             "type",
             "thread_id",
             "preset",
             "event"
           ],
           "properties": {
+            "op_id": {
+              "type": "string"
+            },
             "type": {
               "const": "preset.process_event"
             },
@@ -449,6 +601,45 @@
             },
             "exit_code": {
               "type": "integer"
+            },
+            "crash_context": {
+              "$ref": "#/$defs/PresetCrashContext"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "op_id",
+            "type",
+            "thread_id",
+            "preset",
+            "stream",
+            "chunk"
+          ],
+          "properties": {
+            "op_id": {
+              "type": "string"
+            },
+            "type": {
+              "const": "preset.output"
+            },
+            "thread_id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "preset": {
+              "type": "string"
+            },
+            "stream": {
+              "type": "string",
+              "enum": [
+                "stdout",
+                "stderr"
+              ]
+            },
+            "chunk": {
+              "type": "string"
             }
           }
         }
@@ -554,6 +745,15 @@
     }
   },
   "methods": {
+    "session.hello": {
+      "description": "Negotiate protocol session and capabilities",
+      "params": {
+        "$ref": "#/$defs/SessionHelloParams"
+      },
+      "result": {
+        "$ref": "#/$defs/SessionHelloResult"
+      }
+    },
     "ping": {
       "description": "Health check",
       "params": {
@@ -1101,6 +1301,12 @@
         "$ref": "#/$defs/PresetProcessEvent"
       }
     },
+    "preset.output": {
+      "description": "Preset process output stream chunk",
+      "params": {
+        "$ref": "#/$defs/PresetOutputEvent"
+      }
+    },
     "project.added": {
       "description": "Project added",
       "params": {
@@ -1165,16 +1371,16 @@
         "type": "object",
         "required": [
           "state_version",
-          "changes"
+          "operations"
         ],
         "properties": {
           "state_version": {
             "$ref": "#/$defs/StateVersion"
           },
-          "changes": {
+          "operations": {
             "type": "array",
             "items": {
-              "$ref": "#/$defs/StateDeltaChange"
+              "$ref": "#/$defs/StateDeltaOperation"
             }
           }
         }

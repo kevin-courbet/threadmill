@@ -40,6 +40,8 @@ final class AppState {
             } else if connectionStatus == .disconnected {
                 stopStatsTimer()
                 systemStats = nil
+                latestDaemonStateVersion = 0
+                presetOutputBySession.removeAll()
             }
         }
     }
@@ -94,6 +96,9 @@ final class AppState {
     private var multiplexer: (any TerminalMultiplexing)?
     private var connectionPool: (any RemoteConnectionPooling)?
     private var eventSyncScheduled = false
+    private var latestDaemonStateVersion = 0
+    private var presetOutputBySession: [String: [String]] = [:]
+    private let presetOutputBufferLimit = 40
     private var attachedEndpoints: [AttachmentKey: RelayEndpoint] = [:]
     private var pendingAttachTasks: [AttachmentKey: Task<Void, Never>] = [:]
     private var permanentAttachFailures: Set<AttachmentKey> = []
@@ -338,12 +343,17 @@ final class AppState {
             handleThreadProgress(params)
         case "project.clone_progress":
             handleProjectCloneProgress(params)
+        case "state.delta":
+            handleStateDelta(params)
+        case "preset.process_event":
+            handlePresetProcessEvent(params)
+            scheduleEventSync()
+        case "preset.output":
+            handlePresetOutput(params)
         case "thread.created",
              "thread.removed",
              "project.added",
-             "project.removed",
-             "state.delta",
-             "preset.process_event":
+             "project.removed":
             scheduleEventSync()
         default:
             break
@@ -946,6 +956,113 @@ final class AppState {
         }
     }
 
+    private func handleStateDelta(_ params: [String: Any]?) {
+        guard let params,
+              let stateVersion = params["state_version"] as? Int,
+              let operations = params["operations"] as? [[String: Any]]
+        else {
+            NSLog("threadmill-state: invalid state.delta payload: %@", "\(params ?? [:])")
+            scheduleEventSync()
+            return
+        }
+
+        guard stateVersion > latestDaemonStateVersion else {
+            return
+        }
+
+        latestDaemonStateVersion = stateVersion
+
+        var shouldSync = false
+        for operation in operations {
+            guard let type = operation["type"] as? String else {
+                shouldSync = true
+                continue
+            }
+
+            switch type {
+            case "thread.status_changed":
+                handleThreadStatusChanged(operation)
+            case "preset.output":
+                handlePresetOutput(operation)
+            case "preset.process_event":
+                handlePresetProcessEvent(operation)
+                shouldSync = true
+            case "thread.created",
+                 "thread.removed",
+                 "project.added",
+                 "project.removed":
+                shouldSync = true
+            default:
+                shouldSync = true
+            }
+        }
+
+        if shouldSync {
+            scheduleEventSync()
+        }
+    }
+
+    private func handlePresetProcessEvent(_ params: [String: Any]?) {
+        guard let params,
+              let threadID = params["thread_id"] as? String,
+              let preset = params["preset"] as? String,
+              let event = params["event"] as? String
+        else {
+            NSLog("threadmill-state: invalid preset.process_event payload: %@", "\(params ?? [:])")
+            return
+        }
+
+        if event != "crashed" {
+            return
+        }
+
+        let context = params["crash_context"] as? [String: Any]
+        let signal = context?["signal"] as? String ?? "unknown"
+        let reason = context?["reason"] as? String ?? "unknown"
+        let outputLines = (context?["last_output"] as? [String]) ?? presetOutputBySession[presetOutputKey(threadID: threadID, preset: preset)] ?? []
+        let outputPreview = outputLines.suffix(2).joined(separator: " | ")
+
+        if outputPreview.isEmpty {
+            NSLog("threadmill-state: preset crash thread=%@ preset=%@ signal=%@ reason=%@", threadID, preset, signal, reason)
+        } else {
+            NSLog(
+                "threadmill-state: preset crash thread=%@ preset=%@ signal=%@ reason=%@ output=%@",
+                threadID,
+                preset,
+                signal,
+                reason,
+                outputPreview
+            )
+        }
+    }
+
+    private func handlePresetOutput(_ params: [String: Any]?) {
+        guard let params,
+              let threadID = params["thread_id"] as? String,
+              let preset = params["preset"] as? String
+        else {
+            NSLog("threadmill-state: invalid preset.output payload: %@", "\(params ?? [:])")
+            return
+        }
+
+        let chunk = (params["chunk"] as? String) ?? (params["data"] as? String) ?? ""
+        guard !chunk.isEmpty else {
+            return
+        }
+
+        let key = presetOutputKey(threadID: threadID, preset: preset)
+        var entries = presetOutputBySession[key, default: []]
+        entries.append(chunk)
+        if entries.count > presetOutputBufferLimit {
+            entries.removeFirst(entries.count - presetOutputBufferLimit)
+        }
+        presetOutputBySession[key] = entries
+    }
+
+    private func presetOutputKey(threadID: String, preset: String) -> String {
+        "\(threadID)::\(preset)"
+    }
+
     private func threadProgressIndicatesFailure(step: String, errorText: String?) -> Bool {
         if let errorText {
             let trimmedError = errorText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1011,6 +1128,9 @@ final class AppState {
 
     private func isPermanentTerminalAttachError(_ error: Error) -> Bool {
         if let rpcError = error as? JSONRPCErrorResponse {
+            if rpcError.kind == "terminal.session_missing" || rpcError.code == -32041 {
+                return true
+            }
             return rpcError.message.localizedCaseInsensitiveContains("tmux session not running")
         }
         return String(describing: error).localizedCaseInsensitiveContains("tmux session not running")

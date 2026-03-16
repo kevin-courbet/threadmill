@@ -40,8 +40,13 @@ final class ConnectionManagerTests: XCTestCase {
         let tunnel = MockTunnelManager()
         let webSocket = MockWebSocketClient()
         webSocket.requestHandler = { method, _, _ in
-            if method == "ping" {
-                return "pong"
+            if method == "session.hello" {
+                return [
+                    "session_id": "session-1",
+                    "protocol_version": "2026-03-17",
+                    "capabilities": ["state.delta.operations.v1"],
+                    "state_version": 1,
+                ]
             }
             throw TestError.missingStub
         }
@@ -65,6 +70,39 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(Array(states.prefix(2)), [.connecting, .connected])
         XCTAssertEqual(tunnel.startCallCount, 1)
         XCTAssertEqual(webSocket.connectURLs.count, 1)
+        XCTAssertEqual(webSocket.sentRequests.first?.method, "session.hello")
+        manager.stop()
+    }
+
+    func testConnectFailureWhenSessionHelloRejectedSchedulesReconnect() async {
+        let tunnel = MockTunnelManager()
+        let webSocket = MockWebSocketClient()
+        webSocket.requestHandler = { method, _, _ in
+            if method == "session.hello" {
+                throw JSONRPCErrorResponse(code: -32601, message: "Method not found: session.hello")
+            }
+            throw TestError.missingStub
+        }
+
+        let manager = ConnectionManager(
+            config: ThreadmillConfig(host: "beast", daemonPort: 19990, useSSHTunnel: true),
+            tunnelManager: tunnel,
+            webSocketClient: webSocket,
+            maxReconnectAttempts: 4,
+            reconnectDelay: { _ in 0.05 }
+        )
+
+        manager.start()
+
+        let reconnecting = await waitForCondition {
+            if case .reconnecting = manager.state {
+                return true
+            }
+            return false
+        }
+        XCTAssertTrue(reconnecting)
+        XCTAssertEqual(webSocket.sentRequests.first?.method, "session.hello")
+        XCTAssertEqual(webSocket.sentRequests.filter { $0.method == "ping" }.count, 0)
         manager.stop()
     }
 }

@@ -20,9 +20,27 @@ enum WebSocketClientError: LocalizedError {
 struct JSONRPCErrorResponse: LocalizedError {
     let code: Int
     let message: String
+    let data: [String: Any]
+
+    init(code: Int, message: String, data: [String: Any] = [:]) {
+        self.code = code
+        self.message = message
+        self.data = data
+    }
+
+    var kind: String? {
+        data["kind"] as? String
+    }
+
+    var retryable: Bool {
+        data["retryable"] as? Bool ?? false
+    }
 
     var errorDescription: String? {
-        "JSON-RPC error \(code): \(message)"
+        if let kind {
+            return "JSON-RPC error \(code) [\(kind)]: \(message)"
+        }
+        return "JSON-RPC error \(code): \(message)"
     }
 }
 
@@ -203,7 +221,8 @@ final class WebSocketClient: NSObject, WebSocketManaging {
         if let error = json["error"] as? [String: Any] {
             let code = error["code"] as? Int ?? -1
             let message = error["message"] as? String ?? "Unknown error"
-            finishPendingRequest(id: id, result: .failure(JSONRPCErrorResponse(code: code, message: message)))
+            let data = error["data"] as? [String: Any] ?? [:]
+            finishPendingRequest(id: id, result: .failure(JSONRPCErrorResponse(code: code, message: message, data: data)))
             return
         }
 

@@ -26,6 +26,7 @@ final class MockSpindleServer {
         var sourceType: String
         var createdAt: Date
         var tmuxSession: String
+        var portOffset: Int
     }
 
     struct RPCRequest {
@@ -120,6 +121,12 @@ final class MockSpindleServer {
     }
 
     private let queue = DispatchQueue(label: "threadmill.mock-spindle")
+    private static let protocolVersion = "2026-03-17"
+    private static let supportedCapabilities = [
+        "state.delta.operations.v1",
+        "preset.output.v1",
+        "rpc.errors.structured.v1",
+    ]
     private let formatter: ISO8601DateFormatter
 
     private var listener: NWListener?
@@ -127,9 +134,11 @@ final class MockSpindleServer {
     private var projects: [MockProject]
     private var threads: [MockThread]
     private var attachments: [UInt16: (threadID: String, preset: String)] = [:]
+    private var clientSessionIDs: [ObjectIdentifier: String] = [:]
     private var requestLog: [RPCRequest] = []
     private var stateVersion = 1
     private var nextChannelID: UInt16 = 10
+    private var nextOperationID = 1
 
     private(set) var port: UInt16 = 0
 
@@ -180,7 +189,8 @@ final class MockSpindleServer {
                 status: "active",
                 sourceType: "new_feature",
                 createdAt: Date(),
-                tmuxSession: "tm_project-main_bootstrap-thread"
+                tmuxSession: "tm_project-main_bootstrap-thread",
+                portOffset: 0
             ),
         ]
     }
@@ -252,8 +262,10 @@ final class MockSpindleServer {
             }
 
             attachments.removeAll()
+            clientSessionIDs.removeAll()
             requestLog.removeAll()
             stateVersion = 1
+            nextOperationID = 1
             listener?.cancel()
             listener = nil
             port = 0
@@ -276,7 +288,9 @@ final class MockSpindleServer {
     }
 
     private func disconnect(client: ClientConnection) {
-        clients.removeValue(forKey: ObjectIdentifier(client))
+        let clientID = ObjectIdentifier(client)
+        clients.removeValue(forKey: clientID)
+        clientSessionIDs.removeValue(forKey: clientID)
     }
 
     private func handle(opcode: NWProtocolWebSocket.Opcode, payload: Data, from client: ClientConnection) {
@@ -303,17 +317,46 @@ final class MockSpindleServer {
 
         let params = request["params"] as? [String: Any]
         requestLog.append(RPCRequest(method: method, params: params))
-        let handled = handle(method: method, id: id, params: params)
+        let handled = handle(method: method, id: id, params: params, from: client)
         client.sendJSON(handled.response)
         for event in handled.events {
             broadcast(event)
         }
     }
 
-    private func handle(method: String, id: Any, params: [String: Any]?) -> (response: [String: Any], events: [[String: Any]]) {
+    private func handle(
+        method: String,
+        id: Any,
+        params: [String: Any]?,
+        from client: ClientConnection
+    ) -> (response: [String: Any], events: [[String: Any]]) {
+        let clientID = ObjectIdentifier(client)
+
         switch method {
+        case "session.hello":
+            return handleSessionHello(id: id, params: params, clientID: clientID)
+
         case "ping":
             return (ok(id: id, result: "pong"), [])
+
+        default:
+            guard clientSessionIDs[clientID] != nil else {
+                return (
+                    error(
+                        id: id,
+                        code: -32000,
+                        message: "session.hello required before calling \(method)",
+                        kind: "session.not_initialized"
+                    ),
+                    []
+                )
+            }
+            return handleSessionMethod(method: method, id: id, params: params)
+        }
+    }
+
+    private func handleSessionMethod(method: String, id: Any, params: [String: Any]?) -> (response: [String: Any], events: [[String: Any]]) {
+        switch method {
 
         case "state.snapshot":
             return (ok(id: id, result: stateSnapshotPayload()), [])
@@ -373,7 +416,8 @@ final class MockSpindleServer {
             projects.append(project)
             stateVersion += 1
             let event: [String: Any] = ["method": "project.added", "params": ["project": projectPayload(project)]]
-            return (ok(id: id, result: projectPayload(project)), [event])
+            let delta = stateDeltaEvent(operations: [["type": "project.added", "project": projectPayload(project)]])
+            return (ok(id: id, result: projectPayload(project)), [event, delta])
 
         case "project.clone":
             let url = params?["url"] as? String ?? "https://github.com/example/project.git"
@@ -391,7 +435,8 @@ final class MockSpindleServer {
             projects.append(project)
             stateVersion += 1
             let event: [String: Any] = ["method": "project.added", "params": ["project": projectPayload(project)]]
-            return (ok(id: id, result: projectPayload(project)), [event])
+            let delta = stateDeltaEvent(operations: [["type": "project.added", "project": projectPayload(project)]])
+            return (ok(id: id, result: projectPayload(project)), [event, delta])
 
         case "project.remove":
             let projectID = params?["project_id"] as? String ?? ""
@@ -401,7 +446,8 @@ final class MockSpindleServer {
             if hadProject {
                 stateVersion += 1
                 let event: [String: Any] = ["method": "project.removed", "params": ["project_id": projectID]]
-                return (ok(id: id, result: ["removed": true]), [event])
+                let delta = stateDeltaEvent(operations: [["type": "project.removed", "project_id": projectID]])
+                return (ok(id: id, result: ["removed": true]), [event, delta])
             }
             return (ok(id: id, result: ["removed": false]), [])
 
@@ -430,26 +476,33 @@ final class MockSpindleServer {
                 status: "active",
                 sourceType: sourceType,
                 createdAt: Date(),
-                tmuxSession: "tm_\(projectID)_\(slug(name))"
+                tmuxSession: "tm_\(projectID)_\(slug(name))",
+                portOffset: nextPortOffset(for: projectID)
             )
             threads.insert(thread, at: 0)
             stateVersion += 1
 
             let progress: [String: Any] = [
                 "method": "thread.progress",
-                "params": ["thread_id": thread.id, "step": "create", "message": "mock create", "error": NSNull()],
+                "params": ["thread_id": thread.id, "step": "creating_worktree", "message": "mock create", "error": NSNull()],
             ]
             let statusChanged: [String: Any] = [
                 "method": "thread.status_changed",
                 "params": ["thread_id": thread.id, "old": "creating", "new": "active"],
             ]
-            let created: [String: Any] = ["method": "thread.created", "params": ["thread_id": thread.id]]
-            return (ok(id: id, result: ["thread_id": thread.id]), [progress, statusChanged, created])
+            let created: [String: Any] = ["method": "thread.created", "params": ["thread": threadPayload(thread)]]
+            let delta = stateDeltaEvent(operations: [[
+                "type": "thread.status_changed",
+                "thread_id": thread.id,
+                "old": "creating",
+                "new": "active",
+            ]])
+            return (ok(id: id, result: threadPayload(thread)), [progress, statusChanged, created, delta])
 
         case "thread.hide":
             let threadID = params?["thread_id"] as? String ?? ""
             guard let index = threads.firstIndex(where: { $0.id == threadID }) else {
-                return (error(id: id, code: -1, message: "thread not found"), [])
+                return (error(id: id, code: -32004, message: "thread not found", kind: "thread.not_found"), [])
             }
             let old = threads[index].status
             threads[index].status = "hidden"
@@ -458,12 +511,18 @@ final class MockSpindleServer {
                 "method": "thread.status_changed",
                 "params": ["thread_id": threadID, "old": old, "new": "hidden"],
             ]
-            return (ok(id: id, result: NSNull()), [event])
+            let delta = stateDeltaEvent(operations: [[
+                "type": "thread.status_changed",
+                "thread_id": threadID,
+                "old": old,
+                "new": "hidden",
+            ]])
+            return (ok(id: id, result: NSNull()), [event, delta])
 
         case "thread.reopen":
             let threadID = params?["thread_id"] as? String ?? ""
             guard let index = threads.firstIndex(where: { $0.id == threadID }) else {
-                return (error(id: id, code: -1, message: "thread not found"), [])
+                return (error(id: id, code: -32004, message: "thread not found", kind: "thread.not_found"), [])
             }
             let old = threads[index].status
             threads[index].status = "active"
@@ -472,7 +531,13 @@ final class MockSpindleServer {
                 "method": "thread.status_changed",
                 "params": ["thread_id": threadID, "old": old, "new": "active"],
             ]
-            return (ok(id: id, result: NSNull()), [event])
+            let delta = stateDeltaEvent(operations: [[
+                "type": "thread.status_changed",
+                "thread_id": threadID,
+                "old": old,
+                "new": "active",
+            ]])
+            return (ok(id: id, result: NSNull()), [event, delta])
 
         case "thread.close":
             let threadID = params?["thread_id"] as? String ?? ""
@@ -483,14 +548,50 @@ final class MockSpindleServer {
                 stateVersion += 1
             }
             let event: [String: Any] = ["method": "thread.removed", "params": ["thread_id": threadID]]
-            return (ok(id: id, result: NSNull()), [event])
+            let delta = stateDeltaEvent(operations: [["type": "thread.removed", "thread_id": threadID]])
+            return (ok(id: id, result: NSNull()), [event, delta])
 
-        case "preset.start", "terminal.resize":
+        case "preset.start":
+            let threadID = params?["thread_id"] as? String ?? ""
+            let preset = params?["preset"] as? String ?? "terminal"
+            let processEvent: [String: Any] = [
+                "method": "preset.process_event",
+                "params": ["thread_id": threadID, "preset": preset, "event": "started"],
+            ]
+            let outputEvent: [String: Any] = [
+                "method": "preset.output",
+                "params": [
+                    "thread_id": threadID,
+                    "preset": preset,
+                    "stream": "stdout",
+                    "chunk": "\(preset) started",
+                ],
+            ]
+            let delta = stateDeltaEvent(operations: [[
+                "type": "preset.process_event",
+                "thread_id": threadID,
+                "preset": preset,
+                "event": "started",
+            ]])
+            return (ok(id: id, result: NSNull()), [processEvent, outputEvent, delta])
+
+        case "terminal.resize", "preset.stop", "preset.restart":
             return (ok(id: id, result: NSNull()), [])
 
         case "terminal.attach":
             let threadID = params?["thread_id"] as? String ?? ""
             let preset = params?["preset"] as? String ?? "terminal"
+            guard threads.contains(where: { $0.id == threadID }) else {
+                return (
+                    error(
+                        id: id,
+                        code: -32041,
+                        message: "tmux session not running for thread \(threadID)",
+                        kind: "terminal.session_missing"
+                    ),
+                    []
+                )
+            }
             let channelID = allocateChannelID()
             attachments[channelID] = (threadID: threadID, preset: preset)
             return (ok(id: id, result: ["channel_id": Int(channelID)]), [])
@@ -504,7 +605,7 @@ final class MockSpindleServer {
             return (ok(id: id, result: NSNull()), [])
 
         default:
-            return (error(id: id, code: -32601, message: "Method not found: \(method)"), [])
+            return (error(id: id, code: -32601, message: "Method not found: \(method)", kind: "rpc.method_not_found"), [])
         }
     }
 
@@ -556,6 +657,7 @@ final class MockSpindleServer {
             "source_type": thread.sourceType,
             "created_at": formatter.string(from: thread.createdAt),
             "tmux_session": thread.tmuxSession,
+            "port_offset": thread.portOffset,
         ]
     }
 
@@ -563,12 +665,102 @@ final class MockSpindleServer {
         ["jsonrpc": "2.0", "id": id, "result": result]
     }
 
-    private func error(id: Any, code: Int, message: String) -> [String: Any] {
-        [
+    private func error(
+        id: Any,
+        code: Int,
+        message: String,
+        kind: String? = nil,
+        retryable: Bool? = nil,
+        details: [String: Any]? = nil
+    ) -> [String: Any] {
+        var payload: [String: Any] = [
             "jsonrpc": "2.0",
             "id": id,
             "error": ["code": code, "message": message],
         ]
+
+        var data: [String: Any] = [:]
+        if let kind {
+            data["kind"] = kind
+        }
+        if let retryable {
+            data["retryable"] = retryable
+        }
+        if let details {
+            data["details"] = details
+        }
+
+        if !data.isEmpty, var errorBody = payload["error"] as? [String: Any] {
+            errorBody["data"] = data
+            payload["error"] = errorBody
+        }
+
+        return payload
+    }
+
+    private func handleSessionHello(id: Any, params: [String: Any]?, clientID: ObjectIdentifier) -> (response: [String: Any], events: [[String: Any]]) {
+        guard let params,
+              params["client"] is [String: Any],
+              let protocolVersion = params["protocol_version"] as? String,
+              let requestedCapabilities = params["capabilities"] as? [String]
+        else {
+            return (
+                error(
+                    id: id,
+                    code: -32602,
+                    message: "invalid session.hello params",
+                    kind: "rpc.invalid_params"
+                ),
+                []
+            )
+        }
+
+        let sessionID = "mock-session-\(UUID().uuidString.lowercased())"
+        clientSessionIDs[clientID] = sessionID
+        let negotiated = requestedCapabilities.filter { Self.supportedCapabilities.contains($0) }
+        let negotiatedVersion = protocolVersion == Self.protocolVersion ? protocolVersion : Self.protocolVersion
+
+        return (
+            ok(
+                id: id,
+                result: [
+                    "session_id": sessionID,
+                    "protocol_version": negotiatedVersion,
+                    "capabilities": negotiated,
+                    "state_version": stateVersion,
+                ]
+            ),
+            []
+        )
+    }
+
+    private func stateDeltaEvent(operations: [[String: Any]]) -> [String: Any] {
+        let numberedOperations = operations.map { operation -> [String: Any] in
+            if operation["op_id"] != nil {
+                return operation
+            }
+            var withID = operation
+            withID["op_id"] = "op-\(nextOperationID)"
+            nextOperationID += 1
+            return withID
+        }
+
+        return [
+            "method": "state.delta",
+            "params": [
+                "state_version": stateVersion,
+                "operations": numberedOperations,
+            ],
+        ]
+    }
+
+    private func nextPortOffset(for projectID: String) -> Int {
+        let used = Set(threads.filter { $0.projectID == projectID }.map(\.portOffset))
+        var candidate = 0
+        while used.contains(candidate) {
+            candidate += 20
+        }
+        return candidate
     }
 
     private func uniqueProjectID(for name: String) -> String {

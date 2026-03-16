@@ -57,8 +57,26 @@ enum ConnectionStatus: Equatable {
     }
 }
 
+enum ConnectionManagerError: LocalizedError {
+    case invalidSessionHelloPayload
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidSessionHelloPayload:
+            "session.hello returned an invalid payload."
+        }
+    }
+}
+
 @MainActor
 final class ConnectionManager: ConnectionManaging {
+    private static let protocolVersion = "2026-03-17"
+    private static let protocolCapabilities = [
+        "state.delta.operations.v1",
+        "preset.output.v1",
+        "rpc.errors.structured.v1",
+    ]
+
     private let config: ThreadmillConfig
 
     private(set) var state: ConnectionStatus = .disconnected {
@@ -90,6 +108,10 @@ final class ConnectionManager: ConnectionManaging {
     private var pingTask: Task<Void, Never>?
 
     private var binaryFrameHandler: ((Data) -> Void)?
+
+    private var sessionID: String?
+    private var negotiatedProtocolVersion: String?
+    private var negotiatedCapabilities: Set<String> = []
 
     init(
         config: ThreadmillConfig = .load(),
@@ -149,6 +171,7 @@ final class ConnectionManager: ConnectionManaging {
         shouldRun = false
         cancelScheduledReconnect()
         stopPingLoop()
+        clearSessionContext()
         webSocketClient.disconnect()
         tunnelManager.stop()
         state = .disconnected
@@ -207,8 +230,8 @@ final class ConnectionManager: ConnectionManaging {
             NSLog("threadmill-conn: connecting WebSocket to %@", url.absoluteString)
             webSocketClient.connect(to: url)
 
-            NSLog("threadmill-conn: sending ping")
-            _ = try await request(method: "ping", timeout: 10)
+            NSLog("threadmill-conn: sending session.hello")
+            try await performSessionHello()
             reconnectAttempt = 0
             state = .connected
             NSLog("threadmill-conn: CONNECTED")
@@ -216,6 +239,7 @@ final class ConnectionManager: ConnectionManaging {
         } catch {
             NSLog("threadmill-conn: connect failed: %@", "\(error)")
             stopPingLoop()
+            clearSessionContext()
             webSocketClient.disconnect()
             if config.useSSHTunnel {
                 tunnelManager.stop()
@@ -243,6 +267,7 @@ final class ConnectionManager: ConnectionManaging {
 
         state = .disconnected
         stopPingLoop()
+        clearSessionContext()
         webSocketClient.disconnect()
         if config.useSSHTunnel {
             tunnelManager.stop()
@@ -279,6 +304,43 @@ final class ConnectionManager: ConnectionManaging {
             }
             await self?.connect(initial: false)
         }
+    }
+
+    private func performSessionHello() async throws {
+        let helloResult = try await request(method: "session.hello", params: sessionHelloParams(), timeout: 10)
+        guard let payload = helloResult as? [String: Any],
+              let sessionID = payload["session_id"] as? String,
+              !sessionID.isEmpty,
+              let protocolVersion = payload["protocol_version"] as? String,
+              let capabilities = payload["capabilities"] as? [String]
+        else {
+            throw ConnectionManagerError.invalidSessionHelloPayload
+        }
+
+        self.sessionID = sessionID
+        negotiatedProtocolVersion = protocolVersion
+        negotiatedCapabilities = Set(capabilities)
+    }
+
+    private func sessionHelloParams() -> [String: Any] {
+        [
+            "client": [
+                "name": "threadmill-macos",
+                "version": clientVersion,
+            ],
+            "protocol_version": Self.protocolVersion,
+            "capabilities": Self.protocolCapabilities,
+        ]
+    }
+
+    private var clientVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+    }
+
+    private func clearSessionContext() {
+        sessionID = nil
+        negotiatedProtocolVersion = nil
+        negotiatedCapabilities.removeAll()
     }
 
     private func startPingLoop() {

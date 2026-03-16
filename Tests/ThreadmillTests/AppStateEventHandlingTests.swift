@@ -68,6 +68,70 @@ final class AppStateEventHandlingTests: XCTestCase {
         XCTAssertEqual(syncService.syncCount, 0)
     }
 
+    func testHandleStateDeltaStatusOperationUpdatesStateWithoutSync() async {
+        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+        appState.threads = [makeThread(id: "thread-1", status: .creating)]
+
+        appState.handleDaemonEvent(
+            method: "state.delta",
+            params: [
+                "state_version": 5,
+                "operations": [
+                    [
+                        "op_id": "op-1",
+                        "type": "thread.status_changed",
+                        "thread_id": "thread-1",
+                        "old": "creating",
+                        "new": "active",
+                    ],
+                ],
+            ]
+        )
+
+        try? await Task.sleep(nanoseconds: 20_000_000)
+
+        XCTAssertEqual(appState.threads.first?.status, .active)
+        XCTAssertEqual(syncService.syncCount, 0)
+    }
+
+    func testHandleStateDeltaUnknownOperationSchedulesSync() async {
+        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+
+        appState.handleDaemonEvent(
+            method: "state.delta",
+            params: [
+                "state_version": 7,
+                "operations": [
+                    [
+                        "op_id": "op-2",
+                        "type": "thread.upsert",
+                        "thread": ["id": "thread-1"],
+                    ],
+                ],
+            ]
+        )
+
+        let synced = await waitForCondition { syncService.syncCount == 1 }
+        XCTAssertTrue(synced)
+    }
+
+    func testPresetOutputEventDoesNotTriggerSync() async {
+        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+
+        appState.handleDaemonEvent(
+            method: "preset.output",
+            params: [
+                "thread_id": "thread-1",
+                "preset": "dev-server",
+                "stream": "stderr",
+                "chunk": "crash stack",
+            ]
+        )
+
+        try? await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(syncService.syncCount, 0)
+    }
+
     func testAttachSkipsCreatingAndFailedThreads() async {
         let (connection, _, _, multiplexer, appState) = makeConfiguredAppStateWithDoubles()
         connection.requestHandler = { _, _, _ in NSNull() }
@@ -101,6 +165,34 @@ final class AppStateEventHandlingTests: XCTestCase {
         }
         multiplexer.attachHandler = { _, _ in
             throw JSONRPCErrorResponse(code: -1, message: "tmux session not running: tm_thread_1")
+        }
+
+        await appState.attachSelectedPreset()
+        await appState.attachSelectedPreset()
+
+        XCTAssertEqual(multiplexer.attachCallCount, 1)
+        XCTAssertEqual(connection.requests.filter { $0.method == "preset.start" }.count, 1)
+    }
+
+    func testAttachPermanentTmuxErrorStopsRetryUsingStructuredKind() async {
+        let (connection, _, _, multiplexer, appState) = makeConfiguredAppStateWithDoubles()
+        appState.projects = [makeProject(id: "project-1")]
+        appState.threads = [makeThread(id: "thread-1", status: .active)]
+        appState.selectedThreadID = "thread-1"
+        appState.selectedPreset = "terminal"
+
+        connection.requestHandler = { method, _, _ in
+            if method == "preset.start" {
+                return NSNull()
+            }
+            throw TestError.forcedFailure
+        }
+        multiplexer.attachHandler = { _, _ in
+            throw JSONRPCErrorResponse(
+                code: -32041,
+                message: "attach failed",
+                data: ["kind": "terminal.session_missing"]
+            )
         }
 
         await appState.attachSelectedPreset()
