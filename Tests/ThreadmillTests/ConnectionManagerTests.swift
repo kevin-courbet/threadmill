@@ -44,7 +44,11 @@ final class ConnectionManagerTests: XCTestCase {
                 return [
                     "session_id": "session-1",
                     "protocol_version": "2026-03-17",
-                    "capabilities": ["state.delta.operations.v1"],
+                    "capabilities": [
+                        "state.delta.operations.v1",
+                        "preset.output.v1",
+                        "rpc.errors.structured.v1",
+                    ],
                     "state_version": 1,
                 ]
             }
@@ -103,6 +107,118 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertTrue(reconnecting)
         XCTAssertEqual(webSocket.sentRequests.first?.method, "session.hello")
         XCTAssertEqual(webSocket.sentRequests.filter { $0.method == "ping" }.count, 0)
+        manager.stop()
+    }
+
+    func testSessionHelloProtocolMismatchSchedulesReconnect() async {
+        let tunnel = MockTunnelManager()
+        let webSocket = MockWebSocketClient()
+        webSocket.requestHandler = { method, _, _ in
+            if method == "session.hello" {
+                return [
+                    "session_id": "session-1",
+                    "protocol_version": "2024-01-01",
+                    "capabilities": [
+                        "state.delta.operations.v1",
+                        "preset.output.v1",
+                        "rpc.errors.structured.v1",
+                    ],
+                    "state_version": 1,
+                ]
+            }
+            throw TestError.missingStub
+        }
+
+        let manager = ConnectionManager(
+            config: ThreadmillConfig(host: "beast", daemonPort: 19990, useSSHTunnel: true),
+            tunnelManager: tunnel,
+            webSocketClient: webSocket,
+            maxReconnectAttempts: 4,
+            reconnectDelay: { _ in 0.05 }
+        )
+
+        manager.start()
+
+        let reconnecting = await waitForCondition {
+            if case .reconnecting = manager.state {
+                return true
+            }
+            return false
+        }
+        XCTAssertTrue(reconnecting)
+        manager.stop()
+    }
+
+    func testEventsBeforeSessionHelloAreDropped() async {
+        let tunnel = MockTunnelManager()
+        let webSocket = MockWebSocketClient()
+        webSocket.requestHandler = { method, _, _ in
+            if method == "session.hello" {
+                throw JSONRPCErrorResponse(code: -32000, message: "session.hello rejected")
+            }
+            throw TestError.missingStub
+        }
+
+        let manager = ConnectionManager(
+            config: ThreadmillConfig(host: "beast", daemonPort: 19990, useSSHTunnel: true),
+            tunnelManager: tunnel,
+            webSocketClient: webSocket,
+            maxReconnectAttempts: 4,
+            reconnectDelay: { _ in 0.05 }
+        )
+
+        var events: [(String, [String: Any]?)] = []
+        manager.onEvent = { method, params in
+            events.append((method, params))
+        }
+
+        manager.start()
+
+        let reconnecting = await waitForCondition {
+            if case .reconnecting = manager.state {
+                return true
+            }
+            return false
+        }
+        XCTAssertTrue(reconnecting)
+
+        webSocket.emitEvent(method: "thread.created", params: ["thread": ["id": "t-1"]])
+        XCTAssertTrue(events.isEmpty)
+        manager.stop()
+    }
+
+    func testSessionHelloMissingCapabilitiesSchedulesReconnect() async {
+        let tunnel = MockTunnelManager()
+        let webSocket = MockWebSocketClient()
+        webSocket.requestHandler = { method, _, _ in
+            if method == "session.hello" {
+                return [
+                    "session_id": "session-1",
+                    "protocol_version": "2026-03-17",
+                    "capabilities": ["state.delta.operations.v1"],
+                    "state_version": 1,
+                ]
+            }
+            throw TestError.missingStub
+        }
+
+        let manager = ConnectionManager(
+            config: ThreadmillConfig(host: "beast", daemonPort: 19990, useSSHTunnel: true),
+            tunnelManager: tunnel,
+            webSocketClient: webSocket,
+            maxReconnectAttempts: 4,
+            reconnectDelay: { _ in 0.05 }
+        )
+
+        manager.start()
+
+        let reconnecting = await waitForCondition {
+            if case .reconnecting = manager.state {
+                return true
+            }
+            return false
+        }
+        XCTAssertTrue(reconnecting)
         manager.stop()
     }
 }

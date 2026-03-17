@@ -59,11 +59,17 @@ enum ConnectionStatus: Equatable {
 
 enum ConnectionManagerError: LocalizedError {
     case invalidSessionHelloPayload
+    case incompatibleProtocolVersion(expected: String, received: String)
+    case missingRequiredCapabilities([String])
 
     var errorDescription: String? {
         switch self {
         case .invalidSessionHelloPayload:
             "session.hello returned an invalid payload."
+        case let .incompatibleProtocolVersion(expected, received):
+            "session.hello negotiated protocol \(received), expected \(expected)."
+        case let .missingRequiredCapabilities(missing):
+            "session.hello missing required capabilities: \(missing.joined(separator: ", "))."
         }
     }
 }
@@ -76,6 +82,7 @@ final class ConnectionManager: ConnectionManaging {
         "preset.output.v1",
         "rpc.errors.structured.v1",
     ]
+    private static let requiredCapabilities = Set(protocolCapabilities)
 
     private let config: ThreadmillConfig
 
@@ -143,7 +150,7 @@ final class ConnectionManager: ConnectionManaging {
         }
 
         self.webSocketClient.onEvent = { [weak self] method, params in
-            self?.onEvent?(method, params)
+            self?.handleInboundEvent(method: method, params: params)
         }
 
         self.webSocketClient.onDisconnect = { [weak self] _ in
@@ -317,9 +324,29 @@ final class ConnectionManager: ConnectionManaging {
             throw ConnectionManagerError.invalidSessionHelloPayload
         }
 
+        guard protocolVersion == Self.protocolVersion else {
+            throw ConnectionManagerError.incompatibleProtocolVersion(
+                expected: Self.protocolVersion,
+                received: protocolVersion
+            )
+        }
+
+        let negotiatedCapabilities = Set(capabilities)
+        let missingCapabilities = Array(Self.requiredCapabilities.subtracting(negotiatedCapabilities)).sorted()
+        guard missingCapabilities.isEmpty else {
+            throw ConnectionManagerError.missingRequiredCapabilities(missingCapabilities)
+        }
+
         self.sessionID = sessionID
         negotiatedProtocolVersion = protocolVersion
-        negotiatedCapabilities = Set(capabilities)
+        self.negotiatedCapabilities = negotiatedCapabilities
+    }
+
+    private func handleInboundEvent(method: String, params: [String: Any]?) {
+        guard sessionID != nil else {
+            return
+        }
+        onEvent?(method, params)
     }
 
     private func sessionHelloParams() -> [String: Any] {
