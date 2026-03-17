@@ -267,6 +267,78 @@ final class ChatViewModelTests: XCTestCase {
         XCTAssertEqual(conversations.updatedTitles.first?.title, "Generated title")
     }
 
+    func testLoadConversationsKeepsChronologicalTabOrder() async {
+        let mock = MockOpenCodeClient()
+        let conversations = MockChatConversationService()
+        let older = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "Older", time: 1)
+        let newer = makeConversation(id: "conv_2", threadID: "thread_1", sessionID: "ses_2", title: "Newer", time: 2)
+
+        conversations.activeConversationsResult = .success([newer, older])
+        mock.getMessagesResult = .success([])
+
+        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
+
+        XCTAssertEqual(viewModel.conversations.map(\.id), ["conv_1", "conv_2"])
+        XCTAssertEqual(viewModel.currentConversation?.id, "conv_1")
+    }
+
+    func testCreateConversationAppendsToRightWithoutReorderingExistingTabs() async {
+        let mock = MockOpenCodeClient()
+        let conversations = MockChatConversationService()
+        let older = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "Older", time: 1)
+        let newer = makeConversation(id: "conv_2", threadID: "thread_1", sessionID: "ses_2", title: "Newer", time: 2)
+        let newest = makeConversation(id: "conv_3", threadID: "thread_1", sessionID: "ses_3", title: "", time: 3)
+
+        conversations.activeConversationsResult = .success([newer, older])
+        conversations.createConversationResult = .success(newest)
+        mock.getMessagesResult = .success([])
+
+        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
+        await viewModel.createConversation(threadID: "thread_1", directory: "/tmp/worktree")
+
+        XCTAssertEqual(viewModel.conversations.map(\.id), ["conv_1", "conv_2", "conv_3"])
+        XCTAssertEqual(viewModel.currentConversation?.id, "conv_3")
+    }
+
+    func testAutoTitleUpdateDoesNotReshuffleConversationTabs() async {
+        let mock = MockOpenCodeClient()
+        let conversations = MockChatConversationService()
+        let older = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "Older", time: 1)
+        let untitled = makeConversation(id: "conv_2", threadID: "thread_1", sessionID: "ses_2", title: "", time: 2)
+
+        conversations.activeConversationsResult = .success([untitled, older])
+        mock.getMessagesResult = .success([])
+
+        var continuation: AsyncStream<OCEvent>.Continuation?
+        mock.eventStream = AsyncStream { streamContinuation in
+            continuation = streamContinuation
+        }
+
+        let viewModel = ChatViewModel(openCodeClient: mock, chatConversationService: conversations)
+        await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
+
+        continuation?.yield(.sessionUpdated(OCSession(
+            id: "ses_2",
+            slug: nil,
+            title: "Generated title",
+            directory: "/tmp/worktree",
+            projectID: "proj_1",
+            version: nil,
+            parentID: nil,
+            time: nil,
+            summary: nil
+        )))
+
+        let updated = await waitForCondition {
+            viewModel.conversations.first(where: { $0.id == "conv_2" })?.title == "Generated title"
+        }
+
+        XCTAssertTrue(updated)
+        XCTAssertEqual(viewModel.conversations.map(\.id), ["conv_1", "conv_2"])
+    }
+
     private func makeConversation(id: String, threadID: String, sessionID: String?, title: String, time: TimeInterval) -> ChatConversation {
         var conversation = ChatConversation(threadID: threadID, title: title)
         let timestamp = Date(timeIntervalSince1970: time)

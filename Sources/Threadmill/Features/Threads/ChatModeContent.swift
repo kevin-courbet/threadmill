@@ -202,12 +202,12 @@ enum ChatModeActions {
         selectedChatConversationIDBinding.wrappedValue = conversations.first?.id
     }
 
-    static func chatTitle(for conversation: ChatConversation, index: Int) -> String {
+    static func chatTitle(for conversation: ChatConversation, index: Int, totalCount: Int) -> String {
         let title = conversation.title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !title.isEmpty {
             return title
         }
-        if index == 0 {
+        if index == totalCount - 1 {
             return "New session"
         }
         return "Session \(index + 1)"

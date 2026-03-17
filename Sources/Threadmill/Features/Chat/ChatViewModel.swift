@@ -55,7 +55,7 @@ final class ChatViewModel {
             startEventStreamIfNeeded(directory: directory)
 
             conversations = try await chatConversationService.activeConversations(threadID: threadID)
-            conversations.sort { $0.updatedAt > $1.updatedAt }
+            sortConversationsChronologically()
 
             if conversations.isEmpty {
                 currentConversation = nil
@@ -414,7 +414,7 @@ final class ChatViewModel {
         } else {
             conversations.append(conversation)
         }
-        conversations.sort { $0.updatedAt > $1.updatedAt }
+        sortConversationsChronologically()
     }
 
     private func upsertMessage(_ message: OCMessage, preserveExistingParts: Bool) {
@@ -457,7 +457,7 @@ final class ChatViewModel {
         var updatedConversation = conversations[index]
         updatedConversation.updateTitle(generatedTitle)
         conversations[index] = updatedConversation
-        conversations.sort { $0.updatedAt > $1.updatedAt }
+        sortConversationsChronologically()
 
         if currentConversation?.id == updatedConversation.id {
             currentConversation = updatedConversation
@@ -476,6 +476,15 @@ final class ChatViewModel {
         }
 
         return conversation.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func sortConversationsChronologically() {
+        conversations.sort {
+            if $0.createdAt == $1.createdAt {
+                return $0.id < $1.id
+            }
+            return $0.createdAt < $1.createdAt
+        }
     }
 }
 

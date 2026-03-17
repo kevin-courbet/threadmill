@@ -1,5 +1,6 @@
 import SwiftUI
 
+@MainActor
 struct ThreadSessionTabsProvider {
     let selectedTab: String
     let chatConversations: [ChatConversation]
@@ -8,7 +9,7 @@ struct ThreadSessionTabsProvider {
     let selectedTerminalSessionID: String?
     let presets: [Preset]
     let chatHarnesses: [ChatHarness]
-    let chatTitle: (ChatConversation, Int) -> String
+    let chatTitle: @MainActor (ChatConversation, Int, Int) -> String
     let onSelectChatConversation: (String) -> Void
     let onSelectTerminalSession: (String) -> Void
     let onArchiveChatConversations: ([String]) -> Void
@@ -21,7 +22,7 @@ struct ThreadSessionTabsProvider {
         switch selectedTab {
         case TabItem.chat.id:
             return chatConversations.enumerated().map { index, conversation in
-                SessionTabItem(id: conversation.id, title: chatTitle(conversation, index), icon: "bubble.left", isClosable: true)
+                SessionTabItem(id: conversation.id, title: chatTitle(conversation, index, chatConversations.count), icon: "bubble.left", isClosable: true)
             }
         case TabItem.terminal.id:
             return terminalSessionIDs.map { presetName in

@@ -10,6 +10,7 @@ struct OpenFileInfo: Identifiable, Equatable {
 
 enum FileServiceError: LocalizedError {
     case connectionUnavailable
+    case connectionNotReady
     case invalidResponse(method: String)
     case decodeFailed(method: String)
 
@@ -17,6 +18,8 @@ enum FileServiceError: LocalizedError {
         switch self {
         case .connectionUnavailable:
             return "Connection to spindle is unavailable."
+        case .connectionNotReady:
+            return "Connection to spindle is still starting. Try again once it finishes connecting."
         case let .invalidResponse(method):
             return "Invalid response for \(method)."
         case let .decodeFailed(method):
@@ -48,6 +51,9 @@ final class FileService: FileBrowsing {
     private func activeConnection() throws -> any ConnectionManaging {
         guard let connection = connectionProvider() else {
             throw FileServiceError.connectionUnavailable
+        }
+        guard connection.state == .connected else {
+            throw FileServiceError.connectionNotReady
         }
         return connection
     }

@@ -44,6 +44,36 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertEqual(appState.selectedThreadID, creatingThread.id)
     }
 
+    func testCreateThreadDoesNotSendRPCBeforeConnectionIsReady() async {
+        let connection = MockDaemonConnection(state: .connecting)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = makeProject(id: "project-1")
+        database.projects = [project]
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+
+        do {
+            try await appState.createThread(
+                projectID: project.id,
+                name: "feature-auth",
+                sourceType: "new_feature",
+                branch: nil
+            )
+            XCTFail("Expected createThread to refuse requests before connection is ready")
+        } catch let error as AppStateError {
+            guard case .connectionNotReady = error else {
+                return XCTFail("Unexpected AppStateError: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertTrue(connection.requests.isEmpty)
+    }
+
     func testCreateThreadFromRepoContextProvisionsThenCreatesThread() async throws {
         let connection = MockDaemonConnection(state: .connected)
         let database = MockDatabaseManager()

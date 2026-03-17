@@ -3,6 +3,7 @@ import Observation
 
 enum AppStateError: LocalizedError {
     case connectionManagerUnavailable
+    case connectionNotReady
     case invalidGitStatusResponse
     case invalidProjectResponse
     case defaultWorkspaceProjectAlreadyLinked(projectID: String, repoID: String)
@@ -12,6 +13,8 @@ enum AppStateError: LocalizedError {
         switch self {
         case .connectionManagerUnavailable:
             "Connection to spindle is unavailable."
+        case .connectionNotReady:
+            "Connection to spindle is still starting. Try again once it finishes connecting."
         case .invalidGitStatusResponse:
             "Invalid response for file.git_status."
         case .invalidProjectResponse:
@@ -841,6 +844,10 @@ final class AppState {
         guard let connectionManager = connectionForProject(id: projectID) else {
             NSLog("threadmill-state: createThread aborted, connection manager unavailable")
             throw AppStateError.connectionManagerUnavailable
+        }
+        guard connectionManager.state == .connected else {
+            NSLog("threadmill-state: createThread aborted, connection not ready")
+            throw AppStateError.connectionNotReady
         }
 
         var params: [String: Any] = [
