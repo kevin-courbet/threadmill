@@ -142,27 +142,29 @@ final class AppStateRemoteConnectionTests: XCTestCase {
             switch method {
             case "thread.create":
                 return ["id": "thread-b"]
-            case "project.list":
-                return [[
-                    "id": "project-b",
-                    "name": "beta",
-                    "path": "/home/wsl/dev/beta",
-                    "default_branch": "main",
-                    "remote_id": remoteB.id,
-                ]]
-            case "thread.list":
-                return [[
-                    "id": "thread-b",
-                    "project_id": "project-b",
-                    "name": "feature-b",
-                    "branch": "feature-b",
-                    "worktree_path": "/home/wsl/dev/.threadmill/beta/feature-b",
-                    "status": "active",
-                    "source_type": "new_feature",
-                    "created_at": "2026-03-07T00:00:00Z",
-                    "tmux_session": "tm_feature_b",
-                    "port_offset": 0,
-                ]]
+            case "state.snapshot":
+                return [
+                    "state_version": 5,
+                    "projects": [[
+                        "id": "project-b",
+                        "name": "beta",
+                        "path": "/home/wsl/dev/beta",
+                        "default_branch": "main",
+                        "remote_id": remoteB.id,
+                    ]],
+                    "threads": [[
+                        "id": "thread-b",
+                        "project_id": "project-b",
+                        "name": "feature-b",
+                        "branch": "feature-b",
+                        "worktree_path": "/home/wsl/dev/.threadmill/beta/feature-b",
+                        "status": "active",
+                        "source_type": "new_feature",
+                        "created_at": "2026-03-07T00:00:00Z",
+                        "tmux_session": "tm_feature_b",
+                        "port_offset": 0,
+                    ]],
+                ]
             default:
                 throw TestError.missingStub
             }
@@ -197,7 +199,7 @@ final class AppStateRemoteConnectionTests: XCTestCase {
         try await appState.createThread(projectID: "project-b", name: "feature-b", sourceType: "new_feature", branch: nil)
 
         XCTAssertEqual(database.replaceAllFromDaemonRemoteIDs.last, remoteB.id)
-        XCTAssertEqual(connectionB.requests.map(\.method), ["thread.create", "project.list", "thread.list"])
+        XCTAssertEqual(connectionB.requests.map(\.method), ["thread.create", "state.snapshot"])
     }
 
     func testReloadFromDatabaseReconcilesRemoteConnectionPool() {

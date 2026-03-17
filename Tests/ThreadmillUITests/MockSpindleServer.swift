@@ -122,6 +122,11 @@ final class MockSpindleServer {
 
     private let queue = DispatchQueue(label: "threadmill.mock-spindle")
     private static let protocolVersion = "2026-03-17"
+    private static let requiredClientCapabilities = [
+        "state.delta.operations.v1",
+        "preset.output.v1",
+        "rpc.errors.structured.v1",
+    ]
     private static let supportedCapabilities = [
         "state.delta.operations.v1",
         "preset.output.v1",
@@ -332,6 +337,19 @@ final class MockSpindleServer {
     ) -> (response: [String: Any], events: [[String: Any]]) {
         let clientID = ObjectIdentifier(client)
 
+        if method == "session.hello", clientSessionIDs[clientID] != nil {
+            return (
+                error(
+                    id: id,
+                    code: -32600,
+                    message: "session.hello may only be called once per connection",
+                    kind: "session.already_initialized",
+                    retryable: false
+                ),
+                []
+            )
+        }
+
         switch method {
         case "session.hello":
             return handleSessionHello(id: id, params: params, clientID: clientID)
@@ -346,7 +364,9 @@ final class MockSpindleServer {
                         id: id,
                         code: -32000,
                         message: "session.hello required before calling \(method)",
-                        kind: "session.not_initialized"
+                        kind: "session.not_initialized",
+                        retryable: false,
+                        details: ["method": method]
                     ),
                     []
                 )
@@ -599,9 +619,9 @@ final class MockSpindleServer {
                 return (
                     error(
                         id: id,
-                        code: -32041,
-                        message: "tmux session not running for thread \(threadID)",
-                        kind: "terminal.session_missing"
+                        code: -32004,
+                        message: "thread not found: \(threadID)",
+                        kind: "resource.not_found"
                     ),
                     []
                 )
@@ -624,7 +644,10 @@ final class MockSpindleServer {
     }
 
     private func broadcast(_ payload: [String: Any]) {
-        for client in clients.values {
+        for (clientID, client) in clients {
+            guard clientSessionIDs[clientID] != nil else {
+                continue
+            }
             client.sendJSON(payload)
         }
     }
@@ -723,7 +746,60 @@ final class MockSpindleServer {
                     id: id,
                     code: -32602,
                     message: "invalid session.hello params",
-                    kind: "rpc.invalid_params"
+                    kind: "rpc.invalid_params",
+                    retryable: false
+                ),
+                []
+            )
+        }
+
+        if protocolVersion != Self.protocolVersion {
+            return (
+                error(
+                    id: id,
+                    code: -32602,
+                    message: "unsupported protocol_version '\(protocolVersion)', expected '\(Self.protocolVersion)'",
+                    kind: "session.protocol_mismatch",
+                    retryable: false,
+                    details: [
+                        "client_protocol_version": protocolVersion,
+                        "expected_protocol_version": Self.protocolVersion,
+                    ]
+                ),
+                []
+            )
+        }
+
+        let requiredCapabilities = (params["required_capabilities"] as? [String]) ?? requestedCapabilities
+        let unsupportedRequiredCapabilities = requiredCapabilities.filter { required in
+            !Self.supportedCapabilities.contains(required)
+        }
+        if !unsupportedRequiredCapabilities.isEmpty {
+            return (
+                error(
+                    id: id,
+                    code: -32602,
+                    message: "missing required capabilities: \(unsupportedRequiredCapabilities.joined(separator: ", "))",
+                    kind: "session.missing_capabilities",
+                    retryable: false,
+                    details: ["missing": unsupportedRequiredCapabilities]
+                ),
+                []
+            )
+        }
+
+        let missingCapabilities = Self.requiredClientCapabilities.filter { required in
+            !requestedCapabilities.contains(required)
+        }
+        if !missingCapabilities.isEmpty {
+            return (
+                error(
+                    id: id,
+                    code: -32602,
+                    message: "missing required capabilities: \(missingCapabilities.joined(separator: ", "))",
+                    kind: "session.missing_capabilities",
+                    retryable: false,
+                    details: ["missing": missingCapabilities]
                 ),
                 []
             )
@@ -732,15 +808,15 @@ final class MockSpindleServer {
         let sessionID = "mock-session-\(UUID().uuidString.lowercased())"
         clientSessionIDs[clientID] = sessionID
         let negotiated = requestedCapabilities.filter { Self.supportedCapabilities.contains($0) }
-        let negotiatedVersion = protocolVersion == Self.protocolVersion ? protocolVersion : Self.protocolVersion
 
         return (
             ok(
                 id: id,
                 result: [
                     "session_id": sessionID,
-                    "protocol_version": negotiatedVersion,
+                    "protocol_version": Self.protocolVersion,
                     "capabilities": negotiated,
+                    "required_capabilities": Self.requiredClientCapabilities,
                     "state_version": stateVersion,
                 ]
             ),

@@ -2,6 +2,16 @@ import Foundation
 
 @MainActor
 final class SyncService: SyncServicing {
+    private struct StateSnapshot {
+        let stateVersion: Int
+        let projects: [Project]
+        let threads: [ThreadModel]
+    }
+
+    private enum SyncServiceError: Error {
+        case invalidStateSnapshotPayload
+    }
+
     private let connectionManager: any ConnectionManaging
     private let databaseManager: any DatabaseManaging
     private let appState: AppState
@@ -21,23 +31,40 @@ final class SyncService: SyncServicing {
 
     func syncFromDaemon() async {
         do {
-            let projectsResult = try await connectionManager.request(method: "project.list", params: nil, timeout: 10)
-            let threadsResult = try await connectionManager.request(method: "thread.list", params: [:], timeout: 10)
-
-            let projects = parseProjects(projectsResult)
-            let threads = parseThreads(threadsResult)
-            try databaseManager.replaceAllFromDaemon(projects: projects, threads: threads, remoteId: remoteId)
+            let snapshotResult = try await connectionManager.request(method: "state.snapshot", params: nil, timeout: 10)
+            let snapshot = try parseStateSnapshot(snapshotResult)
+            try databaseManager.replaceAllFromDaemon(projects: snapshot.projects, threads: snapshot.threads, remoteId: remoteId)
             appState.reloadFromDatabase()
+            appState.applyDaemonSnapshotStateVersion(snapshot.stateVersion)
         } catch {
             NSLog("threadmill-sync: sync failed: %@", "\(error)")
         }
     }
 
-    private func parseProjects(_ payload: Any) -> [Project] {
-        guard let rows = payload as? [[String: Any]] else {
-            return []
+    private func parseStateSnapshot(_ payload: Any) throws -> StateSnapshot {
+        guard
+            let row = payload as? [String: Any],
+            let stateVersion = parseOptionalInt(row["state_version"]),
+            stateVersion >= 0
+        else {
+            throw SyncServiceError.invalidStateSnapshotPayload
         }
 
+        let projectRows = try parseRows(row["projects"])
+        let threadRows = try parseRows(row["threads"])
+        let projects = parseProjects(projectRows)
+        let threads = parseThreads(threadRows)
+        return StateSnapshot(stateVersion: stateVersion, projects: projects, threads: threads)
+    }
+
+    private func parseRows(_ payload: Any?) throws -> [[String: Any]] {
+        guard let rows = payload as? [[String: Any]] else {
+            throw SyncServiceError.invalidStateSnapshotPayload
+        }
+        return rows
+    }
+
+    private func parseProjects(_ rows: [[String: Any]]) -> [Project] {
         return rows.compactMap { row in
             guard
                 let id = row["id"] as? String,
@@ -77,11 +104,7 @@ final class SyncService: SyncServicing {
         }
     }
 
-    private func parseThreads(_ payload: Any) -> [ThreadModel] {
-        guard let rows = payload as? [[String: Any]] else {
-            return []
-        }
-
+    private func parseThreads(_ rows: [[String: Any]]) -> [ThreadModel] {
         return rows.compactMap { row in
             guard
                 let id = row["id"] as? String,

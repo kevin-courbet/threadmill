@@ -147,6 +147,33 @@
         }
       }
     },
+    "ProjectLookupResult": {
+      "type": "object",
+      "required": [
+        "exists",
+        "is_git_repo",
+        "project_id"
+      ],
+      "properties": {
+        "exists": {
+          "type": "boolean"
+        },
+        "is_git_repo": {
+          "type": "boolean"
+        },
+        "project_id": {
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
     "SourceType": {
       "type": "string",
       "enum": [
@@ -410,6 +437,13 @@
           "items": {
             "type": "string"
           }
+        },
+        "required_capabilities": {
+          "type": "array",
+          "description": "Subset of client capabilities that must be supported by the daemon. Omit for legacy clients; the daemon then treats `capabilities` as the required set.",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
@@ -419,6 +453,7 @@
         "session_id",
         "protocol_version",
         "capabilities",
+        "required_capabilities",
         "state_version"
       ],
       "properties": {
@@ -430,6 +465,13 @@
         },
         "capabilities": {
           "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required_capabilities": {
+          "type": "array",
+          "description": "Subset of server capabilities that the client must support for the session to remain valid.",
           "items": {
             "type": "string"
           }
@@ -837,6 +879,23 @@
         }
       }
     },
+    "project.lookup": {
+      "description": "Check whether a remote path exists, is a git repo, and is already registered as a project",
+      "params": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "result": {
+        "$ref": "#/$defs/ProjectLookupResult"
+      }
+    },
     "project.add": {
       "description": "Register existing repository as project",
       "params": {
@@ -1022,6 +1081,32 @@
       },
       "result": {
         "$ref": "#/$defs/Thread"
+      }
+    },
+    "thread.cancel": {
+      "description": "Cancel an in-flight thread creation and mark it failed",
+      "params": {
+        "type": "object",
+        "required": [
+          "thread_id"
+        ],
+        "properties": {
+          "thread_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "result": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        }
       }
     },
     "thread.list": {

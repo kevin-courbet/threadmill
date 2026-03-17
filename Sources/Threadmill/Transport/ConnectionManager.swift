@@ -60,7 +60,8 @@ enum ConnectionStatus: Equatable {
 enum ConnectionManagerError: LocalizedError {
     case invalidSessionHelloPayload
     case incompatibleProtocolVersion(expected: String, received: String)
-    case missingRequiredCapabilities([String])
+    case missingRequiredServerCapabilities([String])
+    case unsupportedServerRequiredCapabilities([String])
 
     var errorDescription: String? {
         switch self {
@@ -68,8 +69,10 @@ enum ConnectionManagerError: LocalizedError {
             "session.hello returned an invalid payload."
         case let .incompatibleProtocolVersion(expected, received):
             "session.hello negotiated protocol \(received), expected \(expected)."
-        case let .missingRequiredCapabilities(missing):
-            "session.hello missing required capabilities: \(missing.joined(separator: ", "))."
+        case let .missingRequiredServerCapabilities(missing):
+            "session.hello missing server capabilities required by Threadmill: \(missing.joined(separator: ", "))."
+        case let .unsupportedServerRequiredCapabilities(missing):
+            "session.hello requires client capabilities Threadmill does not support: \(missing.joined(separator: ", "))."
         }
     }
 }
@@ -77,12 +80,13 @@ enum ConnectionManagerError: LocalizedError {
 @MainActor
 final class ConnectionManager: ConnectionManaging {
     private static let protocolVersion = "2026-03-17"
-    private static let protocolCapabilities = [
+    private static let supportedCapabilities = [
         "state.delta.operations.v1",
         "preset.output.v1",
         "rpc.errors.structured.v1",
     ]
-    private static let requiredCapabilities = Set(protocolCapabilities)
+    private static let requiredServerCapabilities = Set(supportedCapabilities)
+    private static let supportedCapabilitySet = Set(supportedCapabilities)
 
     private let config: ThreadmillConfig
 
@@ -319,10 +323,12 @@ final class ConnectionManager: ConnectionManaging {
               let sessionID = payload["session_id"] as? String,
               !sessionID.isEmpty,
               let protocolVersion = payload["protocol_version"] as? String,
-              let capabilities = payload["capabilities"] as? [String]
+              let capabilities = payload["capabilities"] as? [String],
+              let stateVersion = parseStateVersion(payload["state_version"])
         else {
             throw ConnectionManagerError.invalidSessionHelloPayload
         }
+        let requiredCapabilities = payload["required_capabilities"] as? [String] ?? capabilities
 
         guard protocolVersion == Self.protocolVersion else {
             throw ConnectionManagerError.incompatibleProtocolVersion(
@@ -332,14 +338,31 @@ final class ConnectionManager: ConnectionManaging {
         }
 
         let negotiatedCapabilities = Set(capabilities)
-        let missingCapabilities = Array(Self.requiredCapabilities.subtracting(negotiatedCapabilities)).sorted()
-        guard missingCapabilities.isEmpty else {
-            throw ConnectionManagerError.missingRequiredCapabilities(missingCapabilities)
+        let missingServerCapabilities = Array(Self.requiredServerCapabilities.subtracting(negotiatedCapabilities)).sorted()
+        guard missingServerCapabilities.isEmpty else {
+            throw ConnectionManagerError.missingRequiredServerCapabilities(missingServerCapabilities)
+        }
+
+        let unsupportedClientRequirements = Array(Set(requiredCapabilities).subtracting(Self.supportedCapabilitySet)).sorted()
+        guard unsupportedClientRequirements.isEmpty else {
+            throw ConnectionManagerError.unsupportedServerRequiredCapabilities(unsupportedClientRequirements)
         }
 
         self.sessionID = sessionID
         negotiatedProtocolVersion = protocolVersion
         self.negotiatedCapabilities = negotiatedCapabilities
+        onEvent?("session.hello", ["state_version": stateVersion])
+    }
+
+    private func parseStateVersion(_ rawValue: Any?) -> Int? {
+        if let value = rawValue as? Int, value >= 0 {
+            return value
+        }
+        if let number = rawValue as? NSNumber {
+            let value = number.intValue
+            return value >= 0 ? value : nil
+        }
+        return nil
     }
 
     private func handleInboundEvent(method: String, params: [String: Any]?) {
@@ -356,7 +379,8 @@ final class ConnectionManager: ConnectionManaging {
                 "version": clientVersion,
             ],
             "protocol_version": Self.protocolVersion,
-            "capabilities": Self.protocolCapabilities,
+            "capabilities": Self.supportedCapabilities,
+            "required_capabilities": Array(Self.requiredServerCapabilities).sorted(),
         ]
     }
 

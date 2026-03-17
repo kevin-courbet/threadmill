@@ -94,6 +94,48 @@ final class AppStateEventHandlingTests: XCTestCase {
         XCTAssertEqual(syncService.syncCount, 0)
     }
 
+    func testSessionHelloBaselineAcceptsSingleVersionMultiOperationDelta() async {
+        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+        appState.threads = [
+            makeThread(id: "thread-1", status: .creating),
+            makeThread(id: "thread-2", status: .creating),
+        ]
+
+        appState.handleDaemonEvent(
+            method: "session.hello",
+            params: ["state_version": 40]
+        )
+
+        appState.handleDaemonEvent(
+            method: "state.delta",
+            params: [
+                "state_version": 41,
+                "operations": [
+                    [
+                        "op_id": "op-1",
+                        "type": "thread.status_changed",
+                        "thread_id": "thread-1",
+                        "old": "creating",
+                        "new": "active",
+                    ],
+                    [
+                        "op_id": "op-2",
+                        "type": "thread.status_changed",
+                        "thread_id": "thread-2",
+                        "old": "creating",
+                        "new": "failed",
+                    ],
+                ],
+            ]
+        )
+
+        try? await Task.sleep(nanoseconds: 20_000_000)
+
+        XCTAssertEqual(appState.threads.first { $0.id == "thread-1" }?.status, .active)
+        XCTAssertEqual(appState.threads.first { $0.id == "thread-2" }?.status, .failed)
+        XCTAssertEqual(syncService.syncCount, 0)
+    }
+
     func testHandleStateDeltaGapSchedulesSyncAndSkipsApply() async {
         let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
         appState.threads = [makeThread(id: "thread-1", status: .creating)]
@@ -116,6 +158,51 @@ final class AppStateEventHandlingTests: XCTestCase {
 
         let synced = await waitForCondition { syncService.syncCount == 1 }
         XCTAssertTrue(synced)
+        XCTAssertEqual(appState.threads.first?.status, .creating)
+    }
+
+    func testHandleStateDeltaGapIgnoresLaterDeltasUntilResyncCompletes() async {
+        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+        appState.threads = [makeThread(id: "thread-1", status: .creating)]
+        syncService.syncHandler = {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+        }
+
+        appState.handleDaemonEvent(
+            method: "state.delta",
+            params: [
+                "state_version": 5,
+                "operations": [
+                    [
+                        "op_id": "op-1",
+                        "type": "thread.status_changed",
+                        "thread_id": "thread-1",
+                        "old": "creating",
+                        "new": "active",
+                    ],
+                ],
+            ]
+        )
+
+        appState.handleDaemonEvent(
+            method: "state.delta",
+            params: [
+                "state_version": 6,
+                "operations": [
+                    [
+                        "op_id": "op-2",
+                        "type": "thread.status_changed",
+                        "thread_id": "thread-1",
+                        "old": "active",
+                        "new": "failed",
+                    ],
+                ],
+            ]
+        )
+
+        try? await Task.sleep(nanoseconds: 20_000_000)
+
+        XCTAssertEqual(syncService.syncCount, 1)
         XCTAssertEqual(appState.threads.first?.status, .creating)
     }
 
@@ -258,6 +345,34 @@ final class AppStateEventHandlingTests: XCTestCase {
                 code: -32041,
                 message: "attach failed",
                 data: ["kind": "terminal.session_missing"]
+            )
+        }
+
+        await appState.attachSelectedPreset()
+        await appState.attachSelectedPreset()
+
+        XCTAssertEqual(multiplexer.attachCallCount, 1)
+        XCTAssertEqual(connection.requests.filter { $0.method == "preset.start" }.count, 1)
+    }
+
+    func testAttachPermanentResourceNotFoundErrorStopsRetry() async {
+        let (connection, _, _, multiplexer, appState) = makeConfiguredAppStateWithDoubles()
+        appState.projects = [makeProject(id: "project-1")]
+        appState.threads = [makeThread(id: "thread-1", status: .active)]
+        appState.selectedThreadID = "thread-1"
+        appState.selectedPreset = "terminal"
+
+        connection.requestHandler = { method, _, _ in
+            if method == "preset.start" {
+                return NSNull()
+            }
+            throw TestError.forcedFailure
+        }
+        multiplexer.attachHandler = { _, _ in
+            throw JSONRPCErrorResponse(
+                code: -32004,
+                message: "thread not found",
+                data: ["kind": "resource.not_found"]
             )
         }
 

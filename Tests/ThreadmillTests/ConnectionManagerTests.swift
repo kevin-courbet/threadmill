@@ -221,4 +221,90 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertTrue(reconnecting)
         manager.stop()
     }
+
+    func testSessionHelloSendsDistinctRequiredCapabilitiesContract() async throws {
+        let tunnel = MockTunnelManager()
+        let webSocket = MockWebSocketClient()
+        webSocket.requestHandler = { method, _, _ in
+            if method == "session.hello" {
+                return [
+                    "session_id": "session-1",
+                    "protocol_version": "2026-03-17",
+                    "capabilities": [
+                        "state.delta.operations.v1",
+                        "preset.output.v1",
+                        "rpc.errors.structured.v1",
+                    ],
+                    "required_capabilities": [
+                        "state.delta.operations.v1",
+                        "preset.output.v1",
+                        "rpc.errors.structured.v1",
+                    ],
+                    "state_version": 1,
+                ]
+            }
+            throw TestError.missingStub
+        }
+
+        let manager = ConnectionManager(
+            config: ThreadmillConfig(host: "beast", daemonPort: 19990, useSSHTunnel: true),
+            tunnelManager: tunnel,
+            webSocketClient: webSocket,
+            reconnectDelay: { _ in 0.05 }
+        )
+
+        manager.start()
+
+        let connected = await waitForCondition { manager.state == .connected }
+        XCTAssertTrue(connected)
+
+        let params = try XCTUnwrap(webSocket.sentRequests.first?.params)
+        let capabilities = try XCTUnwrap(params["capabilities"] as? [String])
+        let requiredCapabilities = try XCTUnwrap(params["required_capabilities"] as? [String])
+        XCTAssertEqual(Set(capabilities), Set(requiredCapabilities))
+
+        manager.stop()
+    }
+
+    func testSessionHelloEmitsBaselineEvent() async {
+        let tunnel = MockTunnelManager()
+        let webSocket = MockWebSocketClient()
+        webSocket.requestHandler = { method, _, _ in
+            if method == "session.hello" {
+                return [
+                    "session_id": "session-1",
+                    "protocol_version": "2026-03-17",
+                    "capabilities": [
+                        "state.delta.operations.v1",
+                        "preset.output.v1",
+                        "rpc.errors.structured.v1",
+                    ],
+                    "state_version": 9,
+                ]
+            }
+            throw TestError.missingStub
+        }
+
+        let manager = ConnectionManager(
+            config: ThreadmillConfig(host: "beast", daemonPort: 19990, useSSHTunnel: true),
+            tunnelManager: tunnel,
+            webSocketClient: webSocket,
+            reconnectDelay: { _ in 0.05 }
+        )
+
+        var baselineStateVersion: Int?
+        manager.onEvent = { method, params in
+            guard method == "session.hello" else {
+                return
+            }
+            baselineStateVersion = params?["state_version"] as? Int
+        }
+
+        manager.start()
+
+        let connected = await waitForCondition { manager.state == .connected }
+        XCTAssertTrue(connected)
+        XCTAssertEqual(baselineStateVersion, 9)
+        manager.stop()
+    }
 }

@@ -26,7 +26,7 @@ Threadmill (macOS)                      Spindle (beast/WSL2)
 2. Threadmill opens WebSocket (`ws://127.0.0.1:<daemonPort>` when tunneled, otherwise `ws://<host>:<daemonPort>`).
 3. Threadmill sends `session.hello`; daemon returns negotiated `session_id` + capabilities.
 4. `onConnected` runs `TerminalMultiplexer.reattachAll()`.
-5. `SyncService.syncFromDaemon()` fetches `project.list` then `thread.list` and refreshes local cache/UI.
+5. `SyncService.syncFromDaemon()` fetches `state.snapshot` and refreshes local cache/UI.
 6. Client keeps a 30s ping loop while connected.
 
 ## Activity Diagrams
@@ -42,9 +42,9 @@ Threadmill              SSH Tunnel                  Spindle
     |<----------------------|      {session_id,...}    |
     | state=connected       |                          |
     | reattachAll()         |=========================>|
-    | project.list          |------------------------->|
+    | state.snapshot        |------------------------->|
     |<----------------------|                 [Project]|
-    | thread.list {}        |------------------------->|
+    |                         |                         >|
     |<----------------------|                  [Thread]|
 ```
 
@@ -151,6 +151,11 @@ Server notification (event):
 {"id":"<uuid>","name":"repo","path":"/home/wsl/dev/repo","default_branch":"main","presets":[PresetConfig]}
 ```
 
+`ProjectLookupResult`
+```json
+{"exists":true,"is_git_repo":true,"project_id":"<uuid>|null"}
+```
+
 `Thread`
 ```json
 {"id":"<uuid>","project_id":"<uuid>","name":"feat-x","branch":"feat-x","worktree_path":"/home/wsl/dev/.threadmill/repo/feat-x","status":"creating|active|closing|closed|hidden|failed","source_type":"new_feature|existing_branch|pull_request|main_checkout","created_at":"RFC3339","tmux_session":"tm_xxx","port_offset":20}
@@ -189,8 +194,10 @@ Server notification (event):
 ## RPC Methods (exactly dispatched in `rpc_router.rs`)
 
 `session.hello`
-- Params: `{"client":{"name":"threadmill-macos","version":"<string>"},"protocol_version":"2026-03-17","capabilities":["..."]}`
-- Result: `{"session_id":"<string>","protocol_version":"2026-03-17","capabilities":["..."],"state_version":<u64>}`
+- Params: `{"client":{"name":"threadmill-macos","version":"<string>"},"protocol_version":"2026-03-17","capabilities":["..."],"required_capabilities":["..."]}`
+- Result: `{"session_id":"<string>","protocol_version":"2026-03-17","capabilities":["..."],"required_capabilities":["..."],"state_version":<u64>}`
+- `capabilities` advertises everything the sender supports; `required_capabilities` is the subset it requires from the peer for the session to proceed.
+- Legacy clients may omit request `required_capabilities`; Spindle then treats the request `capabilities` list as the required set.
 
 `ping`
 - Params: omitted, `null`, or `{}`
@@ -207,6 +214,11 @@ Server notification (event):
 `project.list`
 - Params: omitted, `null`, or `{}`
 - Result: `[Project]`
+
+`project.lookup`
+- Params: `{"path":"<absolute path on beast>"}`
+- Result: `{"exists":<bool>,"is_git_repo":<bool>,"project_id":"<uuid>|null"}`
+- Used before `project.add` / `project.clone` to determine whether the path exists, is already a git repo, and is already registered with Spindle
 
 `project.add`
 - Params: `{"path":"<absolute path on beast>"}`
@@ -231,6 +243,11 @@ Server notification (event):
 `thread.create`
 - Params: `{"project_id":"<uuid>","name":"<thread name>","source_type":"new_feature|existing_branch|pull_request|main_checkout","branch":"<optional branch>"}`
 - Result: `Thread` (returned before async workflow completes)
+
+`thread.cancel`
+- Params: `{"thread_id":"<uuid>"}`
+- Result: `{"status":"failed"}`
+- Cancels an in-flight `thread.create` workflow and marks the thread failed so clients can remove it from default active-thread views
 
 `thread.list`
 - Params: omitted, `null`, `{}`, or `{"project_id":"<uuid>"}`

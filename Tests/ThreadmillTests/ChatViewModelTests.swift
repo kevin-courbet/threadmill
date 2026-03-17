@@ -157,6 +157,33 @@ final class ChatViewModelTests: XCTestCase {
         XCTAssertEqual(text, "Hello")
     }
 
+    func testSendPromptResetsGenerationWhenEventStreamEndsWithoutIdleStatus() async {
+        let mock = MockOpenCodeClient()
+        let conversations = MockChatConversationService()
+        let conversation = makeConversation(id: "conv_1", threadID: "thread_1", sessionID: "ses_1", title: "", time: 1)
+
+        conversations.activeConversationsResult = .success([conversation])
+        mock.getMessagesResult = .success([])
+
+        var continuation: AsyncStream<OCEvent>.Continuation?
+        mock.eventStream = AsyncStream { streamContinuation in
+            continuation = streamContinuation
+        }
+
+        let viewModel = ChatViewModel(chatHarnessRegistry: .openCode(client: mock), chatConversationService: conversations)
+        await viewModel.loadConversations(threadID: "thread_1", directory: "/tmp/worktree")
+        await viewModel.sendPrompt(text: "hello")
+
+        XCTAssertTrue(viewModel.isGenerating)
+
+        continuation?.finish()
+
+        let resetAfterStreamEnd = await waitForCondition {
+            !viewModel.isGenerating
+        }
+        XCTAssertTrue(resetAfterStreamEnd)
+    }
+
     func testSelectConversationIgnoresStaleMessageLoadResults() async {
         let mock = MockOpenCodeClient()
         let conversations = MockChatConversationService()

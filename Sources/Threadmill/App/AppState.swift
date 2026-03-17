@@ -41,6 +41,7 @@ final class AppState {
                 stopStatsTimer()
                 systemStats = nil
                 latestDaemonStateVersion = 0
+                stateDeltaResyncRequired = false
                 presetOutputBySession.removeAll()
             }
         }
@@ -97,6 +98,7 @@ final class AppState {
     private var connectionPool: (any RemoteConnectionPooling)?
     private var eventSyncScheduled = false
     private var latestDaemonStateVersion = 0
+    private var stateDeltaResyncRequired = false
     private var presetOutputBySession: [String: [String]] = [:]
     private let presetOutputBufferLimit = 40
     private var attachedEndpoints: [AttachmentKey: RelayEndpoint] = [:]
@@ -308,6 +310,14 @@ final class AppState {
         }
     }
 
+    func applyDaemonSnapshotStateVersion(_ stateVersion: Int) {
+        guard stateVersion >= 0 else {
+            return
+        }
+        latestDaemonStateVersion = stateVersion
+        stateDeltaResyncRequired = false
+    }
+
     private func reconcileConnectionPool(previousRemotes: [Remote], currentRemotes: [Remote]) {
         guard let connectionPool else {
             return
@@ -337,6 +347,8 @@ final class AppState {
 
     func handleDaemonEvent(method: String, params: [String: Any]?) {
         switch method {
+        case "session.hello":
+            handleSessionHello(params)
         case "thread.status_changed":
             handleThreadStatusChanged(params)
         case "thread.progress":
@@ -957,11 +969,17 @@ final class AppState {
     }
 
     private func handleStateDelta(_ params: [String: Any]?) {
+        if stateDeltaResyncRequired {
+            scheduleEventSync()
+            return
+        }
+
         guard let params,
               let stateVersion = params["state_version"] as? Int,
               let operations = params["operations"] as? [[String: Any]]
         else {
             NSLog("threadmill-state: invalid state.delta payload: %@", "\(params ?? [:])")
+            stateDeltaResyncRequired = true
             scheduleEventSync()
             return
         }
@@ -972,6 +990,7 @@ final class AppState {
                 latestDaemonStateVersion,
                 stateVersion
             )
+            stateDeltaResyncRequired = true
             scheduleEventSync()
             return
         }
@@ -980,7 +999,7 @@ final class AppState {
             return
         }
 
-        let expectedStateVersion = latestDaemonStateVersion + operations.count
+        let expectedStateVersion = latestDaemonStateVersion + 1
         guard stateVersion == expectedStateVersion else {
             NSLog(
                 "threadmill-state: state.delta gap detected current=%d incoming=%d operations=%d expected=%d",
@@ -989,7 +1008,7 @@ final class AppState {
                 operations.count,
                 expectedStateVersion
             )
-            latestDaemonStateVersion = stateVersion
+            stateDeltaResyncRequired = true
             scheduleEventSync()
             return
         }
@@ -1024,6 +1043,18 @@ final class AppState {
         }
 
         latestDaemonStateVersion = stateVersion
+    }
+
+    private func handleSessionHello(_ params: [String: Any]?) {
+        guard let params,
+              let stateVersion = params["state_version"] as? Int,
+              stateVersion >= 0
+        else {
+            NSLog("threadmill-state: invalid session.hello payload: %@", "\(params ?? [:])")
+            return
+        }
+
+        applyDaemonSnapshotStateVersion(stateVersion)
     }
 
     private func handlePresetProcessEvent(_ params: [String: Any]?) {
@@ -1153,6 +1184,9 @@ final class AppState {
     private func isPermanentTerminalAttachError(_ error: Error) -> Bool {
         if let rpcError = error as? JSONRPCErrorResponse {
             if rpcError.kind == "terminal.session_missing" {
+                return true
+            }
+            if rpcError.code == -32004, rpcError.kind == "resource.not_found" {
                 return true
             }
             if rpcError.code == -32041 {

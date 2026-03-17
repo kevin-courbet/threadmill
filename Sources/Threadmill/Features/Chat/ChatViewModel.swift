@@ -358,6 +358,13 @@ final class ChatViewModel {
                 }
                 await self.handleEvent(event, directory: directory)
             }
+
+            guard let self, self.eventStreamToken == token, !Task.isCancelled else {
+                return
+            }
+
+            self.isGenerating = false
+            self.streamingParts = [:]
         }
     }
 
