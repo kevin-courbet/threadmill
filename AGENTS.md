@@ -192,7 +192,7 @@ Binary frames: `[u16be channel_id][raw terminal bytes]`. Not JSON. See `docs/age
 
 ## Protocol Quick Reference
 
-**RPC methods** (Mac → Spindle): `ping`, `project.{list,add,clone,remove,branches}`, `thread.{create,list,close,hide,reopen}`, `terminal.{attach,detach,resize}`, `preset.{start,stop,restart}`, `file.{list,read,git_status}`, `state.snapshot`
+**RPC methods** (Mac → Spindle): `ping`, `system.stats`, `project.{list,add,clone,remove,branches}`, `thread.{create,list,close,hide,reopen}`, `terminal.{attach,detach,resize}`, `preset.{start,stop,restart}`, `file.{list,read,git_status}`, `state.snapshot`
 
 **Events** (Spindle → Mac): `thread.progress`, `thread.status_changed`, `thread.created`, `preset.process_event`, `project.added`, `project.removed`, `project.clone_progress`, `state.delta`
 

@@ -439,6 +439,32 @@
         }
       }
     },
+    "SystemStatsResult": {
+      "type": "object",
+      "required": [
+        "load_avg_1m",
+        "memory_total_mb",
+        "memory_used_mb",
+        "opencode_instances"
+      ],
+      "properties": {
+        "load_avg_1m": {
+          "type": "number"
+        },
+        "memory_total_mb": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "memory_used_mb": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "opencode_instances": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "OpencodeStatusResult": {
       "type": "object",
       "required": [
@@ -761,6 +787,15 @@
       },
       "result": {
         "const": "pong"
+      }
+    },
+    "system.stats": {
+      "description": "Read daemon host load, memory, and opencode process counts",
+      "params": {
+        "$ref": "#/$defs/EmptyParams"
+      },
+      "result": {
+        "$ref": "#/$defs/SystemStatsResult"
       }
     },
     "state.snapshot": {

@@ -196,6 +196,10 @@ Server notification (event):
 - Params: omitted, `null`, or `{}`
 - Result: `"pong"`
 
+`system.stats`
+- Params: omitted, `null`, or `{}`
+- Result: `{"load_avg_1m":<f64>,"memory_total_mb":<u32>,"memory_used_mb":<u32>,"opencode_instances":<u32>}`
+
 `state.snapshot`
 - Params: omitted, `null`, or `{}`
 - Result: `{"state_version":<u64>,"projects":[Project],"threads":[Thread]}`

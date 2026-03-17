@@ -361,6 +361,20 @@ final class MockSpindleServer {
         case "state.snapshot":
             return (ok(id: id, result: stateSnapshotPayload()), [])
 
+        case "system.stats":
+            return (
+                ok(
+                    id: id,
+                    result: [
+                        "load_avg_1m": 0.42,
+                        "memory_total_mb": 32768,
+                        "memory_used_mb": 16384,
+                        "opencode_instances": 1,
+                    ]
+                ),
+                []
+            )
+
         case "project.list":
             return (ok(id: id, result: projects.map(projectPayload)), [])
 
