@@ -966,11 +966,33 @@ final class AppState {
             return
         }
 
+        if stateVersion < latestDaemonStateVersion {
+            NSLog(
+                "threadmill-state: state.delta regression detected current=%d incoming=%d",
+                latestDaemonStateVersion,
+                stateVersion
+            )
+            scheduleEventSync()
+            return
+        }
+
         guard stateVersion > latestDaemonStateVersion else {
             return
         }
 
-        latestDaemonStateVersion = stateVersion
+        let expectedStateVersion = latestDaemonStateVersion + operations.count
+        guard stateVersion == expectedStateVersion else {
+            NSLog(
+                "threadmill-state: state.delta gap detected current=%d incoming=%d operations=%d expected=%d",
+                latestDaemonStateVersion,
+                stateVersion,
+                operations.count,
+                expectedStateVersion
+            )
+            latestDaemonStateVersion = stateVersion
+            scheduleEventSync()
+            return
+        }
 
         var shouldSync = false
         for operation in operations {
@@ -1000,6 +1022,8 @@ final class AppState {
         if shouldSync {
             scheduleEventSync()
         }
+
+        latestDaemonStateVersion = stateVersion
     }
 
     private func handlePresetProcessEvent(_ params: [String: Any]?) {

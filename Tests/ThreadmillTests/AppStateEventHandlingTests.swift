@@ -75,7 +75,7 @@ final class AppStateEventHandlingTests: XCTestCase {
         appState.handleDaemonEvent(
             method: "state.delta",
             params: [
-                "state_version": 5,
+                "state_version": 1,
                 "operations": [
                     [
                         "op_id": "op-1",
@@ -92,6 +92,72 @@ final class AppStateEventHandlingTests: XCTestCase {
 
         XCTAssertEqual(appState.threads.first?.status, .active)
         XCTAssertEqual(syncService.syncCount, 0)
+    }
+
+    func testHandleStateDeltaGapSchedulesSyncAndSkipsApply() async {
+        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+        appState.threads = [makeThread(id: "thread-1", status: .creating)]
+
+        appState.handleDaemonEvent(
+            method: "state.delta",
+            params: [
+                "state_version": 5,
+                "operations": [
+                    [
+                        "op_id": "op-1",
+                        "type": "thread.status_changed",
+                        "thread_id": "thread-1",
+                        "old": "creating",
+                        "new": "active",
+                    ],
+                ],
+            ]
+        )
+
+        let synced = await waitForCondition { syncService.syncCount == 1 }
+        XCTAssertTrue(synced)
+        XCTAssertEqual(appState.threads.first?.status, .creating)
+    }
+
+    func testHandleStateDeltaRegressionSchedulesSyncAndSkipsApply() async {
+        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+        appState.threads = [makeThread(id: "thread-1", status: .creating)]
+
+        appState.handleDaemonEvent(
+            method: "state.delta",
+            params: [
+                "state_version": 1,
+                "operations": [
+                    [
+                        "op_id": "op-1",
+                        "type": "thread.status_changed",
+                        "thread_id": "thread-1",
+                        "old": "creating",
+                        "new": "active",
+                    ],
+                ],
+            ]
+        )
+
+        appState.handleDaemonEvent(
+            method: "state.delta",
+            params: [
+                "state_version": 0,
+                "operations": [
+                    [
+                        "op_id": "op-2",
+                        "type": "thread.status_changed",
+                        "thread_id": "thread-1",
+                        "old": "active",
+                        "new": "failed",
+                    ],
+                ],
+            ]
+        )
+
+        let synced = await waitForCondition { syncService.syncCount == 1 }
+        XCTAssertTrue(synced)
+        XCTAssertEqual(appState.threads.first?.status, .active)
     }
 
     func testHandleStateDeltaUnknownOperationSchedulesSync() async {
