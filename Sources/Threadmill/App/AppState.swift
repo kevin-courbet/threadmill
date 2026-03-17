@@ -40,9 +40,6 @@ final class AppState {
             } else if connectionStatus == .disconnected {
                 stopStatsTimer()
                 systemStats = nil
-                latestDaemonStateVersion = 0
-                stateDeltaResyncRequired = false
-                presetOutputBySession.removeAll()
             }
         }
     }
@@ -94,12 +91,14 @@ final class AppState {
     private(set) var databaseManager: (any DatabaseManaging)?
     private var provisioningService: (any Provisioning)?
     private var syncService: (any SyncServicing)?
+    private var usesConnectionScopedSyncServices = false
     private var multiplexer: (any TerminalMultiplexing)?
     private var connectionPool: (any RemoteConnectionPooling)?
-    private var eventSyncScheduled = false
-    private var latestDaemonStateVersion = 0
-    private var stateDeltaResyncRequired = false
-    private var presetOutputBySession: [String: [String]] = [:]
+    private var eventSyncScheduledRemoteIDs: Set<String> = []
+    private var latestDaemonStateVersionByRemoteID: [String: Int] = [:]
+    private var stateDeltaResyncRequiredByRemoteID: [String: Bool] = [:]
+    private var presetOutputByRemoteSession: [String: [String]] = [:]
+    private var connectionStatusByRemoteID: [String: ConnectionStatus] = [:]
     private let presetOutputBufferLimit = 40
     private var attachedEndpoints: [AttachmentKey: RelayEndpoint] = [:]
     private var pendingAttachTasks: [AttachmentKey: Task<Void, Never>] = [:]
@@ -260,12 +259,14 @@ final class AppState {
         openCodeClient: any OpenCodeManaging = OpenCodeClient(),
         chatHarnessRegistry: ChatHarnessRegistry? = nil,
         chatConversationService: (any ChatConversationManaging)? = nil,
-        fileService: (any FileBrowsing)? = nil
+        fileService: (any FileBrowsing)? = nil,
+        usesConnectionScopedSyncServices: Bool = false
     ) {
         self.connectionPool = connectionPool
         self.databaseManager = databaseManager
         self.provisioningService = provisioningService ?? ProvisioningService(connectionPool: connectionPool)
         self.syncService = syncService
+        self.usesConnectionScopedSyncServices = usesConnectionScopedSyncServices
         self.multiplexer = multiplexer
         self.openCodeClient = openCodeClient
         self.chatHarnessRegistry = chatHarnessRegistry ?? ChatHarnessRegistry.openCode(client: openCodeClient)
@@ -273,6 +274,12 @@ final class AppState {
         self.fileService = fileService ?? FileService(connectionProvider: { [weak self] in
             self?.connectionForSelectedThread() ?? self?.defaultConnectionManager()
         })
+        if let activeRemoteID = connectionPool.activeRemoteId,
+           let activeConnection = connectionPool.connection(for: activeRemoteID)
+        {
+            connectionStatusByRemoteID[activeRemoteID] = activeConnection.state
+            connectionStatus = activeConnection.state
+        }
     }
 
     func ensureValidSelection() {
@@ -292,6 +299,7 @@ final class AppState {
             let previousRemotes = remotes
             remotes = try databaseManager.allRemotes()
             reconcileConnectionPool(previousRemotes: previousRemotes, currentRemotes: remotes)
+            pruneDaemonRuntimeStateForKnownRemotes()
             repos = try databaseManager.allRepos()
             injectDefaultWorkspaceRepo()
             projects = try databaseManager.allProjects()
@@ -311,11 +319,18 @@ final class AppState {
     }
 
     func applyDaemonSnapshotStateVersion(_ stateVersion: Int) {
+        guard let remoteID = selectedRemoteID() else {
+            return
+        }
+        applyDaemonSnapshotStateVersion(stateVersion, remoteID: remoteID)
+    }
+
+    func applyDaemonSnapshotStateVersion(_ stateVersion: Int, remoteID: String) {
         guard stateVersion >= 0 else {
             return
         }
-        latestDaemonStateVersion = stateVersion
-        stateDeltaResyncRequired = false
+        latestDaemonStateVersionByRemoteID[remoteID] = stateVersion
+        stateDeltaResyncRequiredByRemoteID[remoteID] = false
     }
 
     private func reconcileConnectionPool(previousRemotes: [Remote], currentRemotes: [Remote]) {
@@ -342,33 +357,50 @@ final class AppState {
     }
 
     func syncNow() async {
-        await syncService?.syncFromDaemon()
+        guard let remoteID = selectedRemoteID() else {
+            await syncService?.syncFromDaemon()
+            return
+        }
+        await syncRemoteNow(remoteID: remoteID)
     }
 
     func handleDaemonEvent(method: String, params: [String: Any]?) {
+        guard let remoteID = selectedRemoteID() ?? activeRemoteID else {
+            return
+        }
+        handleDaemonEvent(method: method, params: params, remoteID: remoteID)
+    }
+
+    func handleDaemonEvent(method: String, params: [String: Any]?, remoteID: String) {
         switch method {
         case "session.hello":
-            handleSessionHello(params)
+            handleSessionHello(params, remoteID: remoteID)
         case "thread.status_changed":
             handleThreadStatusChanged(params)
         case "thread.progress":
-            handleThreadProgress(params)
+            handleThreadProgress(params, remoteID: remoteID)
         case "project.clone_progress":
             handleProjectCloneProgress(params)
         case "state.delta":
-            handleStateDelta(params)
+            handleStateDelta(params, remoteID: remoteID)
         case "preset.process_event":
-            handlePresetProcessEvent(params)
-            scheduleEventSync()
+            handlePresetProcessEvent(params, remoteID: remoteID)
+            scheduleEventSync(remoteID: remoteID)
         case "preset.output":
-            handlePresetOutput(params)
+            handlePresetOutput(params, remoteID: remoteID)
         case "thread.created",
              "thread.removed",
              "project.added",
              "project.removed":
-            scheduleEventSync()
+            scheduleEventSync(remoteID: remoteID)
         default:
             break
+        }
+    }
+
+    func syncRemoteNow(remoteID: String) async {
+        if let syncService = syncService(for: remoteID) {
+            await syncService.syncFromDaemon()
         }
     }
 
@@ -632,7 +664,11 @@ final class AppState {
                 params: ["thread_id": threadID],
                 timeout: 15
             )
-            await syncService?.syncFromDaemon()
+            if let remoteID = remoteIDForThread(id: threadID) {
+                await syncRemoteNow(remoteID: remoteID)
+            } else {
+                await syncNow()
+            }
         } catch {
             NSLog("threadmill-state: thread.hide failed (%@): %@", threadID, "\(error)")
         }
@@ -653,7 +689,11 @@ final class AppState {
                 ],
                 timeout: 15
             )
-            await syncService?.syncFromDaemon()
+            if let remoteID = remoteIDForThread(id: threadID) {
+                await syncRemoteNow(remoteID: remoteID)
+            } else {
+                await syncNow()
+            }
         } catch {
             NSLog("threadmill-state: thread.close failed (%@): %@", threadID, "\(error)")
         }
@@ -670,7 +710,11 @@ final class AppState {
                 params: ["thread_id": threadID],
                 timeout: 15
             )
-            await syncService?.syncFromDaemon()
+            if let remoteID = remoteIDForThread(id: threadID) {
+                await syncRemoteNow(remoteID: remoteID)
+            } else {
+                await syncNow()
+            }
         } catch {
             NSLog("threadmill-state: thread.cancel failed (%@): %@", threadID, "\(error)")
         }
@@ -755,7 +799,11 @@ final class AppState {
                 params: ["thread_id": threadID],
                 timeout: 15
             )
-            await syncService?.syncFromDaemon()
+            if let remoteID = remoteIDForThread(id: threadID) {
+                await syncRemoteNow(remoteID: remoteID)
+            } else {
+                await syncNow()
+            }
         } catch {
             NSLog("threadmill-state: thread.reopen failed (%@): %@", threadID, "\(error)")
         }
@@ -799,7 +847,9 @@ final class AppState {
             params: ["path": path],
             timeout: 20
         )
-        await syncService?.syncFromDaemon()
+        if let remoteID = selectedRemoteID() {
+            await syncRemoteNow(remoteID: remoteID)
+        }
     }
 
     func removeProject(projectID: String) async {
@@ -810,7 +860,11 @@ final class AppState {
                 params: ["project_id": projectID],
                 timeout: 15
             )
-            await syncService?.syncFromDaemon()
+            if let remoteID = remoteIDForProject(id: projectID) {
+                await syncRemoteNow(remoteID: remoteID)
+            } else {
+                await syncNow()
+            }
         } catch {
             NSLog("threadmill-state: project.remove failed (%@): %@", projectID, "\(error)")
         }
@@ -831,7 +885,9 @@ final class AppState {
             params: params,
             timeout: 120
         )
-        await syncService?.syncFromDaemon()
+        if let remoteID = selectedRemoteID() {
+            await syncRemoteNow(remoteID: remoteID)
+        }
     }
 
     func branches(for projectID: String) async throws -> [String] {
@@ -922,7 +978,7 @@ final class AppState {
         }
     }
 
-    private func handleThreadProgress(_ params: [String: Any]?) {
+    private func handleThreadProgress(_ params: [String: Any]?, remoteID: String) {
         guard let params else {
             NSLog("threadmill-state: thread.progress payload missing")
             return
@@ -934,7 +990,7 @@ final class AppState {
         let errorText = params["error"] as? String
 
         if threadID != "unknown", threads.first(where: { $0.id == threadID }) == nil {
-            scheduleEventSync()
+            scheduleEventSync(remoteID: remoteID)
         }
 
         if threadID != "unknown", threadProgressIndicatesFailure(step: step, errorText: errorText) {
@@ -968,19 +1024,21 @@ final class AppState {
         }
     }
 
-    private func handleStateDelta(_ params: [String: Any]?) {
-        if stateDeltaResyncRequired {
-            scheduleEventSync()
+    private func handleStateDelta(_ params: [String: Any]?, remoteID: String) {
+        if stateDeltaResyncRequiredByRemoteID[remoteID] == true {
+            scheduleEventSync(remoteID: remoteID)
             return
         }
+
+        let latestDaemonStateVersion = latestDaemonStateVersionByRemoteID[remoteID, default: 0]
 
         guard let params,
               let stateVersion = params["state_version"] as? Int,
               let operations = params["operations"] as? [[String: Any]]
         else {
             NSLog("threadmill-state: invalid state.delta payload: %@", "\(params ?? [:])")
-            stateDeltaResyncRequired = true
-            scheduleEventSync()
+            stateDeltaResyncRequiredByRemoteID[remoteID] = true
+            scheduleEventSync(remoteID: remoteID)
             return
         }
 
@@ -990,8 +1048,8 @@ final class AppState {
                 latestDaemonStateVersion,
                 stateVersion
             )
-            stateDeltaResyncRequired = true
-            scheduleEventSync()
+            stateDeltaResyncRequiredByRemoteID[remoteID] = true
+            scheduleEventSync(remoteID: remoteID)
             return
         }
 
@@ -1008,8 +1066,8 @@ final class AppState {
                 operations.count,
                 expectedStateVersion
             )
-            stateDeltaResyncRequired = true
-            scheduleEventSync()
+            stateDeltaResyncRequiredByRemoteID[remoteID] = true
+            scheduleEventSync(remoteID: remoteID)
             return
         }
 
@@ -1026,7 +1084,7 @@ final class AppState {
             case "preset.output":
                 break
             case "preset.process_event":
-                handlePresetProcessEvent(operation)
+                handlePresetProcessEvent(operation, remoteID: remoteID)
                 shouldSync = true
             case "thread.created",
                  "thread.removed",
@@ -1039,13 +1097,13 @@ final class AppState {
         }
 
         if shouldSync {
-            scheduleEventSync()
+            scheduleEventSync(remoteID: remoteID)
         }
 
-        latestDaemonStateVersion = stateVersion
+        latestDaemonStateVersionByRemoteID[remoteID] = stateVersion
     }
 
-    private func handleSessionHello(_ params: [String: Any]?) {
+    private func handleSessionHello(_ params: [String: Any]?, remoteID: String) {
         guard let params,
               let stateVersion = params["state_version"] as? Int,
               stateVersion >= 0
@@ -1054,10 +1112,10 @@ final class AppState {
             return
         }
 
-        applyDaemonSnapshotStateVersion(stateVersion)
+        applyDaemonSnapshotStateVersion(stateVersion, remoteID: remoteID)
     }
 
-    private func handlePresetProcessEvent(_ params: [String: Any]?) {
+    private func handlePresetProcessEvent(_ params: [String: Any]?, remoteID: String) {
         guard let params,
               let threadID = params["thread_id"] as? String,
               let preset = params["preset"] as? String,
@@ -1074,7 +1132,7 @@ final class AppState {
         let context = params["crash_context"] as? [String: Any]
         let signal = context?["signal"] as? String ?? "unknown"
         let reason = context?["reason"] as? String ?? "unknown"
-        let outputLines = (context?["last_output"] as? [String]) ?? presetOutputBySession[presetOutputKey(threadID: threadID, preset: preset)] ?? []
+        let outputLines = (context?["last_output"] as? [String]) ?? presetOutputByRemoteSession[presetOutputKey(remoteID: remoteID, threadID: threadID, preset: preset)] ?? []
         let outputPreview = outputLines.suffix(2).joined(separator: " | ")
 
         if outputPreview.isEmpty {
@@ -1091,7 +1149,7 @@ final class AppState {
         }
     }
 
-    private func handlePresetOutput(_ params: [String: Any]?) {
+    private func handlePresetOutput(_ params: [String: Any]?, remoteID: String) {
         guard let params,
               let threadID = params["thread_id"] as? String,
               let preset = params["preset"] as? String
@@ -1105,17 +1163,17 @@ final class AppState {
             return
         }
 
-        let key = presetOutputKey(threadID: threadID, preset: preset)
-        var entries = presetOutputBySession[key, default: []]
+        let key = presetOutputKey(remoteID: remoteID, threadID: threadID, preset: preset)
+        var entries = presetOutputByRemoteSession[key, default: []]
         entries.append(chunk)
         if entries.count > presetOutputBufferLimit {
             entries.removeFirst(entries.count - presetOutputBufferLimit)
         }
-        presetOutputBySession[key] = entries
+        presetOutputByRemoteSession[key] = entries
     }
 
-    private func presetOutputKey(threadID: String, preset: String) -> String {
-        "\(threadID)::\(preset)"
+    private func presetOutputKey(remoteID: String, threadID: String, preset: String) -> String {
+        "\(remoteID)::\(threadID)::\(preset)"
     }
 
     private func threadProgressIndicatesFailure(step: String, errorText: String?) -> Bool {
@@ -1133,6 +1191,7 @@ final class AppState {
     @discardableResult
     private func updateThreadStatus(threadID: String, status: ThreadStatus) -> Bool {
         let hasLocalRow = threads.contains(where: { $0.id == threadID })
+        let remoteID = remoteIDForThread(id: threadID) ?? selectedRemoteID() ?? activeRemoteID
         if let index = threads.firstIndex(where: { $0.id == threadID }) {
             threads[index].status = status
         }
@@ -1140,25 +1199,28 @@ final class AppState {
         do {
             let persisted = try databaseManager?.updateThreadStatus(threadID: threadID, status: status) ?? false
             if !hasLocalRow || !persisted {
-                scheduleEventSync()
+                scheduleEventSync(remoteID: remoteID)
             }
             return hasLocalRow || persisted
         } catch {
             NSLog("threadmill-state: failed to persist thread status (%@): %@", threadID, "\(error)")
-            scheduleEventSync()
+            scheduleEventSync(remoteID: remoteID)
             return hasLocalRow
         }
     }
 
-    private func scheduleEventSync() {
-        guard !eventSyncScheduled else {
+    private func scheduleEventSync(remoteID: String?) {
+        guard let remoteID else {
             return
         }
-        eventSyncScheduled = true
+        guard !eventSyncScheduledRemoteIDs.contains(remoteID) else {
+            return
+        }
+        eventSyncScheduledRemoteIDs.insert(remoteID)
 
         Task { @MainActor [weak self] in
-            defer { self?.eventSyncScheduled = false }
-            await self?.syncService?.syncFromDaemon()
+            defer { self?.eventSyncScheduledRemoteIDs.remove(remoteID) }
+            await self?.syncRemoteNow(remoteID: remoteID)
         }
     }
 
@@ -1309,6 +1371,57 @@ final class AppState {
         return nil
     }
 
+    private func syncService(for remoteID: String) -> (any SyncServicing)? {
+        if usesConnectionScopedSyncServices,
+           let databaseManager,
+           let connection = connectionPool?.connection(for: remoteID)
+        {
+            return SyncService(
+                connectionManager: connection,
+                databaseManager: databaseManager,
+                appState: self,
+                remoteId: remoteID
+            )
+        }
+
+        return syncService
+    }
+
+    func updateConnectionStatus(_ status: ConnectionStatus, remoteID: String) {
+        connectionStatusByRemoteID[remoteID] = status
+
+        if status == .disconnected {
+            clearDaemonRuntimeState(for: remoteID)
+        }
+
+        guard selectedRemoteID() == remoteID || connectionPool?.activeRemoteId == remoteID else {
+            return
+        }
+
+        connectionStatus = status
+    }
+
+    private func clearDaemonRuntimeState(for remoteID: String) {
+        latestDaemonStateVersionByRemoteID.removeValue(forKey: remoteID)
+        stateDeltaResyncRequiredByRemoteID.removeValue(forKey: remoteID)
+        eventSyncScheduledRemoteIDs.remove(remoteID)
+        presetOutputByRemoteSession = presetOutputByRemoteSession.filter { !$0.key.hasPrefix("\(remoteID)::") }
+    }
+
+    private func pruneDaemonRuntimeStateForKnownRemotes() {
+        let knownRemoteIDs = Set(remotes.map(\.id))
+        latestDaemonStateVersionByRemoteID = latestDaemonStateVersionByRemoteID.filter { knownRemoteIDs.contains($0.key) }
+        stateDeltaResyncRequiredByRemoteID = stateDeltaResyncRequiredByRemoteID.filter { knownRemoteIDs.contains($0.key) }
+        connectionStatusByRemoteID = connectionStatusByRemoteID.filter { knownRemoteIDs.contains($0.key) }
+        eventSyncScheduledRemoteIDs = eventSyncScheduledRemoteIDs.filter { knownRemoteIDs.contains($0) }
+        presetOutputByRemoteSession = presetOutputByRemoteSession.filter { key, _ in
+            guard let remoteID = key.split(separator: ":", maxSplits: 1).first else {
+                return false
+            }
+            return knownRemoteIDs.contains(String(remoteID))
+        }
+    }
+
     func connectionForThread(id threadID: String) -> (any ConnectionManaging)? {
         guard let connectionPool else {
             return nil
@@ -1439,24 +1552,23 @@ final class AppState {
             }
 
             if let activeConnection = self?.connectionPool?.connection(for: remoteID) {
-                self?.connectionStatus = activeConnection.state
+                self?.updateConnectionStatus(activeConnection.state, remoteID: remoteID)
             }
         }
     }
 
     private func syncRemoteState(forProjectID projectID: String, using connection: any ConnectionManaging) async {
         guard let databaseManager, let remoteID = remoteIDForProject(id: projectID) else {
-            await syncService?.syncFromDaemon()
+            await syncNow()
             return
         }
 
-        let syncService = SyncService(
+        await SyncService(
             connectionManager: connection,
             databaseManager: databaseManager,
             appState: self,
             remoteId: remoteID
-        )
-        await syncService.syncFromDaemon()
+        ).syncFromDaemon()
     }
 
     private func injectDefaultWorkspaceRepo() {

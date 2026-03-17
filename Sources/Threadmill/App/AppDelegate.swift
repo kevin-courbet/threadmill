@@ -11,7 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var databaseManager: DatabaseManager?
     private var provisioningService: ProvisioningService?
     private var chatConversationService: ChatConversationService?
-    private var syncService: SyncService?
     private var multiplexer: TerminalMultiplexer?
     private weak var appState: AppState?
 
@@ -46,11 +45,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let connectionPool = RemoteConnectionPool(
                 remotes: effectiveRemotes,
                 activeRemoteId: selectedRemote.id,
-                onConnectionCreated: { [weak self, weak appState] connection in
+                onConnectionCreated: { [weak self, weak appState] remote, connection in
                     guard let self, let appState else {
                         return
                     }
-                    self.configureConnectionHandlers(for: connection, appState: appState)
+                    self.configureConnectionHandlers(for: connection, remoteID: remote.id, appState: appState)
                 }
             )
             guard let primaryConnectionManager = connectionPool.connection(for: selectedRemote.id) else {
@@ -80,7 +79,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             remoteConnectionPool = connectionPool
             self.primaryConnectionManager = primaryConnectionManager
             self.multiplexer = multiplexer
-            self.syncService = syncService
             self.provisioningService = provisioningService
             self.chatConversationService = chatConversationService
             self.appState = appState
@@ -93,11 +91,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 provisioningService: provisioningService,
                 openCodeClient: openCodeClient,
                 chatHarnessRegistry: chatHarnessRegistry,
-                chatConversationService: chatConversationService
+                chatConversationService: chatConversationService,
+                usesConnectionScopedSyncServices: true
             )
             appState.reloadFromDatabase()
 
-            appState.connectionStatus = primaryConnectionManager.state
+            appState.updateConnectionStatus(primaryConnectionManager.state, remoteID: selectedRemote.id)
             primaryConnectionManager.start()
             isBootstrapped = true
         } catch {
@@ -115,20 +114,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func configureConnectionHandlers(for connection: any ConnectionManaging, appState: AppState) {
+    private func configureConnectionHandlers(for connection: any ConnectionManaging, remoteID: String, appState: AppState) {
         connection.onStateChange = { [weak appState] status in
-            appState?.connectionStatus = status
+            appState?.updateConnectionStatus(status, remoteID: remoteID)
         }
 
         connection.onConnected = { [weak self] in
             Task { @MainActor [weak self] in
                 await self?.multiplexer?.reattachAll()
-                await self?.syncService?.syncFromDaemon()
+                await self?.appState?.syncRemoteNow(remoteID: remoteID)
             }
         }
 
         connection.onEvent = { [weak appState] method, params in
-            appState?.handleDaemonEvent(method: method, params: params)
+            appState?.handleDaemonEvent(method: method, params: params, remoteID: remoteID)
         }
 
         connection.setBinaryFrameHandler { [weak self] data in

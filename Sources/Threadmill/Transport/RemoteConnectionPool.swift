@@ -28,14 +28,14 @@ final class RemoteConnectionPool: RemoteConnectionPooling {
     private var remotesByID: [String: Remote]
     private var connections: [String: any ConnectionManaging] = [:]
     private let connectionFactory: @MainActor (Remote) -> any ConnectionManaging
-    private let onConnectionCreated: @MainActor (any ConnectionManaging) -> Void
+    private let onConnectionCreated: @MainActor (Remote, any ConnectionManaging) -> Void
 
     private(set) var activeRemoteId: String?
 
     init(
         remotes: [Remote],
         activeRemoteId: String? = nil,
-        onConnectionCreated: @escaping @MainActor (any ConnectionManaging) -> Void = { _ in },
+        onConnectionCreated: @escaping @MainActor (Remote, any ConnectionManaging) -> Void = { _, _ in },
         connectionFactory: @escaping @MainActor (Remote) -> any ConnectionManaging = { remote in
             ConnectionManager(config: ThreadmillConfig(remote: remote))
         }
@@ -62,7 +62,7 @@ final class RemoteConnectionPool: RemoteConnectionPooling {
         self.init(
             remotes: remotes,
             activeRemoteId: activeRemoteId,
-            onConnectionCreated: { _ in },
+            onConnectionCreated: { _, _ in },
             connectionFactory: connectionFactory
         )
     }
@@ -160,7 +160,7 @@ final class RemoteConnectionPool: RemoteConnectionPooling {
 
     private func createConnection(for remote: Remote) -> any ConnectionManaging {
         let connection = connectionFactory(remote)
-        onConnectionCreated(connection)
+        onConnectionCreated(remote, connection)
         return connection
     }
 

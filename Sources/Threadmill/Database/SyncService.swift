@@ -35,7 +35,7 @@ final class SyncService: SyncServicing {
             let snapshot = try parseStateSnapshot(snapshotResult)
             try databaseManager.replaceAllFromDaemon(projects: snapshot.projects, threads: snapshot.threads, remoteId: remoteId)
             appState.reloadFromDatabase()
-            appState.applyDaemonSnapshotStateVersion(snapshot.stateVersion)
+            appState.applyDaemonSnapshotStateVersion(snapshot.stateVersion, remoteID: remoteId)
         } catch {
             NSLog("threadmill-sync: sync failed: %@", "\(error)")
         }

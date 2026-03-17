@@ -128,7 +128,7 @@ final class RemoteConnectionPoolTests: XCTestCase {
         var callbackCount = 0
         let pool = RemoteConnectionPool(
             remotes: [remoteA],
-            onConnectionCreated: { _ in callbackCount += 1 },
+            onConnectionCreated: { _, _ in callbackCount += 1 },
             connectionFactory: { _ in MockDaemonConnection(state: .disconnected) },
         )
 
