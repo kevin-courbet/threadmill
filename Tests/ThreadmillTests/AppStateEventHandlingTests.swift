@@ -268,6 +268,30 @@ final class AppStateEventHandlingTests: XCTestCase {
         XCTAssertEqual(connection.requests.filter { $0.method == "preset.start" }.count, 1)
     }
 
+    func testAttachCodeOnlySessionMissingErrorRemainsRetryable() async {
+        let (connection, _, _, multiplexer, appState) = makeConfiguredAppStateWithDoubles()
+        appState.projects = [makeProject(id: "project-1")]
+        appState.threads = [makeThread(id: "thread-1", status: .active)]
+        appState.selectedThreadID = "thread-1"
+        appState.selectedPreset = "terminal"
+
+        connection.requestHandler = { method, _, _ in
+            if method == "preset.start" {
+                return NSNull()
+            }
+            throw TestError.forcedFailure
+        }
+        multiplexer.attachHandler = { _, _ in
+            throw JSONRPCErrorResponse(code: -32041, message: "attach failed")
+        }
+
+        await appState.attachSelectedPreset()
+        await appState.attachSelectedPreset()
+
+        XCTAssertGreaterThanOrEqual(multiplexer.attachCallCount, 2)
+        XCTAssertGreaterThanOrEqual(connection.requests.filter { $0.method == "preset.start" }.count, 2)
+    }
+
     func testThreadProgressFailureCancelsPendingAttach() async {
         let (connection, _, _, multiplexer, appState) = makeConfiguredAppStateWithDoubles()
         appState.projects = [makeProject(id: "project-1")]
