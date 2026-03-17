@@ -19,14 +19,11 @@ struct ConnectionStatusView: View {
     var body: some View {
         Group {
             if status == .disconnected {
-                HStack(spacing: 0) {
-                    Image(systemName: "wifi.slash")
-                        .foregroundStyle(.red)
-                        .help(text)
-                }
-                .padding(.leading, 14)
-                .padding(.trailing, 10)
-                .padding(.vertical, 4)
+                Image(systemName: "wifi.slash")
+                    .foregroundStyle(.red)
+                    .help(text)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
             }
         }
         .accessibilityElement(children: .ignore)
