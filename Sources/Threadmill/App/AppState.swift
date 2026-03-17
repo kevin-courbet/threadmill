@@ -1005,7 +1005,7 @@ final class AppState {
             case "thread.status_changed":
                 handleThreadStatusChanged(operation)
             case "preset.output":
-                handlePresetOutput(operation)
+                break
             case "preset.process_event":
                 handlePresetProcessEvent(operation)
                 shouldSync = true
@@ -1152,12 +1152,22 @@ final class AppState {
 
     private func isPermanentTerminalAttachError(_ error: Error) -> Bool {
         if let rpcError = error as? JSONRPCErrorResponse {
-            if rpcError.kind == "terminal.session_missing" || rpcError.code == -32041 {
+            if rpcError.kind == "terminal.session_missing" {
                 return true
             }
-            return rpcError.message.localizedCaseInsensitiveContains("tmux session not running")
+            if rpcError.code == -32041 {
+                return terminalSessionMissingMessage(rpcError.message)
+            }
+            return terminalSessionMissingMessage(rpcError.message)
         }
-        return String(describing: error).localizedCaseInsensitiveContains("tmux session not running")
+        return terminalSessionMissingMessage(String(describing: error))
+    }
+
+    private func terminalSessionMissingMessage(_ message: String) -> Bool {
+        let normalized = message.lowercased()
+        return normalized.contains("tmux session not running")
+            || normalized.contains("can't find session")
+            || normalized.contains("no such session")
     }
 
     private func clearPermanentAttachFailures(threadID: String) {
@@ -1543,23 +1553,6 @@ final class AppState {
         } catch {
             systemStats = nil
             NSLog("threadmill-state: failed to refresh system stats: %@", "\(error)")
-        }
-    }
-
-    func cleanupSystem() async {
-        guard case .connected = connectionStatus, let connectionManager else {
-            return
-        }
-
-        do {
-            _ = try await connectionManager.request(
-                method: "system.cleanup",
-                params: nil,
-                timeout: 30
-            )
-            await refreshSystemStats()
-        } catch {
-            NSLog("threadmill-state: failed to cleanup system: %@", "\(error)")
         }
     }
 

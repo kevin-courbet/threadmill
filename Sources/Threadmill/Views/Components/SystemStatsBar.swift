@@ -3,7 +3,6 @@ import SwiftUI
 struct SystemStatsBar: View {
     @Environment(AppState.self) private var appState
     let status: ConnectionStatus
-    @State private var isCleanupHovered = false
 
     var body: some View {
         Group {
@@ -21,18 +20,6 @@ struct SystemStatsBar: View {
                         statChip(systemImage: "bolt.fill", text: "\(stats.opencodeInstances)")
                             .help("Opencode Instances")
                     }
-
-                    Button(action: { Task { await appState.cleanupSystem() } }) {
-                        Image(systemName: "trash")
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(isCleanupHovered ? Color.white.opacity(0.08) : .clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Cleanup Resources")
-                    .foregroundColor(isCleanupHovered ? .primary : .secondary)
-                    .onHover { isCleanupHovered = $0 }
                 }
                 .font(.caption)
                 .padding(.leading, 12)

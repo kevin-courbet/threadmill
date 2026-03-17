@@ -13,8 +13,3 @@ struct SystemStatsResult: Codable, Equatable {
         case opencodeInstances = "opencode_instances"
     }
 }
-
-struct SystemCleanupResult: Codable {
-    let cleaned: Bool
-    let message: String
-}
