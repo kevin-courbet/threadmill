@@ -53,6 +53,14 @@ struct ThreadDetailView: View {
                     }
                 }
                 .overlay(alignment: .bottomLeading) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(detailDebugSummary)
+                            .accessibilityIdentifier("automation.thread-detail-debug")
+                        Text(debugJSONString(appState.debugSnapshot()))
+                            .accessibilityIdentifier("automation.thread-detail-debug.json")
+                    }
+                    .opacity(0.001)
+
                     if isUITestMode {
                         AutomationControlsView(
                             thread: thread,
@@ -76,13 +84,6 @@ struct ThreadDetailView: View {
                             }
                         )
                         .padding(8)
-
-                        Text(detailDebugSummary)
-                            .accessibilityIdentifier("automation.thread-detail-debug")
-                            .padding(.leading, 8)
-                        Text(debugJSONString(appState.debugSnapshot()))
-                            .accessibilityIdentifier("automation.thread-detail-debug.json")
-                            .padding(.leading, 8)
                     }
                 }
                 .background { ThreadModeKeyboardShortcuts(selectedTab: $selectedTab, visibleModeIDs: visibleModeIDs) }

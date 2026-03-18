@@ -106,10 +106,17 @@ enum TerminalModeActions {
     }
 
     static func defaultTerminalPresetName(appState: AppState) -> String? {
-        if appState.presets.contains(where: { $0.name == "terminal" }) {
-            return "terminal"
+        let openPresets = Set(appState.terminalTabs.compactMap(\.preset?.name))
+
+        if let terminalPreset = appState.presets.first(where: { $0.name == "terminal" && !openPresets.contains($0.name) }) {
+            return terminalPreset.name
         }
-        return appState.presets.first?.name
+
+        if let unopenedPreset = appState.presets.first(where: { !openPresets.contains($0.name) }) {
+            return unopenedPreset.name
+        }
+
+        return nil
     }
 
     static func addDefaultTerminalSession(

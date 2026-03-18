@@ -112,6 +112,7 @@ final class ThreadDetailViewSourceTests: XCTestCase {
         XCTAssertTrue(source.contains("automation.thread-detail-debug"))
         XCTAssertTrue(source.contains("automation.thread-detail-debug.json"))
         XCTAssertTrue(source.contains("appState.debugSnapshot().summary"))
+        XCTAssertTrue(source.contains(".opacity(0.001)"))
         XCTAssertTrue(source.contains("selectedTab="))
     }
 

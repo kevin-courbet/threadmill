@@ -17,6 +17,7 @@ struct ThreadSessionTabsProvider {
     let onCreateChatConversation: (ChatHarness?) -> Void
     let onAddDefaultTerminalSession: () -> Void
     let onAddTerminalSession: (String) -> Void
+    let isAddDefaultEnabled: Bool
 
     var sessionTabs: [SessionTabItem] {
         switch selectedTab {
@@ -91,6 +92,10 @@ struct ThreadSessionTabsProvider {
         default:
             return "session.add"
         }
+    }
+
+    var isAddDisabled: Bool {
+        !isAddDefaultEnabled
     }
 
     func handleSessionSelection(_ sessionID: String) {
@@ -234,7 +239,8 @@ struct ThreadModeSessionTabs: View {
                     selectedTerminalSessionIDBinding: $selectedTerminalSessionID,
                     tabStateManager: tabStateManager
                 )
-            }
+            },
+            isAddDefaultEnabled: selectedTab != TabItem.terminal.id || TerminalModeActions.defaultTerminalPresetName(appState: appState) != nil
         )
 
         SessionTabsScrollView(
@@ -248,7 +254,8 @@ struct ThreadModeSessionTabs: View {
             onAddDefault: provider.handleDefaultSessionCreation,
             addMenuItems: provider.addMenuItems,
             addButtonHelp: provider.addButtonHelpText,
-            addButtonAccessibilityID: provider.addButtonAccessibilityID
+            addButtonAccessibilityID: provider.addButtonAccessibilityID,
+            isAddDisabled: provider.isAddDisabled
         )
         .alert(
             "Chat Action Failed",

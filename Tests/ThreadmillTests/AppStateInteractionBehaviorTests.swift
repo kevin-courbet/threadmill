@@ -538,6 +538,32 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertEqual(multiplexer.attachCallCount, 1)
     }
 
+    func testDefaultTerminalSessionPrefersFirstUnopenedPreset() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [
+                PresetConfig(name: "terminal", command: "$SHELL", cwd: nil),
+                PresetConfig(name: "logs", command: "tail -f log", cwd: nil),
+            ]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        appState.selectedPreset = "terminal"
+
+        XCTAssertEqual(TerminalModeActions.defaultTerminalPresetName(appState: appState), "logs")
+    }
+
     func testTerminalDebugSnapshotReflectsPendingAttachAndErrors() async {
         let connection = MockDaemonConnection(state: .connected)
         connection.sessionReady = false

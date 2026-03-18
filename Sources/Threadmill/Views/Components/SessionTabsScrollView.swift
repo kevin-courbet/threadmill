@@ -33,6 +33,7 @@ struct SessionTabsScrollView: View {
     let addMenuItems: [SessionAddMenuItem]
     let addButtonHelp: String
     let addButtonAccessibilityID: String
+    let isAddDisabled: Bool
 
     @State private var scrollViewProxy: ScrollViewProxy?
 
@@ -86,7 +87,8 @@ struct SessionTabsScrollView: View {
                 onAddDefault: onAddDefault,
                 addMenuItems: addMenuItems,
                 addButtonHelp: addButtonHelp,
-                addButtonAccessibilityID: addButtonAccessibilityID
+                addButtonAccessibilityID: addButtonAccessibilityID,
+                isDisabled: isAddDisabled
             )
             .padding(.trailing, 8)
         }
@@ -282,6 +284,7 @@ private struct NewTabButton: View {
     let addMenuItems: [SessionAddMenuItem]
     let addButtonHelp: String
     let addButtonAccessibilityID: String
+    let isDisabled: Bool
 
     @State private var isPlusHovering = false
     @State private var isChevronHovering = false
@@ -296,6 +299,8 @@ private struct NewTabButton: View {
                 plusLabel
             }
             .buttonStyle(.plain)
+            .disabled(isDisabled)
+            .opacity(isDisabled ? 0.35 : 1)
             .onHover { hovering in
                 isPlusHovering = hovering
             }
@@ -316,6 +321,8 @@ private struct NewTabButton: View {
                     plusLabel
                 }
                 .buttonStyle(.plain)
+                .disabled(isDisabled)
+                .opacity(isDisabled ? 0.35 : 1)
                 .onHover { hovering in
                     isPlusHovering = hovering
                 }

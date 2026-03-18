@@ -21,7 +21,8 @@ final class ThreadSessionTabsProviderSourceTests: XCTestCase {
             onCloseTerminalSessions: { _ in },
             onCreateChatConversation: { requestedHarnesses.append($0) },
             onAddDefaultTerminalSession: {},
-            onAddTerminalSession: { _ in }
+            onAddTerminalSession: { _ in },
+            isAddDefaultEnabled: true
         )
 
         provider.handleDefaultSessionCreation()
@@ -67,9 +68,33 @@ final class ThreadSessionTabsProviderSourceTests: XCTestCase {
             onCloseTerminalSessions: { _ in },
             onCreateChatConversation: { _ in },
             onAddDefaultTerminalSession: {},
-            onAddTerminalSession: { _ in }
+            onAddTerminalSession: { _ in },
+            isAddDefaultEnabled: true
         )
 
         XCTAssertEqual(provider.sessionTabs.map(\.title), ["Session 1", "New session"])
+    }
+
+    func testTerminalTabsDisableAddWhenAllPresetsAlreadyOpen() {
+        let provider = ThreadSessionTabsProvider(
+            selectedTab: TabItem.terminal.id,
+            chatConversations: [],
+            selectedChatConversationID: nil,
+            terminalSessionIDs: ["terminal", "logs"],
+            selectedTerminalSessionID: "terminal",
+            presets: [Preset(name: "terminal"), Preset(name: "logs")],
+            chatHarnesses: ChatHarness.allCases,
+            chatTitle: { _, _, _ in "" },
+            onSelectChatConversation: { _ in },
+            onSelectTerminalSession: { _ in },
+            onArchiveChatConversations: { _ in },
+            onCloseTerminalSessions: { _ in },
+            onCreateChatConversation: { _ in },
+            onAddDefaultTerminalSession: {},
+            onAddTerminalSession: { _ in },
+            isAddDefaultEnabled: false
+        )
+
+        XCTAssertTrue(provider.isAddDisabled)
     }
 }
