@@ -27,6 +27,75 @@ enum AppStateError: LocalizedError {
     }
 }
 
+struct TerminalDebugSnapshot: Equatable {
+    let threadID: String?
+    let preset: String
+    let connectionStatus: ConnectionStatus
+    let sessionReady: Bool
+    let reconnectAttempt: Int
+    let pendingAttach: Bool
+    let endpointAttached: Bool
+    let endpointChannelID: UInt16?
+    let openPresets: [String]
+    let connectionLastError: String?
+    let lastStartError: String?
+    let lastAttachError: String?
+
+    var summary: String {
+        let threadDescription = threadID ?? "nil"
+        let channelDescription = endpointChannelID.map(String.init) ?? "nil"
+        let startErrorDescription = lastStartError ?? "nil"
+        let attachErrorDescription = lastAttachError ?? "nil"
+        let openPresetDescription = openPresets.joined(separator: ",")
+        let connectionDescription = String(describing: connectionStatus)
+        let connectionErrorDescription = connectionLastError ?? "nil"
+
+        return [
+            "thread=\(threadDescription)",
+            "preset=\(preset)",
+            "connection=\(connectionDescription)",
+            "sessionReady=\(sessionReady)",
+            "reconnectAttempt=\(reconnectAttempt)",
+            "pendingAttach=\(pendingAttach)",
+            "endpointAttached=\(endpointAttached)",
+            "channel=\(channelDescription)",
+            "openPresets=\(openPresetDescription)",
+            "connectionLastError=\(connectionErrorDescription)",
+            "lastStartError=\(startErrorDescription)",
+            "lastAttachError=\(attachErrorDescription)",
+        ].joined(separator: "\n")
+    }
+}
+
+struct AppStateDebugSnapshot: Equatable {
+    let selectedWorkspaceRemoteID: String?
+    let selectedThreadID: String?
+    let selectedPreset: String?
+    let connection: ConnectionDebugSnapshot
+    let terminal: TerminalDebugSnapshot?
+    let alertMessage: String?
+
+    var summary: String {
+        let workspaceRemoteDescription = selectedWorkspaceRemoteID ?? "nil"
+        let threadDescription = selectedThreadID ?? "nil"
+        let presetDescription = selectedPreset ?? "nil"
+        let alertDescription = alertMessage ?? "nil"
+        let terminalSummary = terminal?.summary.replacingOccurrences(of: "\n", with: " | ") ?? "nil"
+
+        return [
+            "selectedWorkspaceRemoteID=\(workspaceRemoteDescription)",
+            "selectedThreadID=\(threadDescription)",
+            "selectedPreset=\(presetDescription)",
+            "connection.status=\(connection.status.label)",
+            "connection.sessionReady=\(connection.sessionReady)",
+            "connection.reconnectAttempt=\(connection.reconnectAttempt)",
+            "connection.lastError=\(connection.lastErrorDescription ?? "nil")",
+            "terminal=\(terminalSummary)",
+            "alert=\(alertDescription)",
+        ].joined(separator: "\n")
+    }
+}
+
 @MainActor
 @Observable
 final class AppState {
@@ -99,6 +168,8 @@ final class AppState {
     private var attachedEndpoints: [AttachmentKey: RelayEndpoint] = [:]
     private var pendingAttachTasks: [AttachmentKey: Task<Void, Never>] = [:]
     private var permanentAttachFailures: Set<AttachmentKey> = []
+    private var lastPresetStartErrors: [AttachmentKey: String] = [:]
+    private var lastAttachErrors: [AttachmentKey: String] = [:]
     private var workspacePathsByRemoteID: [String: String] = [:]
     private var projectsByID: [String: Project] = [:]
 
@@ -244,6 +315,50 @@ final class AppState {
         return terminalTabs + [
             TerminalTabModel(threadID: thread.id, type: .chat, endpoint: nil)
         ]
+    }
+
+    func terminalDebugSnapshot(for preset: String) -> TerminalDebugSnapshot? {
+        guard let thread = selectedThread else {
+            return nil
+        }
+
+        let key = AttachmentKey(threadID: thread.id, preset: preset)
+        let endpoint = attachedEndpoints[key]
+        let connectionSnapshot = connectionForThread(id: thread.id)?.debugSnapshot
+
+        return TerminalDebugSnapshot(
+            threadID: thread.id,
+            preset: preset,
+            connectionStatus: connectionSnapshot?.status ?? connectionStatus,
+            sessionReady: connectionSnapshot?.sessionReady ?? false,
+            reconnectAttempt: connectionSnapshot?.reconnectAttempt ?? 0,
+            pendingAttach: pendingAttachTasks[key] != nil,
+            endpointAttached: endpoint != nil,
+            endpointChannelID: endpoint?.channelID,
+            openPresets: openPresetNames(for: thread.id).sorted(),
+            connectionLastError: connectionSnapshot?.lastErrorDescription,
+            lastStartError: lastPresetStartErrors[key],
+            lastAttachError: lastAttachErrors[key]
+        )
+    }
+
+    func debugSnapshot() -> AppStateDebugSnapshot {
+        let connectionSnapshot = currentConnectionDebugSnapshot()
+        let selectedPresetSnapshot: TerminalDebugSnapshot?
+        if let selectedPreset, selectedPreset != TerminalTabModel.chatTabSelectionID {
+            selectedPresetSnapshot = terminalDebugSnapshot(for: selectedPreset)
+        } else {
+            selectedPresetSnapshot = nil
+        }
+
+        return AppStateDebugSnapshot(
+            selectedWorkspaceRemoteID: selectedWorkspaceRemoteID,
+            selectedThreadID: selectedThreadID,
+            selectedPreset: selectedPreset,
+            connection: connectionSnapshot,
+            terminal: selectedPresetSnapshot,
+            alertMessage: alertMessage
+        )
     }
 
     func configure(
@@ -449,7 +564,15 @@ final class AppState {
                 ],
                 timeout: 20
             )
+            lastPresetStartErrors.removeValue(forKey: AttachmentKey(threadID: threadID, preset: preset))
         } catch {
+            if isPresetAlreadyRunningError(error, preset: preset) {
+                lastPresetStartErrors[AttachmentKey(threadID: threadID, preset: preset)] = String(describing: error)
+                selectedPreset = preset
+                await attachPreset(threadID: threadID, preset: preset)
+                return
+            }
+            lastPresetStartErrors[AttachmentKey(threadID: threadID, preset: preset)] = String(describing: error)
             NSLog("threadmill-state: preset.start failed (%@/%@): %@", threadID, preset, "\(error)")
             return
         }
@@ -496,6 +619,8 @@ final class AppState {
             pendingAttachTasks[key]?.cancel()
             pendingAttachTasks.removeValue(forKey: key)
             permanentAttachFailures.remove(key)
+            lastPresetStartErrors.removeValue(forKey: key)
+            lastAttachErrors.removeValue(forKey: key)
 
             let wasSelected = selectedPreset == preset
             if wasSelected {
@@ -561,14 +686,20 @@ final class AppState {
         }
 
         do {
-            _ = try await connectionManager.request(
-                method: "preset.start",
-                params: [
-                    "thread_id": requestedThreadID,
-                    "preset": requestedPreset,
-                ],
-                timeout: 20
-            )
+            do {
+                _ = try await connectionManager.request(
+                    method: "preset.start",
+                    params: [
+                        "thread_id": requestedThreadID,
+                        "preset": requestedPreset,
+                    ],
+                    timeout: 20
+                )
+            } catch {
+                if !isPresetAlreadyRunningError(error, preset: requestedPreset) {
+                    throw error
+                }
+            }
             guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
                 return
             }
@@ -579,11 +710,21 @@ final class AppState {
             }
 
             attachedEndpoints[key] = endpoint
+            lastAttachErrors.removeValue(forKey: key)
             selectedEndpoint = endpoint
         } catch {
             handleAttachError(error, key: key, threadID: requestedThreadID)
+            lastAttachErrors[key] = String(describing: error)
             NSLog("threadmill-state: attach failed: %@", "\(error)")
         }
+    }
+
+    private func isPresetAlreadyRunningError(_ error: Error, preset: String) -> Bool {
+        guard let rpcError = error as? JSONRPCErrorResponse else {
+            return false
+        }
+
+        return rpcError.message.contains("preset already running") && rpcError.message.contains(preset)
     }
 
     func detachCurrentTerminal() async {
@@ -1005,6 +1146,7 @@ final class AppState {
     }
 
     private func handleAttachError(_ error: Error, key: AttachmentKey, threadID: String) {
+        lastAttachErrors[key] = String(describing: error)
         guard isPermanentTerminalAttachError(error) else {
             return
         }
@@ -1084,6 +1226,8 @@ final class AppState {
         for key in staleKeys {
             multiplexer?.detach(threadID: key.threadID, preset: key.preset)
             attachedEndpoints.removeValue(forKey: key)
+            lastPresetStartErrors.removeValue(forKey: key)
+            lastAttachErrors.removeValue(forKey: key)
         }
     }
 
@@ -1092,6 +1236,8 @@ final class AppState {
         for key in keys {
             multiplexer?.detach(threadID: key.threadID, preset: key.preset)
             attachedEndpoints.removeValue(forKey: key)
+            lastPresetStartErrors.removeValue(forKey: key)
+            lastAttachErrors.removeValue(forKey: key)
         }
         refreshSelectedEndpoint()
     }
@@ -1104,6 +1250,8 @@ final class AppState {
         }
 
         multiplexer?.detach(threadID: threadID, preset: preset)
+        lastPresetStartErrors.removeValue(forKey: key)
+        lastAttachErrors.removeValue(forKey: key)
         refreshSelectedEndpoint()
     }
 
@@ -1123,6 +1271,21 @@ final class AppState {
         }
 
         return nil
+    }
+
+    private func currentConnectionDebugSnapshot() -> ConnectionDebugSnapshot {
+        if let threadID = selectedThreadID,
+           let connection = connectionForThread(id: threadID)
+        {
+            return connection.debugSnapshot
+        }
+
+        return defaultConnectionManager()?.debugSnapshot ?? ConnectionDebugSnapshot(
+            status: connectionStatus,
+            sessionReady: false,
+            reconnectAttempt: 0,
+            lastErrorDescription: nil
+        )
     }
 
     func connectionForThread(id threadID: String) -> (any ConnectionManaging)? {

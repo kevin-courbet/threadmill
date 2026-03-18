@@ -14,6 +14,9 @@ struct AutomationControlsView: View {
 
     var body: some View {
         VStack(spacing: 2) {
+            Text(appState.debugSnapshot().summary)
+                .accessibilityIdentifier("automation.app-debug")
+
             Button("Automation Open Add Project") {
                 Task {
                     try? await appState.addProject(path: "/home/wsl/dev/factorio")
@@ -85,6 +88,11 @@ struct AutomationControlsView: View {
                 }
                 .accessibilityIdentifier("automation.select-preset.\(preset.name)")
                 .accessibilityLabel("Automation Preset \(preset.name)")
+
+                if let snapshot = appState.terminalDebugSnapshot(for: preset.name) {
+                    Text(snapshot.summary)
+                        .accessibilityIdentifier("automation.terminal-debug.\(preset.name)")
+                }
             }
         }
         .font(.caption2)

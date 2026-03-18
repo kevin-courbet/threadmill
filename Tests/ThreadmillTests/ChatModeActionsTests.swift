@@ -347,4 +347,74 @@ final class ChatModeActionsTests: XCTestCase {
         XCTAssertEqual(chatConversations.count, 1)
         XCTAssertEqual(chatConversations.first?.id, "conversation-2")
     }
+
+    func testRefreshChatConversationsNormalizesChronologicalTabOrder() async {
+        let appState = AppState()
+        let database = MockDatabaseManager()
+        let connection = MockDaemonConnection()
+        let syncService = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+        let openCodeClient = MockOpenCodeClient()
+        let chatConversationService = MockChatConversationService()
+
+        let pool = makeSingleRemoteConnectionPool(connection: connection)
+        appState.configure(
+            connectionPool: pool,
+            databaseManager: database,
+            syncService: syncService,
+            multiplexer: multiplexer,
+            openCodeClient: openCodeClient,
+            chatConversationService: chatConversationService
+        )
+
+        let thread = ThreadModel(
+            id: "thread-1",
+            projectId: "project-1",
+            name: "feature/chat",
+            branch: "feature/chat",
+            worktreePath: "/tmp/worktree",
+            status: .active,
+            sourceType: "new_feature",
+            createdAt: Date(),
+            tmuxSession: "tm_thread-1",
+            portOffset: nil
+        )
+        appState.threads = [thread]
+        appState.selectedThreadID = thread.id
+
+        let older = ChatConversation(
+            id: "conversation-1",
+            threadID: thread.id,
+            opencodeSessionID: "ses-1",
+            title: "",
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: Date(timeIntervalSince1970: 1),
+            isArchived: false
+        )
+        let newer = ChatConversation(
+            id: "conversation-2",
+            threadID: thread.id,
+            opencodeSessionID: "ses-2",
+            title: "",
+            createdAt: Date(timeIntervalSince1970: 2),
+            updatedAt: Date(timeIntervalSince1970: 2),
+            isArchived: false
+        )
+        chatConversationService.activeConversationsResult = .success([newer, older])
+
+        var chatConversations: [ChatConversation] = []
+        var selectedConversationID: String?
+        let tabStateManager = ThreadTabStateManager()
+
+        await ChatModeActions.refreshChatConversations(
+            for: thread,
+            appState: appState,
+            chatConversations: Binding(get: { chatConversations }, set: { chatConversations = $0 }),
+            selectedChatConversationIDBinding: Binding(get: { selectedConversationID }, set: { selectedConversationID = $0 }),
+            tabStateManager: tabStateManager
+        )
+
+        XCTAssertEqual(chatConversations.map(\.id), ["conversation-1", "conversation-2"])
+        XCTAssertEqual(selectedConversationID, "conversation-1")
+    }
 }

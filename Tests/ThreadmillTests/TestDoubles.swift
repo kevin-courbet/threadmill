@@ -16,11 +16,22 @@ struct RecordedRequest {
 @MainActor
 final class MockDaemonConnection: ConnectionManaging {
     var state: ConnectionStatus
+    var debugSnapshot: ConnectionDebugSnapshot {
+        ConnectionDebugSnapshot(
+            status: state,
+            sessionReady: sessionReady,
+            reconnectAttempt: reconnectAttempt,
+            lastErrorDescription: lastErrorDescription
+        )
+    }
     var onStateChange: ((ConnectionStatus) -> Void)?
     var onConnected: (() -> Void)?
     var onEvent: ((String, [String: Any]?) -> Void)?
     var startCallCount = 0
     var stopCallCount = 0
+    var sessionReady = true
+    var reconnectAttempt = 0
+    var lastErrorDescription: String?
     var requests: [RecordedRequest] = []
     var sentBinaryFrames: [Data] = []
     var requestHandler: ((String, [String: Any]?, TimeInterval) throws -> Any)?

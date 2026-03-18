@@ -1,6 +1,13 @@
 import Foundation
 import GhosttyKit
 
+struct ConnectionDebugSnapshot: Equatable {
+    let status: ConnectionStatus
+    let sessionReady: Bool
+    let reconnectAttempt: Int
+    let lastErrorDescription: String?
+}
+
 struct FileBrowserEntry: Identifiable, Hashable, Codable {
     let name: String
     let path: String
@@ -35,6 +42,7 @@ protocol FileBrowsing: AnyObject {
 @MainActor
 protocol ConnectionManaging: AnyObject {
     var state: ConnectionStatus { get }
+    var debugSnapshot: ConnectionDebugSnapshot { get }
     var onStateChange: ((ConnectionStatus) -> Void)? { get set }
     var onConnected: (() -> Void)? { get set }
     var onEvent: ((String, [String: Any]?) -> Void)? { get set }

@@ -5,6 +5,9 @@ import XCTest
 final class AppStateInteractionBehaviorTests: XCTestCase {
     func testCreateThreadTransitionsFromCreatingToActive() async throws {
         let connection = MockDaemonConnection(state: .connected)
+        connection.sessionReady = false
+        connection.reconnectAttempt = 2
+        connection.lastErrorDescription = "handshake pending"
         let database = MockDatabaseManager()
         let sync = MockSyncService()
         let multiplexer = MockTerminalMultiplexer()
@@ -21,6 +24,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         }
 
         let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        appState.connectionStatus = .connected
 
         var sawCreatingState = false
         sync.syncHandler = {
@@ -489,6 +493,130 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
 
         XCTAssertEqual(appState.selectedPreset, "opencode")
         XCTAssertTrue(connection.requests.contains(where: { $0.method == "preset.start" }))
+    }
+
+    func testStartPresetAttachesWhenPresetAlreadyRunning() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [PresetConfig(name: "terminal", command: "$SHELL", cwd: nil)]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        connection.requestHandler = { method, _, _ in
+            if method == "preset.start" {
+                throw JSONRPCErrorResponse(code: -32000, message: "preset already running: terminal")
+            }
+            throw TestError.missingStub
+        }
+        multiplexer.attachHandler = { threadID, preset in
+            RelayEndpoint(
+                channelID: 7,
+                threadID: threadID,
+                preset: preset,
+                connectionManager: connection,
+                surfaceHost: MockSurfaceHost()
+            )
+        }
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        appState.connectionStatus = .connected
+
+        await appState.startPreset(named: "terminal")
+
+        XCTAssertEqual(appState.selectedPreset, "terminal")
+        XCTAssertEqual(appState.selectedEndpoint?.channelID, 7)
+        XCTAssertEqual(multiplexer.attachCallCount, 1)
+    }
+
+    func testTerminalDebugSnapshotReflectsPendingAttachAndErrors() async {
+        let connection = MockDaemonConnection(state: .connected)
+        connection.sessionReady = false
+        connection.reconnectAttempt = 2
+        connection.lastErrorDescription = "handshake pending"
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [PresetConfig(name: "terminal", command: "$SHELL", cwd: nil)]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        connection.requestHandler = { method, _, _ in
+            if method == "preset.start" {
+                throw JSONRPCErrorResponse(code: -32000, message: "boom")
+            }
+            throw TestError.missingStub
+        }
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+
+        await appState.startPreset(named: "terminal")
+
+        let snapshot = appState.terminalDebugSnapshot(for: "terminal")
+        XCTAssertEqual(snapshot?.threadID, thread.id)
+        XCTAssertEqual(snapshot?.preset, "terminal")
+        XCTAssertEqual(snapshot?.connectionStatus, .connected)
+        XCTAssertEqual(snapshot?.sessionReady, false)
+        XCTAssertEqual(snapshot?.reconnectAttempt, 2)
+        XCTAssertEqual(snapshot?.pendingAttach, false)
+        XCTAssertEqual(snapshot?.endpointAttached, false)
+        XCTAssertEqual(snapshot?.connectionLastError, "handshake pending")
+        XCTAssertTrue(snapshot?.lastStartError?.contains("boom") == true)
+        XCTAssertTrue(snapshot?.summary.contains("sessionReady=false") == true)
+        XCTAssertTrue(snapshot?.summary.contains("lastStartError=") == true)
+    }
+
+    func testAppDebugSnapshotIncludesSelectionConnectionAndTerminalState() async {
+        let connection = MockDaemonConnection(state: .connected)
+        connection.sessionReady = true
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [PresetConfig(name: "terminal", command: "$SHELL", cwd: nil)]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        appState.selectedWorkspaceRemoteID = "remote-1"
+        appState.selectedPreset = "terminal"
+        appState.alertMessage = "attach failed"
+
+        let snapshot = appState.debugSnapshot()
+
+        XCTAssertEqual(snapshot.selectedWorkspaceRemoteID, "remote-1")
+        XCTAssertEqual(snapshot.selectedThreadID, thread.id)
+        XCTAssertEqual(snapshot.selectedPreset, "terminal")
+        XCTAssertEqual(snapshot.connection.status, .connected)
+        XCTAssertEqual(snapshot.connection.sessionReady, true)
+        XCTAssertEqual(snapshot.terminal?.preset, "terminal")
+        XCTAssertEqual(snapshot.alertMessage, "attach failed")
+        XCTAssertTrue(snapshot.summary.contains("selectedThreadID=thread-1"))
+        XCTAssertTrue(snapshot.summary.contains("connection.sessionReady=true"))
     }
 
     func testThreadScopedPresetActionsIgnoreStaleThreadSelection() async {

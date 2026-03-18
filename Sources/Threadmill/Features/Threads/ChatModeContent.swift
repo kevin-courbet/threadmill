@@ -62,7 +62,7 @@ enum ChatModeActions {
             guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
                 return
             }
-            chatConversations.wrappedValue = conversations
+            chatConversations.wrappedValue = sortConversationsChronologically(conversations)
         } catch {
             guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else {
                 return
@@ -180,6 +180,7 @@ enum ChatModeActions {
         tabStateManager: ThreadTabStateManager
     ) {
         chatConversations.wrappedValue = conversations
+        chatConversations.wrappedValue = sortConversationsChronologically(chatConversations.wrappedValue)
 
         // Only trust current if it still exists in the active conversations list.
         // After archiving, the VM may still hold a stale currentConversation reference
@@ -211,5 +212,14 @@ enum ChatModeActions {
             return "New session"
         }
         return "Session \(index + 1)"
+    }
+
+    private static func sortConversationsChronologically(_ conversations: [ChatConversation]) -> [ChatConversation] {
+        conversations.sorted {
+            if $0.createdAt == $1.createdAt {
+                return $0.id < $1.id
+            }
+            return $0.createdAt < $1.createdAt
+        }
     }
 }

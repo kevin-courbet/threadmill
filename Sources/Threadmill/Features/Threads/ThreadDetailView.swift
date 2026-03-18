@@ -19,6 +19,15 @@ struct ThreadDetailView: View {
         let value = ProcessInfo.processInfo.environment["THREADMILL_USE_MOCK_TERMINAL"]?.lowercased() ?? ""
         return value == "1" || value == "true" || value == "yes"
     }
+    private var detailDebugSummary: String {
+        [
+            appState.debugSnapshot().summary,
+            "selectedTab=\(selectedTab)",
+            "selectedTerminalSessionID=\(selectedTerminalSessionID ?? "nil")",
+            "terminalSessionIDs=\(terminalSessionIDs.joined(separator: ","))",
+            "selectedChatConversationID=\(selectedChatConversationID ?? "nil")",
+        ].joined(separator: "\n")
+    }
 
     var body: some View {
         if let thread = appState.selectedThread {
@@ -67,6 +76,10 @@ struct ThreadDetailView: View {
                             }
                         )
                         .padding(8)
+
+                        Text(detailDebugSummary)
+                            .accessibilityIdentifier("automation.thread-detail-debug")
+                            .padding(.leading, 8)
                     }
                 }
                 .background { ThreadModeKeyboardShortcuts(selectedTab: $selectedTab, visibleModeIDs: visibleModeIDs) }

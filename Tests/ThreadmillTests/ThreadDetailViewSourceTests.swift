@@ -87,4 +87,30 @@ final class ThreadDetailViewSourceTests: XCTestCase {
 
         XCTAssertFalse(source.contains(".toolbar {}"))
     }
+
+    func testTerminalModeContentShowsDebugSummaryWhileConnecting() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/TerminalModeContent.swift")
+        let source = try String(contentsOf: sourcePath, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("terminal.debug.summary."))
+        XCTAssertTrue(source.contains("appState.terminalDebugSnapshot(for: preset)"))
+        XCTAssertTrue(source.contains(".textSelection(.enabled)"))
+    }
+
+    func testThreadDetailViewExposesAppAndLocalDebugSummaryForAutomation() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
+        let source = try String(contentsOf: sourcePath, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("automation.thread-detail-debug"))
+        XCTAssertTrue(source.contains("appState.debugSnapshot().summary"))
+        XCTAssertTrue(source.contains("selectedTab="))
+    }
 }
