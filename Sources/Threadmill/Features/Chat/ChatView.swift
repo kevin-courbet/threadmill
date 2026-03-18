@@ -127,6 +127,25 @@ struct ChatView: View {
                 await applySelectedConversationIfNeeded()
             }
         }
+        .overlay(alignment: .bottomLeading) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(chatDebugSummary)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("automation.chat-debug")
+                Text(debugJSONString(viewModel.debugSnapshot))
+                    .accessibilityIdentifier("automation.chat-debug.json")
+            }
+            .padding(8)
+        }
+    }
+
+    private var chatDebugSummary: String {
+        [
+            viewModel.debugSnapshot.summary,
+            "selectedConversationID=\(selectedConversationID ?? "nil")",
+        ].joined(separator: "\n")
     }
 
     private func publishConversationState() {

@@ -572,7 +572,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         let snapshot = appState.terminalDebugSnapshot(for: "terminal")
         XCTAssertEqual(snapshot?.threadID, thread.id)
         XCTAssertEqual(snapshot?.preset, "terminal")
-        XCTAssertEqual(snapshot?.connectionStatus, .connected)
+        XCTAssertEqual(snapshot?.connectionStatus, ConnectionStatus.connected.label)
         XCTAssertEqual(snapshot?.sessionReady, false)
         XCTAssertEqual(snapshot?.reconnectAttempt, 2)
         XCTAssertEqual(snapshot?.pendingAttach, false)
@@ -611,12 +611,38 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertEqual(snapshot.selectedWorkspaceRemoteID, "remote-1")
         XCTAssertEqual(snapshot.selectedThreadID, thread.id)
         XCTAssertEqual(snapshot.selectedPreset, "terminal")
-        XCTAssertEqual(snapshot.connection.status, .connected)
+        XCTAssertEqual(snapshot.connection.status, ConnectionStatus.connected.label)
         XCTAssertEqual(snapshot.connection.sessionReady, true)
         XCTAssertEqual(snapshot.terminal?.preset, "terminal")
         XCTAssertEqual(snapshot.alertMessage, "attach failed")
         XCTAssertTrue(snapshot.summary.contains("selectedThreadID=thread-1"))
         XCTAssertTrue(snapshot.summary.contains("connection.sessionReady=true"))
+    }
+
+    func testAppDebugSnapshotIsJSONEncodable() async throws {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [PresetConfig(name: "terminal", command: "$SHELL", cwd: nil)]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        let snapshot = appState.debugSnapshot()
+        let data = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(AppStateDebugSnapshot.self, from: data)
+
+        XCTAssertEqual(decoded.selectedThreadID, snapshot.selectedThreadID)
+        XCTAssertEqual(decoded.connection.status, snapshot.connection.status)
     }
 
     func testThreadScopedPresetActionsIgnoreStaleThreadSelection() async {

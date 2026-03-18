@@ -53,6 +53,18 @@ struct FileBrowserView: View {
         .task {
             await viewModel.loadInitialDirectoryIfNeeded()
         }
+        .overlay(alignment: .bottomLeading) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(fileDebugSummary)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("automation.file-browser-debug")
+                Text(debugJSONString(viewModel.debugSnapshot))
+                    .accessibilityIdentifier("automation.file-browser-debug.json")
+            }
+            .padding(8)
+        }
         .onChange(of: connectionStatus) { _, newStatus in
             if newStatus.isConnected {
                 Task {
@@ -60,6 +72,14 @@ struct FileBrowserView: View {
                 }
             }
         }
+    }
+
+    private var fileDebugSummary: String {
+        let snapshot = viewModel.debugSnapshot
+        return [
+            snapshot.summary,
+            "connection=\(connectionStatus.label)",
+        ].joined(separator: "\n")
     }
 }
 

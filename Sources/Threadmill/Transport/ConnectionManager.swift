@@ -115,7 +115,7 @@ final class ConnectionManager: ConnectionManaging {
 
     var debugSnapshot: ConnectionDebugSnapshot {
         ConnectionDebugSnapshot(
-            status: state,
+            status: state.label,
             sessionReady: sessionReady,
             reconnectAttempt: reconnectAttempt,
             lastErrorDescription: lastErrorDescription

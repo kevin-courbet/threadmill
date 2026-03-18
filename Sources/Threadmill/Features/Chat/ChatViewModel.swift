@@ -22,6 +22,30 @@ final class ChatViewModel {
     private var messageLoadTask: Task<Void, Never>?
     private var messageLoadToken = UUID()
 
+    struct DebugSnapshot: Codable, Equatable {
+        let activeThreadID: String?
+        let activeDirectory: String?
+        let eventStreamDirectory: String?
+        let conversationCount: Int
+        let currentConversationID: String?
+        let messageCount: Int
+        let isGenerating: Bool
+        let lastError: String?
+
+        var summary: String {
+            [
+                "threadID=\(activeThreadID ?? "nil")",
+                "directory=\(activeDirectory ?? "nil")",
+                "eventStreamDirectory=\(eventStreamDirectory ?? "nil")",
+                "conversationCount=\(conversationCount)",
+                "currentConversation=\(currentConversationID ?? "nil")",
+                "messageCount=\(messageCount)",
+                "isGenerating=\(isGenerating)",
+                "lastError=\(lastError ?? "nil")",
+            ].joined(separator: "\n")
+        }
+    }
+
     init(
         openCodeClient: any OpenCodeManaging,
         chatConversationService: any ChatConversationManaging
@@ -485,6 +509,19 @@ final class ChatViewModel {
             }
             return $0.createdAt < $1.createdAt
         }
+    }
+
+    var debugSnapshot: DebugSnapshot {
+        DebugSnapshot(
+            activeThreadID: activeThreadID,
+            activeDirectory: activeDirectory,
+            eventStreamDirectory: eventStreamDirectory,
+            conversationCount: conversations.count,
+            currentConversationID: currentConversation?.id,
+            messageCount: messages.count,
+            isGenerating: isGenerating,
+            lastError: lastError
+        )
     }
 }
 

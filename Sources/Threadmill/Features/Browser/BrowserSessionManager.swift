@@ -4,6 +4,32 @@ import WebKit
 
 @MainActor
 final class BrowserSessionManager: ObservableObject {
+    struct DebugSnapshot: Codable, Equatable {
+        let sessionCount: Int
+        let activeSessionID: String?
+        let currentURL: String
+        let pageTitle: String
+        let isLoading: Bool
+        let loadingProgress: Double
+        let canGoBack: Bool
+        let canGoForward: Bool
+        let loadError: String?
+
+        var summary: String {
+            [
+                "sessionCount=\(sessionCount)",
+                "activeSessionID=\(activeSessionID ?? "nil")",
+                "currentURL=\(currentURL)",
+                "pageTitle=\(pageTitle)",
+                "isLoading=\(isLoading)",
+                "loadingProgress=\(loadingProgress)",
+                "canGoBack=\(canGoBack)",
+                "canGoForward=\(canGoForward)",
+                "loadError=\(loadError ?? "nil")",
+            ].joined(separator: "\n")
+        }
+    }
+
     @Published var sessions: [BrowserSession] = []
     @Published var activeSessionId: String?
     @Published var canGoBack = false
@@ -251,5 +277,23 @@ final class BrowserSessionManager: ObservableObject {
     private static func defaultURL(portOffset: Int?) -> String {
         let offset = max(0, portOffset ?? 0)
         return "http://localhost:\(3000 + offset)"
+    }
+
+    var debugSummary: String {
+        debugSnapshot.summary
+    }
+
+    var debugSnapshot: DebugSnapshot {
+        DebugSnapshot(
+            sessionCount: sessions.count,
+            activeSessionID: activeSessionId,
+            currentURL: currentURL,
+            pageTitle: pageTitle,
+            isLoading: isLoading,
+            loadingProgress: loadingProgress,
+            canGoBack: canGoBack,
+            canGoForward: canGoForward,
+            loadError: loadError
+        )
     }
 }

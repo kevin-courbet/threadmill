@@ -18,7 +18,7 @@ final class MockDaemonConnection: ConnectionManaging {
     var state: ConnectionStatus
     var debugSnapshot: ConnectionDebugSnapshot {
         ConnectionDebugSnapshot(
-            status: state,
+            status: state.label,
             sessionReady: sessionReady,
             reconnectAttempt: reconnectAttempt,
             lastErrorDescription: lastErrorDescription

@@ -131,7 +131,7 @@ final class ConnectionManagerTests: XCTestCase {
         let snapshot = manager.debugSnapshot
         XCTAssertFalse(snapshot.sessionReady)
         XCTAssertNotNil(snapshot.lastErrorDescription)
-        XCTAssertNotEqual(snapshot.status, .connected)
+        XCTAssertNotEqual(snapshot.status, ConnectionStatus.connected.label)
 
         manager.stop()
     }

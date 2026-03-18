@@ -27,10 +27,10 @@ enum AppStateError: LocalizedError {
     }
 }
 
-struct TerminalDebugSnapshot: Equatable {
+struct TerminalDebugSnapshot: Codable, Equatable {
     let threadID: String?
     let preset: String
-    let connectionStatus: ConnectionStatus
+    let connectionStatus: String
     let sessionReady: Bool
     let reconnectAttempt: Int
     let pendingAttach: Bool
@@ -47,7 +47,7 @@ struct TerminalDebugSnapshot: Equatable {
         let startErrorDescription = lastStartError ?? "nil"
         let attachErrorDescription = lastAttachError ?? "nil"
         let openPresetDescription = openPresets.joined(separator: ",")
-        let connectionDescription = String(describing: connectionStatus)
+        let connectionDescription = connectionStatus
         let connectionErrorDescription = connectionLastError ?? "nil"
 
         return [
@@ -67,7 +67,7 @@ struct TerminalDebugSnapshot: Equatable {
     }
 }
 
-struct AppStateDebugSnapshot: Equatable {
+struct AppStateDebugSnapshot: Codable, Equatable {
     let selectedWorkspaceRemoteID: String?
     let selectedThreadID: String?
     let selectedPreset: String?
@@ -86,7 +86,7 @@ struct AppStateDebugSnapshot: Equatable {
             "selectedWorkspaceRemoteID=\(workspaceRemoteDescription)",
             "selectedThreadID=\(threadDescription)",
             "selectedPreset=\(presetDescription)",
-            "connection.status=\(connection.status.label)",
+            "connection.status=\(connection.status)",
             "connection.sessionReady=\(connection.sessionReady)",
             "connection.reconnectAttempt=\(connection.reconnectAttempt)",
             "connection.lastError=\(connection.lastErrorDescription ?? "nil")",
@@ -329,7 +329,7 @@ final class AppState {
         return TerminalDebugSnapshot(
             threadID: thread.id,
             preset: preset,
-            connectionStatus: connectionSnapshot?.status ?? connectionStatus,
+            connectionStatus: connectionSnapshot?.status ?? connectionStatus.label,
             sessionReady: connectionSnapshot?.sessionReady ?? false,
             reconnectAttempt: connectionSnapshot?.reconnectAttempt ?? 0,
             pendingAttach: pendingAttachTasks[key] != nil,
@@ -1281,7 +1281,7 @@ final class AppState {
         }
 
         return defaultConnectionManager()?.debugSnapshot ?? ConnectionDebugSnapshot(
-            status: connectionStatus,
+            status: connectionStatus.label,
             sessionReady: false,
             reconnectAttempt: 0,
             lastErrorDescription: nil

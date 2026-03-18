@@ -16,6 +16,8 @@ struct AutomationControlsView: View {
         VStack(spacing: 2) {
             Text(appState.debugSnapshot().summary)
                 .accessibilityIdentifier("automation.app-debug")
+            Text(debugJSONString(appState.debugSnapshot()))
+                .accessibilityIdentifier("automation.app-debug.json")
 
             Button("Automation Open Add Project") {
                 Task {
@@ -92,6 +94,8 @@ struct AutomationControlsView: View {
                 if let snapshot = appState.terminalDebugSnapshot(for: preset.name) {
                     Text(snapshot.summary)
                         .accessibilityIdentifier("automation.terminal-debug.\(preset.name)")
+                    Text(debugJSONString(snapshot))
+                        .accessibilityIdentifier("automation.terminal-debug-json.\(preset.name)")
                 }
             }
         }

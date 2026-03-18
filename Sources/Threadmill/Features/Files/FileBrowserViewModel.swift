@@ -8,6 +8,24 @@ struct OpenFileInfo: Identifiable, Equatable {
     let content: String
 }
 
+struct FileBrowserDebugSnapshot: Codable, Equatable {
+    let rootPath: String
+    let loadingDirectories: [String]
+    let lastErrorMessage: String?
+    let openFileCount: Int
+    let selectedFilePath: String?
+
+    var summary: String {
+        [
+            "rootPath=\(rootPath)",
+            "loadingDirectories=\(loadingDirectories.joined(separator: ","))",
+            "lastError=\(lastErrorMessage ?? "nil")",
+            "openFileCount=\(openFileCount)",
+            "selectedFile=\(selectedFilePath ?? "nil")",
+        ].joined(separator: "\n")
+    }
+}
+
 enum FileServiceError: LocalizedError {
     case connectionUnavailable
     case connectionNotReady
@@ -323,5 +341,15 @@ final class FileBrowserViewModel: ObservableObject {
         }
 
         self.selectedFileId = openFiles[index + 1].id
+    }
+
+    var debugSnapshot: FileBrowserDebugSnapshot {
+        FileBrowserDebugSnapshot(
+            rootPath: rootPath,
+            loadingDirectories: loadingDirectories.sorted(),
+            lastErrorMessage: lastErrorMessage,
+            openFileCount: openFiles.count,
+            selectedFilePath: selectedOpenFile?.path
+        )
     }
 }
