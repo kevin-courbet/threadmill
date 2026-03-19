@@ -37,16 +37,20 @@ final class AXTestClient {
         }
     }
 
+    func waitForSheet(timeout: TimeInterval = 10) throws -> AXUIElement {
+        try wait(timeout: timeout, description: "No sheet found") {
+            sheetElement()
+        }
+    }
+
     func click(identifier: String, timeout: TimeInterval = 10) throws {
         let target = try waitForIdentifier(identifier, timeout: timeout)
-        let result = AXUIElementPerformAction(target, kAXPressAction as CFString)
-        XCTAssertEqual(result, .success, "Failed to click \(identifier): \(result.rawValue)")
+        try clickElement(target, label: identifier)
     }
 
     func clickTitle(_ title: String, timeout: TimeInterval = 10) throws {
         let target = try waitForTitle(title, timeout: timeout)
-        let result = AXUIElementPerformAction(target, kAXPressAction as CFString)
-        XCTAssertEqual(result, .success, "Failed to click title \(title): \(result.rawValue)")
+        try clickElement(target, label: title)
     }
 
     func sendKey(_ key: String, modifiers: [String] = []) {
@@ -209,6 +213,31 @@ final class AXTestClient {
         return searchFirstTextField(element: appElement, visited: &visited)
     }
 
+    private func sheetElement() -> AXUIElement? {
+        var visited = Set<UnsafeRawPointer>()
+        return searchFirstRole(element: appElement, role: kAXSheetRole as String, visited: &visited)
+    }
+
+    private func searchFirstRole(element: AXUIElement, role: String, visited: inout Set<UnsafeRawPointer>) -> AXUIElement? {
+        let pointer = UnsafeRawPointer(Unmanaged.passUnretained(element).toOpaque())
+        guard visited.insert(pointer).inserted else {
+            return nil
+        }
+
+        if let currentRole = attribute(element: element, name: kAXRoleAttribute as CFString) as? String,
+           currentRole == role {
+            return element
+        }
+
+        for child in childElements(of: element) {
+            if let found = searchFirstRole(element: child, role: role, visited: &visited) {
+                return found
+            }
+        }
+
+        return nil
+    }
+
     private func searchFirstTextField(element: AXUIElement, visited: inout Set<UnsafeRawPointer>) -> AXUIElement? {
         let pointer = UnsafeRawPointer(Unmanaged.passUnretained(element).toOpaque())
         guard visited.insert(pointer).inserted else {
@@ -273,6 +302,7 @@ final class AXTestClient {
         let names: [String] = [
             kAXChildrenAttribute as String,
             kAXWindowsAttribute as String,
+            "AXSheets",
             kAXRowsAttribute as String,
             kAXTabsAttribute as String,
             kAXContentsAttribute as String,
@@ -346,6 +376,48 @@ final class AXTestClient {
 }
 
 private extension AXTestClient {
+    func clickElement(_ element: AXUIElement, label: String) throws {
+        if let center = centerPoint(of: element) {
+            let source = CGEventSource(stateID: .combinedSessionState)
+            let move = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: center, mouseButton: .left)
+            let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: center, mouseButton: .left)
+            let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: center, mouseButton: .left)
+            move?.post(tap: .cghidEventTap)
+            down?.post(tap: .cghidEventTap)
+            up?.post(tap: .cghidEventTap)
+            return
+        }
+
+        let result = AXUIElementPerformAction(element, kAXPressAction as CFString)
+        XCTAssertEqual(result, .success, "Failed to click \(label): \(result.rawValue)")
+    }
+
+    func centerPoint(of element: AXUIElement) -> CGPoint? {
+        var positionValue: AnyObject?
+        var sizeValue: AnyObject?
+        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success,
+              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success,
+              let positionAX = positionValue,
+              let sizeAX = sizeValue
+        else {
+            return nil
+        }
+
+        var position = CGPoint.zero
+        var size = CGSize.zero
+        let positionValueRef = unsafeBitCast(positionAX, to: AXValue.self)
+        let sizeValueRef = unsafeBitCast(sizeAX, to: AXValue.self)
+        guard AXValueGetType(positionValueRef) == .cgPoint,
+              AXValueGetValue(positionValueRef, .cgPoint, &position),
+              AXValueGetType(sizeValueRef) == .cgSize,
+              AXValueGetValue(sizeValueRef, .cgSize, &size)
+        else {
+            return nil
+        }
+
+        return CGPoint(x: position.x + size.width / 2, y: position.y + size.height / 2)
+    }
+
     func eventFlags(for modifiers: [String]) -> CGEventFlags {
         modifiers.reduce(into: CGEventFlags()) { flags, modifier in
             switch modifier.lowercased() {

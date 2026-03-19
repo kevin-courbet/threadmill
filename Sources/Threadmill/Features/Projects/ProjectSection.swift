@@ -148,10 +148,10 @@ struct ProjectSection: View {
         .background(isHeaderHovered ? Color.white.opacity(0.05) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         .contentShape(Rectangle())
+        .accessibilityElement(children: .contain)
         .onHover { isHovered in
             isHeaderHovered = isHovered
         }
-        .accessibilityIdentifier("project.section.row.\(project.id)")
         .contextMenu {
             Button("New Thread") {
                 onNewThread(project)

@@ -157,10 +157,10 @@ struct RepoSection: View {
         .background(isHeaderHovered ? Color.white.opacity(0.05) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         .contentShape(Rectangle())
+        .accessibilityElement(children: .contain)
         .onHover { isHovered in
             isHeaderHovered = isHovered
         }
-        .accessibilityIdentifier("repo.section.row.\(repo.id)")
         .contextMenu {
             Button("New Thread") {
                 onNewThread(repo)

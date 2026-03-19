@@ -22,16 +22,26 @@ struct ThreadDetailView: View {
     var body: some View {
         if let thread = appState.selectedThread {
             VStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    modePicker
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
+                        .padding(.bottom, showsModeSessionTabs ? 8 : 10)
+
+                    if showsModeSessionTabs {
+                        modeSessionTabs(thread: thread)
+                            .padding(.horizontal, 8)
+                            .padding(.bottom, 8)
+                    }
+                }
+                .background(Color(nsColor: .windowBackgroundColor))
+
                 if thread.status == .active { activeModeContent(thread: thread) } else { InactiveThreadView(thread: thread) }
             }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("thread.detail.root")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .toolbar {
-                    ToolbarItem(placement: .navigation) { modePicker }
-                    if showsModeSessionTabs {
-                        ToolbarItem(placement: .navigation) {
-                            modeSessionTabs(thread: thread)
-                        }
-                    }
                     ToolbarItem(placement: .automatic) {
                         Spacer()
                     }

@@ -395,6 +395,46 @@ final class ThreadmillUITests: XCTestCase {
         }
     }
 
+    func testRealAddRepositoryButtonPresentsSheet() throws {
+        try requireUIE2EEnabledAndTrusted()
+
+        let mockServer = MockSpindleServer()
+        try mockServer.start()
+        defer { mockServer.stop() }
+
+        let appPath = try locateThreadmillExecutable()
+        let dbRoot = URL(fileURLWithPath: "/tmp/threadmill-ui-tests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dbRoot, withIntermediateDirectories: true)
+        let dbPath = dbRoot.appendingPathComponent("threadmill.db").path
+        try seedDatabase(dbPath: dbPath, port: mockServer.port, repos: [])
+        defer { try? FileManager.default.removeItem(at: dbRoot) }
+
+        let appProcess = Process()
+        appProcess.executableURL = appPath
+        appProcess.currentDirectoryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        appProcess.environment = launchEnvironment(port: mockServer.port, dbPath: dbPath)
+        try appProcess.run()
+        defer {
+            if appProcess.isRunning {
+                appProcess.terminate()
+                appProcess.waitUntilExit()
+            }
+        }
+
+        NSRunningApplication(processIdentifier: appProcess.processIdentifier)?.activate(options: [])
+        let ax = AXTestClient(pid: appProcess.processIdentifier)
+        _ = try waitForDebugArtifact(
+            named: "app",
+            timeout: 20,
+            description: "app debug artifact did not reach connected state"
+        ) { artifact in
+            artifact.localizedCaseInsensitiveContains("\"status\" : \"connected\"") ? artifact : nil
+        }
+
+        try ax.click(identifier: "sidebar.add-repository-button", timeout: 20)
+        _ = try ax.waitForSheet(timeout: 10)
+    }
+
     private func launchEnvironment(port: UInt16, dbPath: String) -> [String: String] {
         var environment = ProcessInfo.processInfo.environment
         environment["THREADMILL_DISABLE_SSH_TUNNEL"] = "1"

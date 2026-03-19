@@ -130,6 +130,7 @@ final class AXDriver {
         let names: [String] = [
             kAXChildrenAttribute as String,
             kAXWindowsAttribute as String,
+            "AXSheets",
             kAXRowsAttribute as String,
             kAXTabsAttribute as String,
             kAXContentsAttribute as String,

@@ -385,6 +385,7 @@ final class MockSpindleServer {
                         "disk_total_gb": 100,
                         "uptime_seconds": 1234,
                         "opencode_running": true,
+                        "opencode_instances": 1,
                     ]
                 ),
                 []
