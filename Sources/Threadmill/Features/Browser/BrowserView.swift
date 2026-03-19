@@ -85,17 +85,8 @@ struct BrowserView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .overlay(alignment: .bottomLeading) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(manager.debugSummary)
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .textSelection(.enabled)
-                    .accessibilityIdentifier("automation.browser-debug")
-                Text(debugJSONString(manager.debugSnapshot))
-                    .accessibilityIdentifier("automation.browser-debug.json")
-            }
-            .padding(8)
+        .overlay {
+            DebugSnapshotWriter(name: "browser", value: manager.debugSnapshot)
         }
         .onAppear {
             if manager.sessions.isEmpty {

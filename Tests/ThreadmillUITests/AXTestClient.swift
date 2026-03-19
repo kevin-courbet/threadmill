@@ -49,6 +49,22 @@ final class AXTestClient {
         XCTAssertEqual(result, .success, "Failed to click title \(title): \(result.rawValue)")
     }
 
+    func sendKey(_ key: String, modifiers: [String] = []) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        guard let keyCode = keyCode(for: key) else {
+            XCTFail("Unsupported key: \(key)")
+            return
+        }
+
+        let flags = eventFlags(for: modifiers)
+        let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+        down?.flags = flags
+        up?.flags = flags
+        down?.post(tap: .cghidEventTap)
+        up?.post(tap: .cghidEventTap)
+    }
+
     func setText(_ value: String, identifier: String, timeout: TimeInterval = 10) throws {
         let target = try waitForIdentifier(identifier, timeout: timeout)
         _ = AXUIElementSetAttributeValue(target, kAXFocusedAttribute as CFString, kCFBooleanTrue)
@@ -325,6 +341,32 @@ final class AXTestClient {
 
         for child in childElements(of: element) {
             dump(element: child, depth: depth + 1, visited: &visited, lines: &lines, limit: limit)
+        }
+    }
+}
+
+private extension AXTestClient {
+    func eventFlags(for modifiers: [String]) -> CGEventFlags {
+        modifiers.reduce(into: CGEventFlags()) { flags, modifier in
+            switch modifier.lowercased() {
+            case "cmd", "command": flags.insert(.maskCommand)
+            case "shift": flags.insert(.maskShift)
+            case "ctrl", "control": flags.insert(.maskControl)
+            case "option", "alt": flags.insert(.maskAlternate)
+            default: break
+            }
+        }
+    }
+
+    func keyCode(for key: String) -> CGKeyCode? {
+        switch key.lowercased() {
+        case "t": return 17
+        case "1": return 18
+        case "2": return 19
+        case "3": return 20
+        case "4": return 21
+        case "tab": return 48
+        default: return nil
         }
     }
 }

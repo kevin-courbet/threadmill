@@ -5,10 +5,6 @@ struct SidebarView: View {
     @Binding var showingAddRepoSheet: Bool
     @State private var newThreadTarget: NewThreadTarget?
 
-    private var isUITestMode: Bool {
-        ProcessInfo.processInfo.environment["THREADMILL_UI_TEST_MODE"] == "1"
-    }
-
     private var sidebarBackground: Color {
         Color(red: 0.06, green: 0.07, blue: 0.09)
     }
@@ -115,41 +111,6 @@ struct SidebarView: View {
             .padding(.vertical, 10)
             .background(Color.white.opacity(0.02))
 
-            if isUITestMode {
-                VStack(spacing: 2) {
-                    // Sidebar-level connection status for e2e tests (detail toolbar
-                    // is invisible until NavigationSplitView renders the detail pane).
-                    Text("Connection: \(appState.connectionStatus.label)")
-                        .font(.caption2)
-                        .accessibilityIdentifier("connection.status")
-                        .accessibilityValue(appState.connectionStatus.label)
-
-                    Button("Automation Add Project") {
-                        showingAddRepoSheet = true
-                    }
-                    .accessibilityIdentifier("automation.open-add-project")
-                    .accessibilityLabel("Automation Open Add Project")
-
-                    Button("Automation New Thread") {
-                        if let repo = appState.defaultWorkspaceRepo ?? appState.repos.first {
-                            newThreadTarget = .repo(repo)
-                        }
-                    }
-                    .accessibilityIdentifier("automation.open-new-thread")
-                    .accessibilityLabel("Automation Open New Thread")
-
-                    ForEach(appState.threads) { thread in
-                        Button("Automation Select \(thread.id)") {
-                            bindableState.selectedThreadID = thread.id
-                        }
-                        .accessibilityIdentifier("automation.select-thread.\(thread.id)")
-                        .accessibilityLabel("Automation Select \(thread.id)")
-                    }
-                }
-                .font(.caption2)
-                .padding(.horizontal, 8)
-                .padding(.bottom, 6)
-            }
         }
         .background(sidebarBackground)
         .sheet(

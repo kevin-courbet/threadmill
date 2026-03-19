@@ -58,7 +58,7 @@ final class ThreadDetailViewSourceTests: XCTestCase {
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertTrue(source.contains(".toolbar {"))
-        XCTAssertTrue(source.contains("ToolbarItem(placement: .navigation)"))
+        XCTAssertTrue(source.contains("ToolbarItem(placement: .automatic)"))
         XCTAssertFalse(source.contains("private var toolbarRow: some View"))
     }
 
@@ -88,6 +88,17 @@ final class ThreadDetailViewSourceTests: XCTestCase {
         XCTAssertFalse(source.contains(".toolbar {}"))
     }
 
+    func testContentViewExposesGlobalAutomationSwitchers() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Views/ContentView.swift")
+        let source = try String(contentsOf: sourcePath, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("DebugSnapshotWriter(name: \"app\""))
+    }
+
     func testTerminalModeContentShowsDebugSummaryWhileConnecting() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -96,9 +107,8 @@ final class ThreadDetailViewSourceTests: XCTestCase {
         let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/TerminalModeContent.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("terminal.debug.summary."))
+        XCTAssertTrue(source.contains("DebugSnapshotWriter(name: \"terminal-\\(preset)\""))
         XCTAssertTrue(source.contains("appState.terminalDebugSnapshot(for: preset)"))
-        XCTAssertTrue(source.contains(".textSelection(.enabled)"))
     }
 
     func testThreadDetailViewExposesAppAndLocalDebugSummaryForAutomation() throws {
@@ -109,24 +119,21 @@ final class ThreadDetailViewSourceTests: XCTestCase {
         let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("automation.thread-detail-debug"))
-        XCTAssertTrue(source.contains("automation.thread-detail-debug.json"))
-        XCTAssertTrue(source.contains("appState.debugSnapshot().summary"))
-        XCTAssertTrue(source.contains(".opacity(0.001)"))
-        XCTAssertTrue(source.contains("selectedTab="))
+        XCTAssertTrue(source.contains("DebugSnapshotWriter(name: \"thread-detail\""))
     }
 
-    func testAutomationControlsExposeJSONDebugSurfaces() throws {
+    func testThreadDetailUsesRealModeTabAccessibilityIdentifiers() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/AutomationControlsView.swift")
+        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("automation.app-debug.json"))
-        XCTAssertTrue(source.contains("automation.terminal-debug-json."))
-        XCTAssertTrue(source.contains("debugJSONString(appState.debugSnapshot())"))
+        XCTAssertTrue(source.contains("Picker(\"Mode\", selection: $selectedTab)"))
+        XCTAssertTrue(source.contains(".pickerStyle(.segmented)"))
+        XCTAssertTrue(source.contains(".accessibilityRepresentation"))
+        XCTAssertTrue(source.contains("mode.tab.\\(tab.id)"))
     }
 
     func testFileBrowserViewExposesDebugSummaryForAutomation() throws {
@@ -137,10 +144,8 @@ final class ThreadDetailViewSourceTests: XCTestCase {
         let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Files/FileBrowserView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("automation.file-browser-debug"))
-        XCTAssertTrue(source.contains("automation.file-browser-debug.json"))
+        XCTAssertTrue(source.contains("DebugSnapshotWriter(name: \"file-browser\""))
         XCTAssertTrue(source.contains("viewModel.debugSnapshot"))
-        XCTAssertTrue(source.contains("snapshot.summary"))
     }
 
     func testChatViewExposesDebugSummaryForAutomation() throws {
@@ -151,10 +156,8 @@ final class ThreadDetailViewSourceTests: XCTestCase {
         let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Chat/ChatView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("automation.chat-debug"))
-        XCTAssertTrue(source.contains("automation.chat-debug.json"))
-        XCTAssertTrue(source.contains("viewModel.debugSnapshot.summary"))
-        XCTAssertTrue(source.contains("selectedConversationID="))
+        XCTAssertTrue(source.contains("DebugSnapshotWriter(name: \"chat\""))
+        XCTAssertTrue(source.contains("viewModel.debugSnapshot"))
     }
 
     func testBrowserViewExposesDebugSummaryForAutomation() throws {
@@ -165,9 +168,7 @@ final class ThreadDetailViewSourceTests: XCTestCase {
         let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Browser/BrowserView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("automation.browser-debug"))
-        XCTAssertTrue(source.contains("automation.browser-debug.json"))
-        XCTAssertTrue(source.contains("manager.debugSummary"))
-        XCTAssertTrue(source.contains(".textSelection(.enabled)"))
+        XCTAssertTrue(source.contains("DebugSnapshotWriter(name: \"browser\""))
+        XCTAssertTrue(source.contains("manager.debugSnapshot"))
     }
 }

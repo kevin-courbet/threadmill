@@ -220,11 +220,14 @@ private struct SessionTabButton<Content: View>: View {
             )
             .contentShape(Capsule())
             .onTapGesture(perform: action)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction(.default, action)
-            .onHover { hovering in
-                isHovering = hovering
+            .accessibilityRepresentation {
+                Button(action: action) {
+                    EmptyView()
+                }
             }
+        .onHover { hovering in
+            isHovering = hovering
+        }
     }
 }
 

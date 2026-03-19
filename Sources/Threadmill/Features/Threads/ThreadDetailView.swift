@@ -14,19 +14,9 @@ struct ThreadDetailView: View {
     @State private var chatReloadToken = 0
     private let chatHarnesses = ChatHarness.allCases
     @State private var tabStateManager = ThreadTabStateManager()
-    private var isUITestMode: Bool { ProcessInfo.processInfo.environment["THREADMILL_UI_TEST_MODE"] == "1" }
     private var isMockTerminalEnabled: Bool {
         let value = ProcessInfo.processInfo.environment["THREADMILL_USE_MOCK_TERMINAL"]?.lowercased() ?? ""
         return value == "1" || value == "true" || value == "yes"
-    }
-    private var detailDebugSummary: String {
-        [
-            appState.debugSnapshot().summary,
-            "selectedTab=\(selectedTab)",
-            "selectedTerminalSessionID=\(selectedTerminalSessionID ?? "nil")",
-            "terminalSessionIDs=\(terminalSessionIDs.joined(separator: ","))",
-            "selectedChatConversationID=\(selectedChatConversationID ?? "nil")",
-        ].joined(separator: "\n")
     }
 
     var body: some View {
@@ -53,38 +43,8 @@ struct ThreadDetailView: View {
                     }
                 }
                 .overlay(alignment: .bottomLeading) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(detailDebugSummary)
-                            .accessibilityIdentifier("automation.thread-detail-debug")
-                        Text(debugJSONString(appState.debugSnapshot()))
-                            .accessibilityIdentifier("automation.thread-detail-debug.json")
-                    }
-                    .opacity(0.001)
-
-                    if isUITestMode {
-                        AutomationControlsView(
-                            thread: thread,
-                            selectedTab: $selectedTab,
-                            terminalSessionIDs: $terminalSessionIDs,
-                            selectedTerminalSessionID: $selectedTerminalSessionID,
-                            chatConversations: chatConversations,
-                            selectedChatConversationID: $selectedChatConversationID,
-                            onAttachSelectedTerminalIfNeeded: {
-                                TerminalModeActions.attachSelectedTerminalIfNeeded(appState: appState, selectedTerminalSessionID: selectedTerminalSessionID)
-                            },
-                            onArchiveChatConversation: { conversationID in
-                                ChatModeActions.archiveChatConversations(
-                                    [conversationID],
-                                    appState: appState,
-                                    chatConversations: { chatConversations },
-                                    selectedChatConversationIDBinding: $selectedChatConversationID,
-                                    chatReloadToken: $chatReloadToken,
-                                    tabStateManager: tabStateManager
-                                )
-                            }
-                        )
-                        .padding(8)
-                    }
+                    DebugSnapshotWriter(name: "thread-detail", value: appState.debugSnapshot())
+                    DebugSnapshotWriter(name: "thread-detail-ui", value: detailDebugSnapshot)
                 }
                 .background { ThreadModeKeyboardShortcuts(selectedTab: $selectedTab, visibleModeIDs: visibleModeIDs) }
                 .task(id: thread.id) { await restoreThreadState(thread) }
@@ -129,13 +89,34 @@ struct ThreadDetailView: View {
         )
     }
 
+    private var detailDebugSnapshot: ThreadDetailDebugSnapshot {
+        ThreadDetailDebugSnapshot(
+            selectedTab: selectedTab,
+            selectedTerminalSessionID: selectedTerminalSessionID,
+            terminalSessionIDs: terminalSessionIDs,
+            selectedChatConversationID: selectedChatConversationID
+        )
+    }
+
     private var modePicker: some View {
         Picker("Mode", selection: $selectedTab) {
             ForEach(visibleModeTabs) { tab in
-                Label(LocalizedStringKey(tab.localizedKey), systemImage: tab.icon).tag(tab.id)
+                Label(LocalizedStringKey(tab.localizedKey), systemImage: tab.icon)
+                    .tag(tab.id)
             }
         }
         .pickerStyle(.segmented)
+        .accessibilityRepresentation {
+            HStack(spacing: 8) {
+                ForEach(visibleModeTabs) { tab in
+                    Button(tab.localizedKey) {
+                        selectedTab = tab.id
+                    }
+                    .accessibilityIdentifier("mode.tab.\(tab.id)")
+                    .accessibilityAddTraits(selectedTab == tab.id ? .isSelected : [])
+                }
+            }
+        }
         .animation(.easeInOut(duration: 0.2), value: selectedTab)
     }
 

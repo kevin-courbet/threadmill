@@ -97,4 +97,28 @@ final class ThreadSessionTabsProviderSourceTests: XCTestCase {
 
         XCTAssertTrue(provider.isAddDisabled)
     }
+
+    func testTerminalTabsExposeRealAddButtonIdentifier() {
+        let provider = ThreadSessionTabsProvider(
+            selectedTab: TabItem.terminal.id,
+            chatConversations: [],
+            selectedChatConversationID: nil,
+            terminalSessionIDs: [],
+            selectedTerminalSessionID: nil,
+            presets: [Preset(name: "terminal")],
+            chatHarnesses: ChatHarness.allCases,
+            chatTitle: { _, _, _ in "" },
+            onSelectChatConversation: { _ in },
+            onSelectTerminalSession: { _ in },
+            onArchiveChatConversations: { _ in },
+            onCloseTerminalSessions: { _ in },
+            onCreateChatConversation: { _ in },
+            onAddDefaultTerminalSession: {},
+            onAddTerminalSession: { _ in },
+            isAddDefaultEnabled: true
+        )
+
+        XCTAssertEqual(provider.addButtonAccessibilityID, "terminal.session.add")
+        XCTAssertFalse(provider.isAddDisabled)
+    }
 }

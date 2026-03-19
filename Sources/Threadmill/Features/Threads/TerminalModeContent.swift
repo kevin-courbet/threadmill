@@ -72,20 +72,13 @@ struct TerminalModeContent: View {
                 Text(appState.connectionStatus == .disconnected ? "Disconnected" : "Starting terminal...")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if let snapshot = appState.terminalDebugSnapshot(for: preset) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(snapshot.summary)
-                            .font(.system(size: 11, weight: .regular, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                            .frame(maxWidth: 360, alignment: .leading)
-                            .textSelection(.enabled)
-                            .accessibilityIdentifier("terminal.debug.summary.\(preset)")
-                        Text(debugJSONString(snapshot))
-                            .accessibilityIdentifier("terminal.debug.json.\(preset)")
-                    }
-                }
             }
             .accessibilityIdentifier("terminal.connecting")
+            .overlay {
+                if let snapshot = appState.terminalDebugSnapshot(for: preset) {
+                    DebugSnapshotWriter(name: "terminal-\(preset)", value: snapshot)
+                }
+            }
         }
     }
 

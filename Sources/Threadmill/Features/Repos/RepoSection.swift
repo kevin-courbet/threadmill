@@ -44,6 +44,10 @@ struct RepoSection: View {
                             .listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
                             .listRowBackground(Color.clear)
+                            .tag(thread.id)
+                            .accessibilityIdentifier("thread.row.\(thread.id)")
+                            .accessibilityLabel("Open thread \(thread.name)")
+                            .accessibilityValue(thread.branch)
                     }
                 }
             }
@@ -146,6 +150,7 @@ struct RepoSection: View {
                     .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("repo.section.disclosure.\(repo.id)")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -155,7 +160,7 @@ struct RepoSection: View {
         .onHover { isHovered in
             isHeaderHovered = isHovered
         }
-        .accessibilityIdentifier("repo.section.toggle.\(repo.id)")
+        .accessibilityIdentifier("repo.section.row.\(repo.id)")
         .contextMenu {
             Button("New Thread") {
                 onNewThread(repo)
@@ -191,12 +196,9 @@ struct RepoSection: View {
             .padding(.vertical, 5)
             .padding(.horizontal, 10)
             .padding(.leading, 24)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .onTapGesture {
-                selectedThreadID = thread.id
-            }
-            .tag(thread.id)
-            .accessibilityIdentifier("thread.row.\(thread.id)")
+            .accessibilityElement(children: .combine)
             .background(isSelected ? Color.white.opacity(0.1) : .clear)
             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             .contextMenu {

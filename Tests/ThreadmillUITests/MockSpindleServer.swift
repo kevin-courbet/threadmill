@@ -133,6 +133,40 @@ final class MockSpindleServer {
 
     private(set) var port: UInt16 = 0
 
+    func useTerminalFixture(projectID: String = "project-terminal", threadID: String = "thread-terminal") {
+        queue.sync {
+            projects = [
+                MockProject(
+                    id: projectID,
+                    name: "factorio",
+                    path: "/home/wsl/dev/factorio",
+                    defaultBranch: "main",
+                    presets: [
+                        MockPreset(name: "terminal", command: "bash", cwd: nil),
+                        MockPreset(name: "dev-server", command: "bun run dev", cwd: nil),
+                    ]
+                ),
+            ]
+            threads = [
+                MockThread(
+                    id: threadID,
+                    projectID: projectID,
+                    name: "gg",
+                    branch: "gg",
+                    worktreePath: "/home/wsl/dev/.threadmill/factorio/gg",
+                    status: "active",
+                    sourceType: "new_feature",
+                    createdAt: Date(timeIntervalSince1970: 1),
+                    tmuxSession: "tm_factorio_gg"
+                ),
+            ]
+            attachments.removeAll()
+            requestLog.removeAll()
+            stateVersion += 1
+            nextChannelID = 10
+        }
+    }
+
     func requestCount(method: String) -> Int {
         queue.sync {
             requestLog.filter { $0.method == method }.count
@@ -315,8 +349,46 @@ final class MockSpindleServer {
         case "ping":
             return (ok(id: id, result: "pong"), [])
 
+        case "session.hello":
+            return (
+                ok(
+                    id: id,
+                    result: [
+                        "session_id": "mock-session",
+                        "state_version": stateVersion,
+                        "protocol_version": "2026-03-17",
+                        "capabilities": [
+                            "state.delta.operations.v1",
+                            "preset.output.v1",
+                            "rpc.errors.structured.v1",
+                        ],
+                    ]
+                ),
+                []
+            )
+
         case "state.snapshot":
             return (ok(id: id, result: stateSnapshotPayload()), [])
+
+        case "system.stats":
+            return (
+                ok(
+                    id: id,
+                    result: [
+                        "cpu_percent": 12,
+                        "load_avg_1m": 0.12,
+                        "load_avg_5m": 0.08,
+                        "load_avg_15m": 0.05,
+                        "memory_used_mb": 512,
+                        "memory_total_mb": 2048,
+                        "disk_used_gb": 10,
+                        "disk_total_gb": 100,
+                        "uptime_seconds": 1234,
+                        "opencode_running": true,
+                    ]
+                ),
+                []
+            )
 
         case "project.list":
             return (ok(id: id, result: projects.map(projectPayload)), [])

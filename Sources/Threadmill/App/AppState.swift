@@ -96,6 +96,22 @@ struct AppStateDebugSnapshot: Codable, Equatable {
     }
 }
 
+struct ThreadDetailDebugSnapshot: Codable, Equatable {
+    let selectedTab: String
+    let selectedTerminalSessionID: String?
+    let terminalSessionIDs: [String]
+    let selectedChatConversationID: String?
+
+    var summary: String {
+        [
+            "selectedTab=\(selectedTab)",
+            "selectedTerminalSessionID=\(selectedTerminalSessionID ?? "nil")",
+            "terminalSessionIDs=\(terminalSessionIDs.joined(separator: ","))",
+            "selectedChatConversationID=\(selectedChatConversationID ?? "nil")",
+        ].joined(separator: "\n")
+    }
+}
+
 @MainActor
 @Observable
 final class AppState {
