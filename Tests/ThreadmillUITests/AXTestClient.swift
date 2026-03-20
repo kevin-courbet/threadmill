@@ -3,9 +3,11 @@ import Foundation
 import XCTest
 
 final class AXTestClient {
+    private let pid: pid_t
     private let appElement: AXUIElement
 
     init(pid: pid_t) {
+        self.pid = pid
         appElement = AXUIElementCreateApplication(pid)
     }
 
@@ -54,6 +56,10 @@ final class AXTestClient {
     }
 
     func sendKey(_ key: String, modifiers: [String] = []) {
+        // Activate the app first so keystrokes go to it, not whatever else is focused
+        NSRunningApplication(processIdentifier: pid)?.activate()
+        Thread.sleep(forTimeInterval: 0.2)
+
         let source = CGEventSource(stateID: .combinedSessionState)
         guard let keyCode = keyCode(for: key) else {
             XCTFail("Unsupported key: \(key)")
@@ -65,8 +71,9 @@ final class AXTestClient {
         let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
         down?.flags = flags
         up?.flags = flags
-        down?.post(tap: .cghidEventTap)
-        up?.post(tap: .cghidEventTap)
+        // Post to the specific process, not the global event tap
+        down?.postToPid(pid)
+        up?.postToPid(pid)
     }
 
     func setText(_ value: String, identifier: String, timeout: TimeInterval = 10) throws {
@@ -377,14 +384,18 @@ final class AXTestClient {
 
 private extension AXTestClient {
     func clickElement(_ element: AXUIElement, label: String) throws {
+        // Activate the app first so clicks go to the right process
+        NSRunningApplication(processIdentifier: pid)?.activate()
+        Thread.sleep(forTimeInterval: 0.1)
+
         if let center = centerPoint(of: element) {
             let source = CGEventSource(stateID: .combinedSessionState)
             let move = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: center, mouseButton: .left)
             let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: center, mouseButton: .left)
             let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: center, mouseButton: .left)
-            move?.post(tap: .cghidEventTap)
-            down?.post(tap: .cghidEventTap)
-            up?.post(tap: .cghidEventTap)
+            move?.postToPid(pid)
+            down?.postToPid(pid)
+            up?.postToPid(pid)
             return
         }
 
