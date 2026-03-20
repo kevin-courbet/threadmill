@@ -53,9 +53,6 @@ struct FileBrowserView: View {
         .task {
             await viewModel.loadInitialDirectoryIfNeeded()
         }
-        .overlay {
-            DebugSnapshotWriter(name: "file-browser", value: viewModel.debugSnapshot)
-        }
         .onChange(of: connectionStatus) { _, newStatus in
             if newStatus.isConnected {
                 Task {

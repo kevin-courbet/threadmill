@@ -127,9 +127,6 @@ struct ChatView: View {
                 await applySelectedConversationIfNeeded()
             }
         }
-        .overlay {
-            DebugSnapshotWriter(name: "chat", value: viewModel.debugSnapshot)
-        }
     }
 
     private func publishConversationState() {

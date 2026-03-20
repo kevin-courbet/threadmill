@@ -85,9 +85,6 @@ struct BrowserView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .overlay {
-            DebugSnapshotWriter(name: "browser", value: manager.debugSnapshot)
-        }
         .onAppear {
             if manager.sessions.isEmpty {
                 manager.createSession()

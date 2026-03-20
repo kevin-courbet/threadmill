@@ -12,10 +12,6 @@ let package = Package(
             targets: ["Threadmill"]
         ),
         .executable(
-            name: "threadmill-driver",
-            targets: ["threadmill-driver"]
-        ),
-        .executable(
             name: "threadmill-relay",
             targets: ["threadmill-relay"]
         )
@@ -33,15 +29,6 @@ let package = Package(
         .executableTarget(
             name: "threadmill-relay",
             path: "Sources/threadmill-relay"
-        ),
-        .executableTarget(
-            name: "threadmill-driver",
-            path: "Sources/threadmill-driver",
-            linkerSettings: [
-                .linkedFramework("ApplicationServices"),
-                .linkedFramework("AppKit"),
-                .linkedFramework("Foundation"),
-            ]
         ),
         .executableTarget(
             name: "Threadmill",

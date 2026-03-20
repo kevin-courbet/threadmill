@@ -14,7 +14,6 @@ final class WindowAndSessionTabStylingSourceTests: XCTestCase {
 
         XCTAssertTrue(source.contains("Label(LocalizedStringKey(tab.localizedKey), systemImage: tab.icon)"))
         XCTAssertTrue(source.contains(".pickerStyle(.segmented)"))
-        XCTAssertTrue(source.contains("padding(.top, 10)"))
     }
 
     func testTabItemUsesAizenIconAssignments() throws {

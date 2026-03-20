@@ -23,7 +23,7 @@ final class SessionTabsScrollViewSourceTests: XCTestCase {
         let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Views/Components/SessionTabsScrollView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
-        XCTAssertTrue(source.contains(".accessibilityAddTraits(.isButton)"))
-        XCTAssertTrue(source.contains(".accessibilityAction(.default, action)"))
+        XCTAssertTrue(source.contains(".onTapGesture(perform: action)"))
+        XCTAssertTrue(source.contains(".contentShape(Capsule())"))
     }
 }

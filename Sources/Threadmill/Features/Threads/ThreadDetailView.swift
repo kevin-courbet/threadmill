@@ -22,26 +22,20 @@ struct ThreadDetailView: View {
     var body: some View {
         if let thread = appState.selectedThread {
             VStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    modePicker
-                        .padding(.horizontal, 12)
-                        .padding(.top, 10)
-                        .padding(.bottom, showsModeSessionTabs ? 8 : 10)
-
-                    if showsModeSessionTabs {
-                        modeSessionTabs(thread: thread)
-                            .padding(.horizontal, 8)
-                            .padding(.bottom, 8)
-                    }
-                }
-                .background(Color(nsColor: .windowBackgroundColor))
-
                 if thread.status == .active { activeModeContent(thread: thread) } else { InactiveThreadView(thread: thread) }
             }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("thread.detail.root")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .toolbar {
+                    ToolbarItem(placement: .automatic) {
+                        modePicker
+                    }
+                    if showsModeSessionTabs {
+                        ToolbarItem(placement: .automatic) {
+                            modeSessionTabs(thread: thread)
+                        }
+                    }
                     ToolbarItem(placement: .automatic) {
                         Spacer()
                     }
@@ -52,10 +46,7 @@ struct ThreadDetailView: View {
                         SystemStatsBar(status: appState.connectionStatus)
                     }
                 }
-                .overlay(alignment: .bottomLeading) {
-                    DebugSnapshotWriter(name: "thread-detail", value: appState.debugSnapshot())
-                    DebugSnapshotWriter(name: "thread-detail-ui", value: detailDebugSnapshot)
-                }
+
                 .background { ThreadModeKeyboardShortcuts(selectedTab: $selectedTab, visibleModeIDs: visibleModeIDs) }
                 .task(id: thread.id) { await restoreThreadState(thread) }
                 .onChange(of: selectedTab) { _, nextModeID in
@@ -99,14 +90,6 @@ struct ThreadDetailView: View {
         )
     }
 
-    private var detailDebugSnapshot: ThreadDetailDebugSnapshot {
-        ThreadDetailDebugSnapshot(
-            selectedTab: selectedTab,
-            selectedTerminalSessionID: selectedTerminalSessionID,
-            terminalSessionIDs: terminalSessionIDs,
-            selectedChatConversationID: selectedChatConversationID
-        )
-    }
 
     private var modePicker: some View {
         Picker("Mode", selection: $selectedTab) {
@@ -116,17 +99,6 @@ struct ThreadDetailView: View {
             }
         }
         .pickerStyle(.segmented)
-        .accessibilityRepresentation {
-            HStack(spacing: 8) {
-                ForEach(visibleModeTabs) { tab in
-                    Button(tab.localizedKey) {
-                        selectedTab = tab.id
-                    }
-                    .accessibilityIdentifier("mode.tab.\(tab.id)")
-                    .accessibilityAddTraits(selectedTab == tab.id ? .isSelected : [])
-                }
-            }
-        }
         .animation(.easeInOut(duration: 0.2), value: selectedTab)
     }
 

@@ -36,9 +36,6 @@ struct ContentView: View {
         } message: {
             Text(appState.alertMessage ?? "")
         }
-        .overlay {
-            DebugSnapshotWriter(name: "app", value: appState.debugSnapshot())
-        }
         .background { keyboardShortcuts }
     }
 

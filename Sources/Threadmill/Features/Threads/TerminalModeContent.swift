@@ -74,11 +74,6 @@ struct TerminalModeContent: View {
                     .foregroundStyle(.secondary)
             }
             .accessibilityIdentifier("terminal.connecting")
-            .overlay {
-                if let snapshot = appState.terminalDebugSnapshot(for: preset) {
-                    DebugSnapshotWriter(name: "terminal-\(preset)", value: snapshot)
-                }
-            }
         }
     }
 
