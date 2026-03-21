@@ -523,7 +523,7 @@ final class DatabaseManager {
                 try db.execute(
                     sql: """
                     INSERT INTO chatConversation (id, threadID, agentSessionID, agentType, title, createdAt, updatedAt, isArchived)
-                    SELECT id, threadID, opencodeSessionID, 'opencode', title, createdAt, updatedAt, isArchived
+                    SELECT id, threadID, NULL, 'opencode', title, createdAt, updatedAt, isArchived
                     FROM chatConversation_old
                     """
                 )

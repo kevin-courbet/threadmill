@@ -278,15 +278,15 @@ final class MockChatConversationService: ChatConversationManaging {
     var updateTitleResult: Result<Void, Error> = .success(())
     var verifySessionResult: Result<Bool, Error> = .success(true)
 
-    private(set) var createdConversations: [(threadID: String, directory: String)] = []
+    private(set) var createdConversations: [(threadID: String, directory: String, agentType: String)] = []
     private(set) var listedThreadIDs: [String] = []
     private(set) var activeThreadIDs: [String] = []
     private(set) var archivedConversationIDs: [String] = []
     private(set) var updatedTitles: [(id: String, title: String)] = []
     private(set) var verifiedConversationIDs: [String] = []
 
-    func createConversation(threadID: String, directory: String) async throws -> ChatConversation {
-        createdConversations.append((threadID, directory))
+    func createConversation(threadID: String, directory: String, agentType: String) async throws -> ChatConversation {
+        createdConversations.append((threadID, directory, agentType))
         return try createConversationResult.get()
     }
 

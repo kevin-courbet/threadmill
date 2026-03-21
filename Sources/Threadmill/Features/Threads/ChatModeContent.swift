@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChatModeContent: View {
     @Environment(AppState.self) private var appState
+    @State private var viewModelCache = ChatSessionViewModelCache()
 
     let thread: ThreadModel
     let chatHarnesses: [ChatHarness]
@@ -12,6 +13,22 @@ struct ChatModeContent: View {
 
     var body: some View {
         if let chatConversationService = appState.chatConversationService {
+            let selectedConversation = selectedConversation
+            let selectedProjectAgents = appState.selectedProject?.agents ?? []
+            let viewModel = viewModelCache.resolve(
+                conversationID: selectedConversation?.id,
+                create: {
+                    ChatSessionViewModel(
+                        agentSessionManager: appState.agentSessionManager,
+                        sessionID: selectedConversation?.agentSessionID,
+                        threadID: thread.id,
+                        availableModes: [],
+                        selectedAgentName: selectedConversation?.agentType ?? selectedProjectAgents.first?.name ?? "opencode",
+                        availableAgents: selectedProjectAgents
+                    )
+                }
+            )
+
             ChatSessionView(viewModel: viewModel)
                 .task(id: reloadToken) {
                     await refreshConversationState(with: chatConversationService)
@@ -30,22 +47,12 @@ struct ChatModeContent: View {
         }
     }
 
-    private var viewModel: ChatSessionViewModel {
-        let selectedConversation = selectedConversationID.flatMap { conversationID in
+    private var selectedConversation: ChatConversation? {
+        selectedConversationID.flatMap { conversationID in
             appState.chatConversationService.flatMap { _ in
                 try? appState.databaseManager?.conversation(id: conversationID)
             }
         }
-        let selectedProjectAgents = appState.selectedProject?.agents ?? []
-
-        return ChatSessionViewModel(
-            agentSessionManager: appState.agentSessionManager,
-            sessionID: selectedConversation?.agentSessionID,
-            threadID: thread.id,
-            availableModes: [],
-            selectedAgentName: selectedConversation?.agentType ?? selectedProjectAgents.first?.name ?? "opencode",
-            availableAgents: selectedProjectAgents
-        )
     }
 
     private func refreshConversationState(with service: any ChatConversationManaging) async {
@@ -62,6 +69,26 @@ struct ChatModeContent: View {
         } catch {
             onConversationStateChange([], nil)
         }
+    }
+}
+
+@MainActor
+final class ChatSessionViewModelCache {
+    private var cachedConversationID: String?
+    private var cachedViewModel: ChatSessionViewModel?
+
+    func resolve(
+        conversationID: String?,
+        create: () -> ChatSessionViewModel
+    ) -> ChatSessionViewModel {
+        if let cachedViewModel, cachedConversationID == conversationID {
+            return cachedViewModel
+        }
+
+        let viewModel = create()
+        cachedConversationID = conversationID
+        cachedViewModel = viewModel
+        return viewModel
     }
 }
 
@@ -131,13 +158,15 @@ enum ChatModeActions {
         Task {
             do {
                 let selectedHarness = harness ?? .openCodeServe
+                let selectedAgentName = appState.selectedProject?.agents.first?.name ?? "opencode"
                 let conversation: ChatConversation
 
                 switch selectedHarness {
                 case .openCodeServe:
                     conversation = try await chatConversationService.createConversation(
                         threadID: threadID,
-                        directory: directory
+                        directory: directory,
+                        agentType: selectedAgentName
                     )
                 }
 

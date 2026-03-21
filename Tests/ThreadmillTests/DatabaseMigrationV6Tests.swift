@@ -5,13 +5,13 @@ import XCTest
 
 @MainActor
 final class DatabaseMigrationV6Tests: XCTestCase {
-    func testLegacyConversationColumnsMigrateToAgentSessionFields() throws {
+    func testLegacyConversationColumnsClearAgentSessionDuringMigration() throws {
         let dbPath = try makeTempDatabasePath()
         try seedLegacyDatabase(at: dbPath)
 
         let database = try DatabaseManager(databasePath: dbPath)
         let migrated = try XCTUnwrap(try database.conversation(id: "conv-1"))
-        XCTAssertEqual(migrated.agentSessionID, "ses-legacy")
+        XCTAssertNil(migrated.agentSessionID)
         XCTAssertEqual(migrated.agentType, "opencode")
 
         let migratedQueue = try DatabaseQueue(path: dbPath)

@@ -59,6 +59,103 @@ final class AgentSessionManagerTests: XCTestCase {
         try await promptTask.value
     }
 
+    func testReconnectReattachesSessionAndScopesFramesToOwningConnection() async throws {
+        let primaryConnection = MockDaemonConnection(state: .connected)
+        let otherConnection = MockDaemonConnection(state: .connected)
+        let agentManager = MockAgentManager()
+        agentManager.startResult = .success(77)
+
+        let manager = AgentSessionManager(
+            agentManager: agentManager,
+            connectionManager: primaryConnection,
+            projectIDResolver: { threadID in
+                threadID == "thread-1" ? "project-1" : nil
+            }
+        )
+
+        let startTask = Task {
+            try await manager.startSession(
+                agentConfig: AgentConfig(name: "opencode", command: "opencode", cwd: nil),
+                threadID: "thread-1"
+            )
+        }
+
+        let didSendInit = await waitUntilFrameCount(primaryConnection, equals: 1)
+        XCTAssertTrue(didSendInit)
+        try manager.handleBinaryFrame(
+            makeResponseFrame(
+                channelID: 77,
+                requestFrame: primaryConnection.sentBinaryFrames[0],
+                result: InitializeResponse(protocolVersion: 1, agentCapabilities: AgentCapabilities())
+            )
+        )
+
+        let didSendSessionNew = await waitUntilFrameCount(primaryConnection, equals: 2)
+        XCTAssertTrue(didSendSessionNew)
+        try manager.handleBinaryFrame(
+            makeResponseFrame(
+                channelID: 77,
+                requestFrame: primaryConnection.sentBinaryFrames[1],
+                result: NewSessionResponse(sessionId: SessionId("acp-session-1"))
+            )
+        )
+
+        let sessionID = try await startTask.value
+
+        manager.handleConnectionStateChanged(.disconnected, on: primaryConnection)
+
+        agentManager.startResult = .success(88)
+        let reconnectTask = Task {
+            await manager.handleConnectionReconnected(on: primaryConnection)
+        }
+
+        let didSendReconnectInit = await waitUntilFrameCount(primaryConnection, equals: 3)
+        XCTAssertTrue(didSendReconnectInit)
+        try manager.handleBinaryFrame(
+            makeResponseFrame(
+                channelID: 88,
+                requestFrame: primaryConnection.sentBinaryFrames[2],
+                result: InitializeResponse(protocolVersion: 1, agentCapabilities: AgentCapabilities())
+            )
+        )
+
+        let didSendReconnectSessionNew = await waitUntilFrameCount(primaryConnection, equals: 4)
+        XCTAssertTrue(didSendReconnectSessionNew)
+        try manager.handleBinaryFrame(
+            makeResponseFrame(
+                channelID: 88,
+                requestFrame: primaryConnection.sentBinaryFrames[3],
+                result: NewSessionResponse(sessionId: SessionId("acp-session-2"))
+            )
+        )
+
+        _ = await reconnectTask.value
+
+        let update = SessionUpdateNotification(
+            sessionId: SessionId("acp-session-2"),
+            update: .agentMessageChunk(.text(TextContent(text: "reconnected")))
+        )
+        let updatePayload = try makeNotificationLine(method: "session/update", params: update)
+
+        manager.handleBinaryFrame(makeFrame(channelID: 88, payload: Array(updatePayload)), from: otherConnection)
+        XCTAssertTrue((manager.updatesBySessionID[sessionID] ?? []).isEmpty)
+
+        manager.handleBinaryFrame(makeFrame(channelID: 88, payload: Array(updatePayload)), from: primaryConnection)
+        XCTAssertEqual(manager.updatesBySessionID[sessionID]?.count, 1)
+
+        let promptTask = Task { try await manager.sendPrompt(text: "after reconnect", sessionID: sessionID) }
+        let didSendPrompt = await waitUntilFrameCount(primaryConnection, equals: 5)
+        XCTAssertTrue(didSendPrompt)
+        try manager.handleBinaryFrame(
+            makeResponseFrame(
+                channelID: 88,
+                requestFrame: primaryConnection.sentBinaryFrames[4],
+                result: SessionPromptResponse(stopReason: .endTurn)
+            )
+        )
+        try await promptTask.value
+    }
+
     private func makeResponseFrame<ResultPayload: Encodable>(
         channelID: UInt16,
         requestFrame: Data,

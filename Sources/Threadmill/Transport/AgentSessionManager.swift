@@ -9,6 +9,7 @@ enum AgentSessionManagerError: LocalizedError {
     case invalidBinaryFrame
     case rpcError(String)
     case requestTimedOut
+    case sessionDisconnected(String)
 
     var errorDescription: String? {
         switch self {
@@ -24,6 +25,8 @@ enum AgentSessionManagerError: LocalizedError {
             return message
         case .requestTimedOut:
             return "Agent RPC timed out."
+        case let .sessionDisconnected(sessionID):
+            return "Agent session is disconnected: \(sessionID)."
         }
     }
 }
@@ -34,7 +37,7 @@ final class AgentSessionManager {
     private struct SessionContext: Hashable {
         let id: String
         let threadID: String
-        let channelID: UInt16
+        var channelID: UInt16?
         let agentConfig: AgentConfig
         var acpSessionID: String
     }
@@ -46,6 +49,7 @@ final class AgentSessionManager {
 
     private let agentManager: any AgentManaging
     private let connectionManager: any ConnectionManaging
+    private let managedConnectionID: ObjectIdentifier
     private let projectIDResolver: @MainActor (String) -> String?
 
     private var sessionsByID: [String: SessionContext] = [:]
@@ -64,6 +68,7 @@ final class AgentSessionManager {
     ) {
         self.agentManager = agentManager
         self.connectionManager = connectionManager
+        managedConnectionID = ObjectIdentifier(connectionManager as AnyObject)
         self.projectIDResolver = projectIDResolver
     }
 
@@ -86,7 +91,9 @@ final class AgentSessionManager {
             throw AgentSessionManagerError.unknownThread(existing.threadID)
         }
 
-        try await agentManager.stopAgent(channelID: existing.channelID)
+        if let channelID = existing.channelID {
+            try await agentManager.stopAgent(channelID: channelID)
+        }
         cleanupSession(sessionID: sessionID)
 
         return try await startSession(
@@ -103,45 +110,28 @@ final class AgentSessionManager {
         projectID: String,
         sessionIDOverride: String?
     ) async throws -> String {
-        let channelID = try await agentManager.startAgent(projectID: projectID, agentName: agentConfig.name)
         let sessionID = sessionIDOverride ?? UUID().uuidString
         var context = SessionContext(
             id: sessionID,
             threadID: threadID,
-            channelID: channelID,
+            channelID: nil,
             agentConfig: agentConfig,
             acpSessionID: sessionID
         )
 
         sessionsByID[sessionID] = context
-        sessionIDByChannel[channelID] = sessionID
-        incomingBuffers[channelID] = Data()
-        updatesBySessionID[sessionID] = []
+        if updatesBySessionID[sessionID] == nil {
+            updatesBySessionID[sessionID] = []
+        }
 
-        let _: InitializeResponse = try await sendRequest(
-            method: "initialize",
-            params: InitializeRequest(
-                protocolVersion: 1,
-                clientCapabilities: ClientCapabilities(
-                    fs: FileSystemCapabilities(readTextFile: false, writeTextFile: false),
-                    terminal: false
-                ),
-                clientInfo: ClientInfo(name: "Threadmill", title: "Threadmill", version: "dev")
-            ),
-            channelID: channelID,
-            timeout: 20
-        )
-
-        let newSession: NewSessionResponse = try await sendRequest(
-            method: "session/new",
-            params: NewSessionRequest(cwd: agentConfig.cwd ?? "."),
-            channelID: channelID,
-            timeout: 20
-        )
-        context.acpSessionID = newSession.sessionId.value
-        sessionsByID[sessionID] = context
-
-        return sessionID
+        do {
+            try await attachSession(&context, projectID: projectID)
+            sessionsByID[sessionID] = context
+            return sessionID
+        } catch {
+            cleanupSession(sessionID: sessionID)
+            throw error
+        }
     }
 
     func stopSession(channelID: UInt16) async throws {
@@ -158,13 +148,17 @@ final class AgentSessionManager {
             throw AgentSessionManagerError.unknownSession(sessionID)
         }
 
+        guard let channelID = context.channelID else {
+            throw AgentSessionManagerError.sessionDisconnected(sessionID)
+        }
+
         let _: SessionPromptResponse = try await sendRequest(
             method: "session/prompt",
             params: SessionPromptRequest(
                 sessionId: SessionId(context.acpSessionID),
                 prompt: [.text(TextContent(text: text))]
             ),
-            channelID: context.channelID,
+            channelID: channelID,
             timeout: 120
         )
     }
@@ -174,10 +168,14 @@ final class AgentSessionManager {
             throw AgentSessionManagerError.unknownSession(sessionID)
         }
 
+        guard let channelID = context.channelID else {
+            throw AgentSessionManagerError.sessionDisconnected(sessionID)
+        }
+
         try await sendNotification(
             method: "session/cancel",
             params: CancelSessionRequest(sessionId: SessionId(context.acpSessionID)),
-            channelID: context.channelID
+            channelID: channelID
         )
     }
 
@@ -186,15 +184,65 @@ final class AgentSessionManager {
             throw AgentSessionManagerError.unknownSession(sessionID)
         }
 
+        guard let channelID = context.channelID else {
+            throw AgentSessionManagerError.sessionDisconnected(sessionID)
+        }
+
         let _: SetModeResponse = try await sendRequest(
             method: "session/set_mode",
             params: SetModeRequest(sessionId: SessionId(context.acpSessionID), modeId: modeID),
-            channelID: context.channelID,
+            channelID: channelID,
             timeout: 20
         )
     }
 
+    func handleConnectionStateChanged(_ status: ConnectionStatus, on connection: any ConnectionManaging) {
+        guard isManagedConnection(connection) else {
+            return
+        }
+
+        switch status {
+        case .disconnected, .reconnecting:
+            markAllSessionsDisconnected()
+        case .connecting, .connected:
+            break
+        }
+    }
+
+    func handleConnectionReconnected(on connection: any ConnectionManaging) async {
+        guard isManagedConnection(connection) else {
+            return
+        }
+
+        let sessionIDs = sessionsByID.keys.sorted()
+        for sessionID in sessionIDs {
+            guard var context = sessionsByID[sessionID], context.channelID == nil else {
+                continue
+            }
+
+            guard let projectID = projectIDResolver(context.threadID) else {
+                NSLog("threadmill-agent: unable to reattach session %@, thread missing: %@", sessionID, context.threadID)
+                continue
+            }
+
+            do {
+                try await attachSession(&context, projectID: projectID)
+                sessionsByID[sessionID] = context
+            } catch {
+                NSLog("threadmill-agent: failed to reattach session %@: %@", sessionID, "\(error)")
+            }
+        }
+    }
+
     func handleBinaryFrame(_ frame: Data) {
+        handleBinaryFrame(frame, from: connectionManager)
+    }
+
+    func handleBinaryFrame(_ frame: Data, from connection: any ConnectionManaging) {
+        guard isManagedConnection(connection) else {
+            return
+        }
+
         guard frame.count >= 2 else {
             return
         }
@@ -347,14 +395,72 @@ final class AgentSessionManager {
             return
         }
 
-        sessionIDByChannel.removeValue(forKey: context.channelID)
-        incomingBuffers.removeValue(forKey: context.channelID)
-        nextRequestIDByChannel.removeValue(forKey: context.channelID)
-        updatesBySessionID.removeValue(forKey: sessionID)
-
-        let pendingKeys = pendingRequests.keys.filter { $0.channelID == context.channelID }
-        for key in pendingKeys {
-            pendingRequests.removeValue(forKey: key)?.resume(throwing: AgentSessionManagerError.unknownSession(sessionID))
+        if let channelID = context.channelID {
+            cleanupChannel(channelID: channelID, pendingError: AgentSessionManagerError.unknownSession(sessionID))
         }
+        updatesBySessionID.removeValue(forKey: sessionID)
+    }
+
+    private func attachSession(_ context: inout SessionContext, projectID: String) async throws {
+        let channelID = try await agentManager.startAgent(projectID: projectID, agentName: context.agentConfig.name)
+        context.channelID = channelID
+        sessionIDByChannel[channelID] = context.id
+        incomingBuffers[channelID] = Data()
+
+        do {
+            let _: InitializeResponse = try await sendRequest(
+                method: "initialize",
+                params: InitializeRequest(
+                    protocolVersion: 1,
+                    clientCapabilities: ClientCapabilities(
+                        fs: FileSystemCapabilities(readTextFile: false, writeTextFile: false),
+                        terminal: false
+                    ),
+                    clientInfo: ClientInfo(name: "Threadmill", title: "Threadmill", version: "dev")
+                ),
+                channelID: channelID,
+                timeout: 20
+            )
+
+            let newSession: NewSessionResponse = try await sendRequest(
+                method: "session/new",
+                params: NewSessionRequest(cwd: context.agentConfig.cwd ?? "."),
+                channelID: channelID,
+                timeout: 20
+            )
+            context.acpSessionID = newSession.sessionId.value
+        } catch {
+            cleanupChannel(channelID: channelID, pendingError: error)
+            context.channelID = nil
+            throw error
+        }
+    }
+
+    private func markAllSessionsDisconnected() {
+        let sessionIDs = sessionsByID.keys
+        for sessionID in sessionIDs {
+            guard var context = sessionsByID[sessionID], let channelID = context.channelID else {
+                continue
+            }
+
+            cleanupChannel(channelID: channelID, pendingError: AgentSessionManagerError.sessionDisconnected(sessionID))
+            context.channelID = nil
+            sessionsByID[sessionID] = context
+        }
+    }
+
+    private func cleanupChannel(channelID: UInt16, pendingError: Error) {
+        sessionIDByChannel.removeValue(forKey: channelID)
+        incomingBuffers.removeValue(forKey: channelID)
+        nextRequestIDByChannel.removeValue(forKey: channelID)
+
+        let pendingKeys = pendingRequests.keys.filter { $0.channelID == channelID }
+        for key in pendingKeys {
+            pendingRequests.removeValue(forKey: key)?.resume(throwing: pendingError)
+        }
+    }
+
+    private func isManagedConnection(_ connection: any ConnectionManaging) -> Bool {
+        ObjectIdentifier(connection as AnyObject) == managedConnectionID
     }
 }

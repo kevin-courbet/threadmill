@@ -24,10 +24,9 @@ final class ChatConversationService: ChatConversationManaging {
         self.openCodeClient = openCodeClient
     }
 
-    func createConversation(threadID: String, directory: String) async throws -> ChatConversation {
+    func createConversation(threadID: String, directory _: String, agentType: String = "opencode") async throws -> ChatConversation {
         var conversation = ChatConversation(threadID: threadID)
-        let session = try await openCodeClient.createSession(directory: directory)
-        conversation.linkSession(session.id)
+        conversation.agentType = agentType
         try databaseManager.saveConversation(conversation)
         return conversation
     }
