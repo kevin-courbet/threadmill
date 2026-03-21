@@ -385,7 +385,7 @@ final class ChatModeActionsTests: XCTestCase {
         let older = ChatConversation(
             id: "conversation-1",
             threadID: thread.id,
-            opencodeSessionID: "ses-1",
+            agentSessionID: "ses-1",
             title: "",
             createdAt: Date(timeIntervalSince1970: 1),
             updatedAt: Date(timeIntervalSince1970: 1),
@@ -394,7 +394,7 @@ final class ChatModeActionsTests: XCTestCase {
         let newer = ChatConversation(
             id: "conversation-2",
             threadID: thread.id,
-            opencodeSessionID: "ses-2",
+            agentSessionID: "ses-2",
             title: "",
             createdAt: Date(timeIntervalSince1970: 2),
             updatedAt: Date(timeIntervalSince1970: 2),

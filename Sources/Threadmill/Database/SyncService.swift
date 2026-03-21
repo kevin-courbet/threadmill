@@ -48,15 +48,34 @@ final class SyncService: SyncServicing {
                 return nil
             }
             let presets = parsePresetConfigs(row["presets"])
+            let agents = parseAgentConfigs(row["agents"])
             return Project(
                 id: id,
                 name: name,
                 remotePath: remotePath,
                 defaultBranch: defaultBranch,
                 presets: presets,
+                agents: agents,
                 remoteId: row["remote_id"] as? String ?? row["remoteId"] as? String,
                 repoId: row["repo_id"] as? String ?? row["repoId"] as? String
             )
+        }
+    }
+
+    private func parseAgentConfigs(_ payload: Any?) -> [AgentConfig] {
+        guard let rows = payload as? [[String: Any]] else {
+            return []
+        }
+
+        return rows.compactMap { row in
+            guard
+                let name = row["name"] as? String,
+                let command = row["command"] as? String
+            else {
+                return nil
+            }
+
+            return AgentConfig(name: name, command: command, cwd: row["cwd"] as? String)
         }
     }
 

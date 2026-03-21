@@ -343,7 +343,7 @@ final class ChatViewModelTests: XCTestCase {
         var conversation = ChatConversation(threadID: threadID, title: title)
         let timestamp = Date(timeIntervalSince1970: time)
         conversation.id = id
-        conversation.opencodeSessionID = sessionID
+        conversation.agentSessionID = sessionID
         conversation.createdAt = timestamp
         conversation.updatedAt = timestamp
         conversation.isArchived = false

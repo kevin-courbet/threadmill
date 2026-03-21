@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var databaseManager: DatabaseManager?
     private var provisioningService: ProvisioningService?
     private var chatConversationService: ChatConversationService?
+    private var agentSessionManager: AgentSessionManager?
     private var syncService: SyncService?
     private var multiplexer: TerminalMultiplexer?
     private weak var appState: AppState?
@@ -74,6 +75,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 databaseManager: databaseManager,
                 openCodeClient: openCodeClient
             )
+            if let agentManagingConnection = primaryConnectionManager as? AgentManaging {
+                agentSessionManager = AgentSessionManager(
+                    agentManager: agentManagingConnection,
+                    connectionManager: primaryConnectionManager,
+                    projectIDResolver: { threadID in
+                        appState.threads.first(where: { $0.id == threadID })?.projectId
+                    }
+                )
+            }
 
             self.databaseManager = databaseManager
             remoteConnectionPool = connectionPool
@@ -132,6 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         connection.setBinaryFrameHandler { [weak self] data in
             Task { @MainActor [weak self] in
                 self?.multiplexer?.handleBinaryFrame(data)
+                self?.agentSessionManager?.handleBinaryFrame(data)
             }
         }
     }

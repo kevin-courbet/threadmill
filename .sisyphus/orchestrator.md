@@ -1,24 +1,32 @@
 # Orchestrator State
 
-status: READY
+status: SPAWNING
 goal_version: 1
-next_worker_id: W001
-active_batch_id: none
-last_integrated_commit: none
+next_worker_id: W004
+active_batch_id: B003
+last_integrated_commit: 5ddc8ac
 
 ## Active Workers
-- worker_id: none
-  batch_id: none
-  task: none
-  handoff_file: none
-  status: none
+- worker_id: W003
+  batch_id: B003
+  task: "Phase 2: Swift ACP transport layer and AgentSessionManager (#4)"
+  handoff_file: /Users/kevincourbet/dev/threadmill.acp-chat/.sisyphus/workers/W003.md
+  status: assigned
 
 ## Pending Integration
-- worker_id: none
-  batch_id: none
-  stop_reason: none
-  handoff_file: none
-  status: none
+- worker_id: W001
+  batch_id: B001
+  stop_reason: BLOCKED_TECHNICAL
+  handoff_file: /Users/kevincourbet/dev/threadmill.acp-chat/.sisyphus/workers/W001.md
+  status: integrated
+
+- worker_id: W002
+  batch_id: B002
+  stop_reason: DONE
+  handoff_file: /Users/kevincourbet/dev/threadmill.acp-chat/.sisyphus/workers/W002.md
+  status: integrated
 
 ## Notes
-- Shared worktree mode: workers do not commit; orchestrator owns git integration.
+- Phase 1 complete: Spindle agent service on beast + protocol schema committed (5ddc8ac)
+- Phase 2: Swift ACP transport — add swift-acp SPM dependency, AgentSessionManager, GRDB migration
+- Aizen reference code at /Users/kevincourbet/dev/aizen/ for UI patterns

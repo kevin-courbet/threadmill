@@ -97,7 +97,7 @@ final class ChatViewModel {
                 currentConversation = conversations.first
             }
 
-            if let sessionID = currentConversation?.opencodeSessionID, !sessionID.isEmpty {
+            if let sessionID = currentConversation?.agentSessionID, !sessionID.isEmpty {
                 await loadMessages(sessionID: sessionID, directory: directory)
             } else {
                 messages = []
@@ -123,7 +123,7 @@ final class ChatViewModel {
             return
         }
 
-        guard let sessionID = currentConversation?.opencodeSessionID, !sessionID.isEmpty else {
+        guard let sessionID = currentConversation?.agentSessionID, !sessionID.isEmpty else {
             lastError = "Start a coding session before sending a prompt."
             return
         }
@@ -142,7 +142,7 @@ final class ChatViewModel {
 
     func abort() async {
         guard
-            let sessionID = currentConversation?.opencodeSessionID,
+            let sessionID = currentConversation?.agentSessionID,
             !sessionID.isEmpty,
             let directory = activeDirectory
         else {
@@ -172,7 +172,7 @@ final class ChatViewModel {
         streamingParts = [:]
         isGenerating = false
 
-        if let sessionID = selected.opencodeSessionID, !sessionID.isEmpty {
+        if let sessionID = selected.agentSessionID, !sessionID.isEmpty {
             await loadMessages(sessionID: sessionID, directory: directory)
         }
     }
@@ -201,7 +201,7 @@ final class ChatViewModel {
             streamingParts = [:]
             isGenerating = false
 
-            if let sessionID = newConversation.opencodeSessionID, !sessionID.isEmpty {
+            if let sessionID = newConversation.agentSessionID, !sessionID.isEmpty {
                 await loadMessages(sessionID: sessionID, directory: resolvedDirectory)
             }
         } catch {
@@ -256,7 +256,7 @@ final class ChatViewModel {
                 }
                 guard
                     self.messageLoadToken == token,
-                    self.currentConversation?.opencodeSessionID == sessionID,
+                    self.currentConversation?.agentSessionID == sessionID,
                     self.activeDirectory == directory
                 else {
                     return
@@ -268,7 +268,7 @@ final class ChatViewModel {
             } catch {
                 guard
                     self.messageLoadToken == token,
-                    self.currentConversation?.opencodeSessionID == sessionID,
+                    self.currentConversation?.agentSessionID == sessionID,
                     self.activeDirectory == directory
                 else {
                     return
@@ -327,7 +327,7 @@ final class ChatViewModel {
             await applyAutoTitleIfNeeded(from: session)
 
         case let .messageUpdated(message):
-            guard message.sessionID == currentConversation?.opencodeSessionID else {
+            guard message.sessionID == currentConversation?.agentSessionID else {
                 return
             }
             upsertMessage(message, preserveExistingParts: true)
@@ -342,7 +342,7 @@ final class ChatViewModel {
             applyPartUpdate(update)
 
         case let .sessionStatus(statusEvent):
-            guard statusEvent.sessionID == currentConversation?.opencodeSessionID else {
+            guard statusEvent.sessionID == currentConversation?.agentSessionID else {
                 return
             }
 
@@ -362,7 +362,7 @@ final class ChatViewModel {
     }
 
     private func applyPartUpdate(_ update: OCMessagePartUpdate) {
-        guard let sessionID = currentConversation?.opencodeSessionID else {
+        guard let sessionID = currentConversation?.agentSessionID else {
             return
         }
 
@@ -469,7 +469,7 @@ final class ChatViewModel {
             return
         }
 
-        guard let index = conversations.firstIndex(where: { $0.opencodeSessionID == session.id }) else {
+        guard let index = conversations.firstIndex(where: { $0.agentSessionID == session.id }) else {
             return
         }
 
@@ -495,7 +495,7 @@ final class ChatViewModel {
     }
 
     private func shouldAutoTitleConversation(forSessionID sessionID: String) -> Bool {
-        guard let conversation = conversations.first(where: { $0.opencodeSessionID == sessionID }) else {
+        guard let conversation = conversations.first(where: { $0.agentSessionID == sessionID }) else {
             return false
         }
 

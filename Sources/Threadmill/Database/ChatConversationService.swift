@@ -59,7 +59,11 @@ final class ChatConversationService: ChatConversationManaging {
     }
 
     func verifySession(conversation: ChatConversation) async throws -> Bool {
-        guard let sessionID = conversation.opencodeSessionID else {
+        guard conversation.agentType == "opencode" else {
+            return false
+        }
+
+        guard let sessionID = conversation.agentSessionID else {
             return false
         }
 

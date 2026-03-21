@@ -124,6 +124,7 @@ final class DatabaseRemoteTests: XCTestCase {
             remotePath: "/srv/dev-a/demo",
             defaultBranch: "main",
             presets: [],
+            agents: [],
             remoteId: existingRemote.id,
             repoId: nil
         )

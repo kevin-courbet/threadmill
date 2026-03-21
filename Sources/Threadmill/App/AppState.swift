@@ -475,9 +475,25 @@ final class AppState {
              "state.delta",
              "preset.process_event":
             scheduleEventSync()
+        case "agent.status_changed":
+            handleAgentStatusChanged(params)
         default:
             break
         }
+    }
+
+    func startAgent(projectID: String, agentName: String) async throws -> UInt16 {
+        guard let connection = connectionForProject(id: projectID) as? AgentManaging else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+        return try await connection.startAgent(projectID: projectID, agentName: agentName)
+    }
+
+    func stopAgent(channelID: UInt16) async throws {
+        guard let connection = connectionManager as? AgentManaging else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+        try await connection.stopAgent(channelID: channelID)
     }
 
     func scheduleAttachSelectedPreset() {
@@ -1121,6 +1137,21 @@ final class AppState {
         }
     }
 
+    private func handleAgentStatusChanged(_ params: [String: Any]?) {
+        guard
+            let params,
+            let channelID = params["channel_id"],
+            let agentName = params["agent_name"] as? String,
+            let event = params["event"] as? String
+        else {
+            NSLog("threadmill-state: invalid agent.status_changed payload: %@", "\(params ?? [:])")
+            return
+        }
+
+        NSLog("threadmill-state: agent.status_changed channel=%@ agent=%@ event=%@", "\(channelID)", agentName, event)
+        scheduleEventSync()
+    }
+
     private func threadProgressIndicatesFailure(step: String, errorText: String?) -> Bool {
         if let errorText {
             let trimmedError = errorText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1380,6 +1411,7 @@ final class AppState {
                     remotePath: remotePath,
                     defaultBranch: defaultBranch,
                     presets: [],
+                    agents: [],
                     remoteId: remoteID,
                     repoId: repoID
                 )

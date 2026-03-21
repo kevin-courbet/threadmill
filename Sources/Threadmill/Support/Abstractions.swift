@@ -41,6 +41,12 @@ protocol FileBrowsing: AnyObject {
 }
 
 @MainActor
+protocol AgentManaging: AnyObject {
+    func startAgent(projectID: String, agentName: String) async throws -> UInt16
+    func stopAgent(channelID: UInt16) async throws
+}
+
+@MainActor
 protocol ConnectionManaging: AnyObject {
     var state: ConnectionStatus { get }
     var debugSnapshot: ConnectionDebugSnapshot { get }

@@ -34,7 +34,7 @@ final class ChatConversationServiceTests: XCTestCase {
         XCTAssertEqual(openCode.createdSessionsInDirectories, ["/home/wsl/dev/project"])
         XCTAssertEqual(database.conversations.count, 1)
         XCTAssertEqual(database.conversations.first?.id, conversation.id)
-        XCTAssertEqual(database.conversations.first?.opencodeSessionID, "ses_new")
+        XCTAssertEqual(database.conversations.first?.agentSessionID, "ses_new")
         XCTAssertEqual(database.conversations.first?.threadID, "thread_1")
         // /init must NOT be called — it sends opencode's default canned prompt
         XCTAssertTrue(openCode.initializedSessions.isEmpty)
@@ -95,7 +95,7 @@ final class ChatConversationServiceTests: XCTestCase {
         )
 
         XCTAssertEqual(database.conversations.count, 1)
-        XCTAssertEqual(conversation.opencodeSessionID, "ses_new")
+        XCTAssertEqual(conversation.agentSessionID, "ses_new")
         XCTAssertTrue(openCode.initializedSessions.isEmpty)
     }
 }

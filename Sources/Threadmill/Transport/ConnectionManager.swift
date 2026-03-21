@@ -11,6 +11,42 @@ enum ConnectionManagerError: LocalizedError {
     }
 }
 
+extension ConnectionManager: AgentManaging {
+    func startAgent(projectID: String, agentName: String) async throws -> UInt16 {
+        let result = try await request(
+            method: "agent.start",
+            params: [
+                "project_id": projectID,
+                "agent_name": agentName,
+            ],
+            timeout: 20
+        )
+
+        guard
+            let payload = result as? [String: Any],
+            let channelID = payload["channel_id"] as? Int,
+            channelID > 0,
+            channelID <= Int(UInt16.max)
+        else {
+            throw NSError(
+                domain: "Threadmill",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "agent.start returned invalid channel_id"]
+            )
+        }
+
+        return UInt16(channelID)
+    }
+
+    func stopAgent(channelID: UInt16) async throws {
+        _ = try await request(
+            method: "agent.stop",
+            params: ["channel_id": Int(channelID)],
+            timeout: 10
+        )
+    }
+}
+
 struct ThreadmillConfig {
     let host: String
     let daemonPort: Int

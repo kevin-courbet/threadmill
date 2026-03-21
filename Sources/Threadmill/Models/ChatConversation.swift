@@ -4,7 +4,8 @@ import GRDB
 struct ChatConversation: Codable, Identifiable, FetchableRecord, PersistableRecord, Equatable {
     var id: String
     var threadID: String
-    var opencodeSessionID: String?
+    var agentSessionID: String?
+    var agentType: String
     var title: String
     var createdAt: Date
     var updatedAt: Date
@@ -15,7 +16,8 @@ struct ChatConversation: Codable, Identifiable, FetchableRecord, PersistableReco
     enum Columns: String, ColumnExpression {
         case id
         case threadID
-        case opencodeSessionID
+        case agentSessionID
+        case agentType
         case title
         case createdAt
         case updatedAt
@@ -25,7 +27,8 @@ struct ChatConversation: Codable, Identifiable, FetchableRecord, PersistableReco
     init(threadID: String, title: String = "") {
         id = UUID().uuidString
         self.threadID = threadID
-        opencodeSessionID = nil
+        agentSessionID = nil
+        agentType = "opencode"
         self.title = title
         createdAt = Date()
         updatedAt = Date()
@@ -35,7 +38,8 @@ struct ChatConversation: Codable, Identifiable, FetchableRecord, PersistableReco
     init(
         id: String,
         threadID: String,
-        opencodeSessionID: String?,
+        agentSessionID: String?,
+        agentType: String = "opencode",
         title: String,
         createdAt: Date,
         updatedAt: Date? = nil,
@@ -43,7 +47,8 @@ struct ChatConversation: Codable, Identifiable, FetchableRecord, PersistableReco
     ) {
         self.id = id
         self.threadID = threadID
-        self.opencodeSessionID = opencodeSessionID
+        self.agentSessionID = agentSessionID
+        self.agentType = agentType
         self.title = title
         self.createdAt = createdAt
         self.updatedAt = updatedAt ?? createdAt
@@ -55,7 +60,7 @@ extension ChatConversation {
     static func listForThread(_ threadID: String, in db: Database) throws -> [ChatConversation] {
         try ChatConversation
             .filter(Columns.threadID == threadID)
-            .filter(Columns.opencodeSessionID != nil)
+            .filter(Columns.agentSessionID != nil)
             .order(Columns.updatedAt.desc)
             .fetchAll(db)
     }
@@ -64,7 +69,7 @@ extension ChatConversation {
         try ChatConversation
             .filter(Columns.threadID == threadID)
             .filter(Columns.isArchived == false)
-            .filter(Columns.opencodeSessionID != nil)
+            .filter(Columns.agentSessionID != nil)
             .order(Columns.updatedAt.desc)
             .fetchAll(db)
     }
@@ -80,7 +85,7 @@ extension ChatConversation {
     }
 
     mutating func linkSession(_ sessionID: String) {
-        opencodeSessionID = sessionID
+        agentSessionID = sessionID
         updatedAt = Date()
     }
 }

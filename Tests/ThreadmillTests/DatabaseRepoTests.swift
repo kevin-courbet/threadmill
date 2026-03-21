@@ -51,6 +51,7 @@ final class DatabaseRepoTests: XCTestCase {
             remotePath: "/home/wsl/dev/threadmill",
             defaultBranch: "main",
             presets: [],
+            agents: [],
             remoteId: nil,
             repoId: repo.id
         )
@@ -115,6 +116,7 @@ final class DatabaseRepoTests: XCTestCase {
             remotePath: "/srv/remote-a/alpha",
             defaultBranch: "main",
             presets: [],
+            agents: [],
             remoteId: remoteA.id,
             repoId: "repo-a"
         )
@@ -124,6 +126,7 @@ final class DatabaseRepoTests: XCTestCase {
             remotePath: "/srv/remote-b/beta",
             defaultBranch: "main",
             presets: [],
+            agents: [],
             remoteId: remoteB.id,
             repoId: "repo-b"
         )
@@ -162,6 +165,7 @@ final class DatabaseRepoTests: XCTestCase {
             remotePath: projectA.remotePath,
             defaultBranch: "main",
             presets: [],
+            agents: [],
             remoteId: nil,
             repoId: nil
         )
@@ -225,6 +229,7 @@ final class DatabaseRepoTests: XCTestCase {
             remotePath: "/srv/remote-a/alpha",
             defaultBranch: "main",
             presets: [],
+            agents: [],
             remoteId: remoteA.id,
             repoId: nil
         )
@@ -249,6 +254,7 @@ final class DatabaseRepoTests: XCTestCase {
             remotePath: "/srv/remote-b/beta",
             defaultBranch: "main",
             presets: [],
+            agents: [],
             remoteId: nil,
             repoId: nil
         )
