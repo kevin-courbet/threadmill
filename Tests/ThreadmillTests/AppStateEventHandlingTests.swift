@@ -99,7 +99,7 @@ final class AppStateEventHandlingTests: XCTestCase {
             }
             throw TestError.forcedFailure
         }
-        multiplexer.attachHandler = { _, _ in
+        multiplexer.attachHandler = { _, _, _ in
             throw JSONRPCErrorResponse(code: -1, message: "tmux session not running: tm_thread_1")
         }
 
@@ -125,7 +125,7 @@ final class AppStateEventHandlingTests: XCTestCase {
         }
 
         var attachCancelled = false
-        multiplexer.attachHandler = { _, _ in
+        multiplexer.attachHandler = { _, _, _ in
             do {
                 try await Task.sleep(nanoseconds: 5_000_000_000)
             } catch is CancellationError {

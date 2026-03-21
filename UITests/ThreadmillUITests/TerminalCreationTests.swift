@@ -25,11 +25,11 @@ final class TerminalCreationTests: XCTestCase {
 
         let secondStart = try harness.waitForRequest(method: "preset.start", index: 1, timeout: 15)
         XCTAssertEqual(secondStart["thread_id"] as? String, projectAThreadID)
-        XCTAssertEqual(secondStart["preset"] as? String, "dev-server")
+        XCTAssertEqual(secondStart["preset"] as? String, "terminal")
 
         let secondAttach = try harness.waitForRequest(method: "terminal.attach", index: 1, timeout: 15)
         XCTAssertEqual(secondAttach["thread_id"] as? String, projectAThreadID)
-        XCTAssertEqual(secondAttach["preset"] as? String, "dev-server")
+        XCTAssertEqual(secondAttach["preset"] as? String, "terminal")
 
         try harness.click(identifier: "thread.row.\(projectBThreadID)")
         _ = try harness.waitForElement(identifier: "chat.session.add")
@@ -47,35 +47,21 @@ final class TerminalCreationTests: XCTestCase {
 
         let fourthStart = try harness.waitForRequest(method: "preset.start", index: 3, timeout: 15)
         XCTAssertEqual(fourthStart["thread_id"] as? String, projectBThreadID)
-        XCTAssertEqual(fourthStart["preset"] as? String, "dev-server")
+        XCTAssertEqual(fourthStart["preset"] as? String, "terminal")
 
         let fourthAttach = try harness.waitForRequest(method: "terminal.attach", index: 3, timeout: 15)
         XCTAssertEqual(fourthAttach["thread_id"] as? String, projectBThreadID)
-        XCTAssertEqual(fourthAttach["preset"] as? String, "dev-server")
+        XCTAssertEqual(fourthAttach["preset"] as? String, "terminal")
 
         let presetStarts = harness.server.requestParams(method: "preset.start")
         XCTAssertEqual(presetStarts.count, 4)
-        XCTAssertEqual(
-            presetStarts.map { "\(($0["thread_id"] as? String) ?? ""):\(($0["preset"] as? String) ?? "")" },
-            [
-                "\(projectAThreadID):terminal",
-                "\(projectAThreadID):dev-server",
-                "\(projectBThreadID):terminal",
-                "\(projectBThreadID):dev-server",
-            ]
-        )
+        XCTAssertTrue(presetStarts.allSatisfy { ($0["preset"] as? String) == "terminal" },
+                       "All preset.start calls should use the 'terminal' daemon preset")
 
         let terminalAttaches = harness.server.requestParams(method: "terminal.attach")
         XCTAssertEqual(terminalAttaches.count, 4)
-        XCTAssertEqual(
-            terminalAttaches.map { "\(($0["thread_id"] as? String) ?? ""):\(($0["preset"] as? String) ?? "")" },
-            [
-                "\(projectAThreadID):terminal",
-                "\(projectAThreadID):dev-server",
-                "\(projectBThreadID):terminal",
-                "\(projectBThreadID):dev-server",
-            ]
-        )
+        XCTAssertTrue(terminalAttaches.allSatisfy { ($0["preset"] as? String) == "terminal" },
+                       "All terminal.attach calls should use the 'terminal' daemon preset")
     }
 
     private func validationFixture() -> [MockSpindleServer.ProjectFixture] {

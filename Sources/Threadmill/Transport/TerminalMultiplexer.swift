@@ -15,7 +15,7 @@ enum TerminalMultiplexerError: LocalizedError {
 final class TerminalMultiplexer: TerminalMultiplexing {
     private struct AttachmentKey: Hashable {
         let threadID: String
-        let preset: String
+        let sessionID: String
     }
 
     private var endpointsByChannel: [UInt16: RelayEndpoint] = [:]
@@ -42,12 +42,12 @@ final class TerminalMultiplexer: TerminalMultiplexing {
         self.surfaceHost = surfaceHost
     }
 
-    func endpoint(threadID: String, preset: String) -> RelayEndpoint? {
-        endpointsByAttachment[AttachmentKey(threadID: threadID, preset: preset)]
+    func endpoint(threadID: String, sessionID: String) -> RelayEndpoint? {
+        endpointsByAttachment[AttachmentKey(threadID: threadID, sessionID: sessionID)]
     }
 
-    func attach(threadID: String, preset: String) async throws -> RelayEndpoint {
-        let key = AttachmentKey(threadID: threadID, preset: preset)
+    func attach(threadID: String, sessionID: String, preset: String) async throws -> RelayEndpoint {
+        let key = AttachmentKey(threadID: threadID, sessionID: sessionID)
         if let existing = endpointsByAttachment[key] {
             if existing.channelID == 0 {
                 let connectionManager = try connectionManager(for: threadID)
@@ -85,8 +85,8 @@ final class TerminalMultiplexer: TerminalMultiplexing {
         detach(endpoint: endpoint, sendDetachRPC: true)
     }
 
-    func detach(threadID: String, preset: String) {
-        guard let endpoint = endpointsByAttachment[AttachmentKey(threadID: threadID, preset: preset)] else {
+    func detach(threadID: String, sessionID: String) {
+        guard let endpoint = endpointsByAttachment[AttachmentKey(threadID: threadID, sessionID: sessionID)] else {
             return
         }
         detach(endpoint: endpoint, sendDetachRPC: true)
@@ -185,7 +185,9 @@ final class TerminalMultiplexer: TerminalMultiplexing {
         let threadID = endpoint.threadID
         let preset = endpoint.preset
         let channelID = endpoint.channelID
-        endpointsByAttachment.removeValue(forKey: AttachmentKey(threadID: endpoint.threadID, preset: endpoint.preset))
+        if let attachmentKey = endpointsByAttachment.first(where: { $0.value === endpoint })?.key {
+            endpointsByAttachment.removeValue(forKey: attachmentKey)
+        }
         if endpoint.channelID > 0 {
             endpointsByChannel.removeValue(forKey: endpoint.channelID)
         }

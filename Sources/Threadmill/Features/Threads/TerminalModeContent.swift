@@ -78,53 +78,58 @@ struct TerminalModeContent: View {
     }
 
     private var terminalEndpoints: [String: RelayEndpoint] {
-        TerminalModeActions.terminalEndpoints(appState: appState)
+        TerminalModeActions.terminalEndpoints(appState: appState, sessionIDs: terminalSessionIDs)
     }
 }
 
 @MainActor
 enum TerminalModeActions {
-    static func terminalEndpoints(appState: AppState) -> [String: RelayEndpoint] {
-        Dictionary(uniqueKeysWithValues: appState.terminalTabs.compactMap { tab in
-            guard let presetName = tab.preset?.name, let endpoint = tab.endpoint else {
-                return nil
-            }
-            return (presetName, endpoint)
-        })
-    }
-
     static func defaultTerminalPresetName(appState: AppState) -> String? {
-        let openPresets = Set(appState.terminalTabs.compactMap(\.preset?.name))
-
-        if let terminalPreset = appState.presets.first(where: { $0.name == "terminal" && !openPresets.contains($0.name) }) {
-            return terminalPreset.name
-        }
-
-        if let unopenedPreset = appState.presets.first(where: { !openPresets.contains($0.name) }) {
-            return unopenedPreset.name
-        }
-
-        return nil
+        appState.presets.contains(where: { $0.name == "terminal" }) ? "terminal" : nil
     }
 
+    /// Map session IDs to their attached endpoints.
+    /// Session IDs like "terminal-1" map to the endpoint keyed by that session ID in AppState.
+    static func terminalEndpoints(appState: AppState, sessionIDs: [String]) -> [String: RelayEndpoint] {
+        guard let thread = appState.selectedThread else {
+            return [:]
+        }
+        var result: [String: RelayEndpoint] = [:]
+        for sessionID in sessionIDs {
+            if let endpoint = appState.endpointForSession(threadID: thread.id, sessionID: sessionID) {
+                result[sessionID] = endpoint
+            }
+        }
+        return result
+    }
+
+    /// The + button always creates a new terminal instance.
+    /// Terminal sessions get unique IDs like terminal-1, terminal-2.
+    /// The daemon preset name is always "terminal".
     static func addDefaultTerminalSession(
         appState: AppState,
         terminalSessionIDs: Binding<[String]>,
         selectedTerminalSessionIDBinding: Binding<String?>,
         tabStateManager: ThreadTabStateManager
     ) {
-        guard let preset = defaultTerminalPresetName(appState: appState) else {
+        guard defaultTerminalPresetName(appState: appState) != nil else {
             return
         }
-        addTerminalSession(
-            preset: preset,
-            appState: appState,
-            terminalSessionIDs: terminalSessionIDs,
-            selectedTerminalSessionIDBinding: selectedTerminalSessionIDBinding,
-            tabStateManager: tabStateManager
-        )
+        guard let thread = appState.selectedThread else {
+            return
+        }
+
+        let existingTerminalCount = terminalSessionIDs.wrappedValue.filter { presetName(forSessionID: $0) == "terminal" }.count
+        let sessionID = "terminal-\(existingTerminalCount + 1)"
+
+        terminalSessionIDs.wrappedValue.append(sessionID)
+        tabStateManager.setTerminalSessionIDs(terminalSessionIDs.wrappedValue, threadID: thread.id)
+        selectedTerminalSessionIDBinding.wrappedValue = sessionID
+        tabStateManager.setSelectedSessionID(sessionID, modeID: TabItem.terminal.id, threadID: thread.id)
     }
 
+    /// Named presets (dev-server, etc.) are one-instance-only.
+    /// If already open, just select it.
     static func addTerminalSession(
         preset: String,
         appState: AppState,
@@ -135,12 +140,12 @@ enum TerminalModeActions {
         guard appState.presets.contains(where: { $0.name == preset }) else {
             return
         }
-
         guard let thread = appState.selectedThread else {
             return
         }
         let threadID = thread.id
 
+        // Named presets use their name directly as session ID (one instance only)
         if terminalSessionIDs.wrappedValue.contains(preset) {
             selectedTerminalSessionIDBinding.wrappedValue = preset
             tabStateManager.setSelectedSessionID(preset, modeID: TabItem.terminal.id, threadID: threadID)
@@ -151,6 +156,15 @@ enum TerminalModeActions {
         tabStateManager.setTerminalSessionIDs(terminalSessionIDs.wrappedValue, threadID: threadID)
         selectedTerminalSessionIDBinding.wrappedValue = preset
         tabStateManager.setSelectedSessionID(preset, modeID: TabItem.terminal.id, threadID: threadID)
+    }
+
+    /// Extract the daemon preset name from a session ID.
+    /// "terminal-1" → "terminal", "dev-server" → "dev-server"
+    static func presetName(forSessionID sessionID: String) -> String {
+        if sessionID.hasPrefix("terminal-"), sessionID.dropFirst("terminal-".count).allSatisfy(\.isNumber) {
+            return "terminal"
+        }
+        return sessionID
     }
 
     static func closeTerminalSessions(

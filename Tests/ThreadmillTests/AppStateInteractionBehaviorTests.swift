@@ -427,7 +427,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
             }
             throw TestError.missingStub
         }
-        multiplexer.attachHandler = { _, preset in
+        multiplexer.attachHandler = { _, _, preset in
             let channelID: UInt16 = preset == "terminal" ? 1 : 2
             return RelayEndpoint(
                 channelID: channelID,
@@ -477,7 +477,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
             if method == "preset.start" { return ["ok": true] }
             throw TestError.missingStub
         }
-        multiplexer.attachHandler = { _, preset in
+        multiplexer.attachHandler = { _, _, preset in
             RelayEndpoint(
                 channelID: preset == "terminal" ? 1 : 2,
                 threadID: thread.id,
@@ -519,7 +519,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
             }
             throw TestError.missingStub
         }
-        multiplexer.attachHandler = { threadID, preset in
+        multiplexer.attachHandler = { threadID, _, preset in
             RelayEndpoint(
                 channelID: 7,
                 threadID: threadID,
@@ -562,7 +562,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
         appState.selectedPreset = "terminal"
 
-        XCTAssertEqual(TerminalModeActions.defaultTerminalPresetName(appState: appState), "logs")
+        XCTAssertEqual(TerminalModeActions.defaultTerminalPresetName(appState: appState), "terminal")
     }
 
     func testAddTerminalSessionSelectsPresetWithoutStartingItTwice() async {
@@ -778,7 +778,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
             }
             throw TestError.missingStub
         }
-        multiplexer.attachHandler = { threadID, preset in
+        multiplexer.attachHandler = { threadID, _, preset in
             RelayEndpoint(
                 channelID: 1,
                 threadID: threadID,

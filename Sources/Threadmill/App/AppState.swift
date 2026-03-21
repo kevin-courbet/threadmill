@@ -102,7 +102,17 @@ struct AppStateDebugSnapshot: Codable, Equatable {
 final class AppState {
     private struct AttachmentKey: Hashable {
         let threadID: String
-        let preset: String
+        /// Session identifier. For named presets this equals the preset name.
+        /// For terminals this is a unique ID like "terminal-1".
+        let sessionID: String
+
+        /// The daemon preset name derived from the session ID.
+        var presetName: String {
+            if sessionID.hasPrefix("terminal-"), sessionID.dropFirst("terminal-".count).allSatisfy(\.isNumber) {
+                return "terminal"
+            }
+            return sessionID
+        }
     }
 
     var connectionStatus: ConnectionStatus = .disconnected {
@@ -299,7 +309,7 @@ final class AppState {
         let openPresetNames = openPresetNames(for: thread.id)
         let visiblePresetNames = presets
             .map(\.name)
-            .filter { openPresetNames.contains($0) || selectedPreset == $0 }
+            .filter { openPresetNames.contains($0) || selectedPreset.map { daemonPresetName(forSessionID: $0) } == $0 }
 
         let terminalTabs: [TerminalTabModel] = visiblePresetNames.compactMap { presetName in
             guard let preset = presets.first(where: { $0.name == presetName }) else {
@@ -309,7 +319,7 @@ final class AppState {
             return TerminalTabModel(
                 threadID: thread.id,
                 type: .terminal(preset),
-                endpoint: attachedEndpoints[AttachmentKey(threadID: thread.id, preset: presetName)]
+                endpoint: attachedEndpoints[AttachmentKey(threadID: thread.id, sessionID: presetName)]
             )
         }
 
@@ -318,12 +328,16 @@ final class AppState {
         ]
     }
 
+    func endpointForSession(threadID: String, sessionID: String) -> RelayEndpoint? {
+        attachedEndpoints[AttachmentKey(threadID: threadID, sessionID: sessionID)]
+    }
+
     func terminalDebugSnapshot(for preset: String) -> TerminalDebugSnapshot? {
         guard let thread = selectedThread else {
             return nil
         }
 
-        let key = AttachmentKey(threadID: thread.id, preset: preset)
+        let key = AttachmentKey(threadID: thread.id, sessionID: preset)
         let endpoint = attachedEndpoints[key]
         let connectionSnapshot = connectionForThread(id: thread.id)?.debugSnapshot
 
@@ -500,22 +514,24 @@ final class AppState {
         await attachPreset(threadID: selectedThread.id, preset: preset)
     }
 
-    func attachPreset(threadID: String, preset: String) async {
+    /// Attach to a terminal session. sessionID is the local tab identifier
+    /// (e.g. "terminal-1", "dev-server"). The daemon preset name is derived from it.
+    func attachPreset(threadID: String, preset sessionID: String) async {
         guard selectedThreadID == threadID else {
             return
         }
 
-        guard presets.contains(where: { $0.name == preset }) else {
+        let daemonPreset = AttachmentKey(threadID: threadID, sessionID: sessionID).presetName
+        guard presets.contains(where: { $0.name == daemonPreset }) else {
             selectedPreset = presets.first?.name
             selectedEndpoint = nil
             return
         }
 
-        selectedPreset = preset
+        selectedPreset = sessionID
 
-        let key = AttachmentKey(threadID: threadID, preset: preset)
+        let key = AttachmentKey(threadID: threadID, sessionID: sessionID)
 
-        cancelPendingAttachTasks(except: key)
         guard canAttemptAttach(threadID: threadID, key: key) else {
             cancelPendingAttachTasks(threadID: threadID)
             selectedEndpoint = attachedEndpoints[key]
@@ -532,7 +548,7 @@ final class AppState {
                 return
             }
             defer { self.pendingAttachTasks.removeValue(forKey: key) }
-            await self.performAttachPreset(threadID: threadID, preset: preset, key: key)
+            await self.performAttachPreset(threadID: threadID, daemonPreset: daemonPreset, key: key)
         }
         pendingAttachTasks[key] = task
         await task.value
@@ -546,40 +562,45 @@ final class AppState {
         await startPreset(threadID: threadID, preset: preset)
     }
 
-    func startPreset(threadID: String, preset: String) async {
+    /// Start a preset and attach. sessionID defaults to preset name for named presets.
+    func startPreset(threadID: String, preset sessionID: String) async {
+        let daemonPreset = AttachmentKey(threadID: threadID, sessionID: sessionID).presetName
+
         guard selectedThreadID == threadID,
               let connectionManager = connectionForThread(id: threadID)
         else {
             return
         }
-        guard presets.contains(where: { $0.name == preset }) else {
+        guard presets.contains(where: { $0.name == daemonPreset }) else {
             return
         }
+
+        let key = AttachmentKey(threadID: threadID, sessionID: sessionID)
 
         do {
             _ = try await connectionManager.request(
                 method: "preset.start",
                 params: [
                     "thread_id": threadID,
-                    "preset": preset,
+                    "preset": daemonPreset,
                 ],
                 timeout: 20
             )
-            lastPresetStartErrors.removeValue(forKey: AttachmentKey(threadID: threadID, preset: preset))
+            lastPresetStartErrors.removeValue(forKey: key)
         } catch {
-            if isPresetAlreadyRunningError(error, preset: preset) {
-                lastPresetStartErrors[AttachmentKey(threadID: threadID, preset: preset)] = String(describing: error)
-                selectedPreset = preset
-                await attachPreset(threadID: threadID, preset: preset)
+            if isPresetAlreadyRunningError(error, preset: daemonPreset) {
+                lastPresetStartErrors[key] = String(describing: error)
+                selectedPreset = sessionID
+                await attachPreset(threadID: threadID, preset: sessionID)
                 return
             }
-            lastPresetStartErrors[AttachmentKey(threadID: threadID, preset: preset)] = String(describing: error)
-            NSLog("threadmill-state: preset.start failed (%@/%@): %@", threadID, preset, "\(error)")
+            lastPresetStartErrors[key] = String(describing: error)
+            NSLog("threadmill-state: preset.start failed (%@/%@): %@", threadID, daemonPreset, "\(error)")
             return
         }
 
-        selectedPreset = preset
-        await attachPreset(threadID: threadID, preset: preset)
+        selectedPreset = sessionID
+        await attachPreset(threadID: threadID, preset: sessionID)
     }
 
     func stopPreset(named preset: String) async {
@@ -605,14 +626,15 @@ final class AppState {
             return
         }
 
-        let key = AttachmentKey(threadID: threadID, preset: preset)
+        let key = AttachmentKey(threadID: threadID, sessionID: preset)
+        let daemonPreset = key.presetName
 
         do {
             _ = try await connectionManager.request(
                 method: "preset.stop",
                 params: [
                     "thread_id": threadID,
-                    "preset": preset,
+                    "preset": daemonPreset,
                 ],
                 timeout: 20
             )
@@ -631,29 +653,28 @@ final class AppState {
             detachEndpoint(threadID: threadID, preset: preset)
 
             if wasSelected {
-                let replacement = presets
-                    .map(\.name)
-                    .first(where: { openPresetNames(for: threadID).contains($0) })
+                let replacement = openPresetNames(for: threadID).sorted().first
                 selectedPreset = replacement
                 if replacement == nil {
                     selectedEndpoint = nil
                 }
             }
         } catch {
-            NSLog("threadmill-state: preset.stop failed (%@/%@): %@", threadID, preset, "\(error)")
+            NSLog("threadmill-state: preset.stop failed (%@/%@): %@", threadID, daemonPreset, "\(error)")
         }
     }
 
-    private func performAttachPreset(threadID requestedThreadID: String, preset requestedPreset: String, key: AttachmentKey) async {
+    private func performAttachPreset(threadID requestedThreadID: String, daemonPreset: String, key: AttachmentKey) async {
+        let requestedSessionID = key.sessionID
         guard canAttemptAttach(threadID: requestedThreadID, key: key) else {
-            if selectedThreadID == requestedThreadID && selectedPreset == requestedPreset {
+            if selectedThreadID == requestedThreadID && selectedPreset == requestedSessionID {
                 selectedEndpoint = attachedEndpoints[key]
             }
             return
         }
 
         func selectionMatchesRequest() -> Bool {
-            selectedThreadID == requestedThreadID && selectedPreset == requestedPreset
+            selectedThreadID == requestedThreadID && selectedPreset == requestedSessionID
         }
 
         guard selectionMatchesRequest() else {
@@ -671,7 +692,11 @@ final class AppState {
             selectedEndpoint = endpoint
             if endpoint.channelID == 0, connectionManager.state.isConnected {
                 do {
-                    let reattachedEndpoint = try await multiplexer.attach(threadID: requestedThreadID, preset: requestedPreset)
+                    let reattachedEndpoint = try await multiplexer.attach(
+                        threadID: requestedThreadID,
+                        sessionID: requestedSessionID,
+                        preset: daemonPreset
+                    )
                     guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
                         return
                     }
@@ -692,12 +717,12 @@ final class AppState {
                     method: "preset.start",
                     params: [
                         "thread_id": requestedThreadID,
-                        "preset": requestedPreset,
+                        "preset": daemonPreset,
                     ],
                     timeout: 20
                 )
             } catch {
-                if !isPresetAlreadyRunningError(error, preset: requestedPreset) {
+                if !isPresetAlreadyRunningError(error, preset: daemonPreset) {
                     throw error
                 }
             }
@@ -705,7 +730,11 @@ final class AppState {
                 return
             }
 
-            let endpoint = try await multiplexer.attach(threadID: requestedThreadID, preset: requestedPreset)
+            let endpoint = try await multiplexer.attach(
+                threadID: requestedThreadID,
+                sessionID: requestedSessionID,
+                preset: daemonPreset
+            )
             guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
                 return
             }
@@ -1153,7 +1182,7 @@ final class AppState {
         }
         permanentAttachFailures.insert(key)
         cancelPendingAttachTasks(threadID: threadID)
-        detachEndpoint(threadID: threadID, preset: key.preset)
+        detachEndpoint(threadID: threadID, preset: key.sessionID)
     }
 
     private func isPermanentTerminalAttachError(_ error: Error) -> Bool {
@@ -1196,7 +1225,7 @@ final class AppState {
             return
         }
 
-        selectedEndpoint = attachedEndpoints[AttachmentKey(threadID: threadID, preset: preset)]
+        selectedEndpoint = attachedEndpoints[AttachmentKey(threadID: threadID, sessionID: preset)]
     }
 
     private func ensureSelectedPresetIsValid() {
@@ -1210,22 +1239,26 @@ final class AppState {
             return
         }
 
-        if let selectedPreset, availablePresets.contains(selectedPreset) {
+        if let selectedPreset, availablePresets.contains(daemonPresetName(forSessionID: selectedPreset)) {
             return
         }
 
         selectedPreset = availablePresets[0]
     }
 
+    private func daemonPresetName(forSessionID sessionID: String) -> String {
+        AttachmentKey(threadID: selectedThreadID ?? "", sessionID: sessionID).presetName
+    }
+
     private func openPresetNames(for threadID: String) -> Set<String> {
-        Set(attachedEndpoints.keys.filter { $0.threadID == threadID }.map(\.preset))
+        Set(attachedEndpoints.keys.filter { $0.threadID == threadID }.map(\.sessionID))
     }
 
     private func pruneDetachedThreadEndpoints() {
         let validThreadIDs = Set(threads.map(\.id))
         let staleKeys = attachedEndpoints.keys.filter { !validThreadIDs.contains($0.threadID) }
         for key in staleKeys {
-            multiplexer?.detach(threadID: key.threadID, preset: key.preset)
+            multiplexer?.detach(threadID: key.threadID, sessionID: key.sessionID)
             attachedEndpoints.removeValue(forKey: key)
             lastPresetStartErrors.removeValue(forKey: key)
             lastAttachErrors.removeValue(forKey: key)
@@ -1235,7 +1268,7 @@ final class AppState {
     private func detachEndpoints(threadID: String) {
         let keys = attachedEndpoints.keys.filter { $0.threadID == threadID }
         for key in keys {
-            multiplexer?.detach(threadID: key.threadID, preset: key.preset)
+            multiplexer?.detach(threadID: key.threadID, sessionID: key.sessionID)
             attachedEndpoints.removeValue(forKey: key)
             lastPresetStartErrors.removeValue(forKey: key)
             lastAttachErrors.removeValue(forKey: key)
@@ -1244,13 +1277,13 @@ final class AppState {
     }
 
     private func detachEndpoint(threadID: String, preset: String) {
-        let key = AttachmentKey(threadID: threadID, preset: preset)
+        let key = AttachmentKey(threadID: threadID, sessionID: preset)
         guard attachedEndpoints.removeValue(forKey: key) != nil else {
             refreshSelectedEndpoint()
             return
         }
 
-        multiplexer?.detach(threadID: threadID, preset: preset)
+        multiplexer?.detach(threadID: threadID, sessionID: preset)
         lastPresetStartErrors.removeValue(forKey: key)
         lastAttachErrors.removeValue(forKey: key)
         refreshSelectedEndpoint()

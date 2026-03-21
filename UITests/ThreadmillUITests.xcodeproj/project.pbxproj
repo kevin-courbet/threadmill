@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A10000000000000000000001 /* TerminalCreationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* TerminalCreationTests.swift */; };
+		A1000000000000000000000E /* TerminalPresetBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* TerminalPresetBehaviorTests.swift */; };
 		A10000000000000000000002 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* TestHelpers.swift */; };
 		A10000000000000000000003 /* MockSpindleServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* MockSpindleServer.swift */; };
 		A10000000000000000000004 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* XCTest.framework */; };
@@ -37,6 +38,7 @@
 		A2000000000000000000000C /* Repo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Repo.swift; path = ../Sources/Threadmill/Models/Repo.swift; sourceTree = SOURCE_ROOT; };
 		A2000000000000000000000D /* ChatConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ChatConversation.swift; path = ../Sources/Threadmill/Models/ChatConversation.swift; sourceTree = SOURCE_ROOT; };
 		A2000000000000000000000E /* BrowserSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BrowserSession.swift; path = ../Sources/Threadmill/Models/BrowserSession.swift; sourceTree = SOURCE_ROOT; };
+		A2000000000000000000000F /* TerminalPresetBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalPresetBehaviorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +68,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000001 /* TerminalCreationTests.swift */,
+				A2000000000000000000000F /* TerminalPresetBehaviorTests.swift */,
 				A20000000000000000000002 /* TestHelpers.swift */,
 				A20000000000000000000003 /* MockSpindleServer.swift */,
 				A20000000000000000000004 /* Info.plist */,
@@ -189,6 +192,7 @@
 				A10000000000000000000007 /* Thread.swift in Sources */,
 				A10000000000000000000008 /* ThreadStatus.swift in Sources */,
 				A10000000000000000000001 /* TerminalCreationTests.swift in Sources */,
+				A1000000000000000000000E /* TerminalPresetBehaviorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

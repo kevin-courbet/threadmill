@@ -15,10 +15,10 @@ final class TerminalMultiplexerTests: XCTestCase {
         }
 
         let multiplexer = TerminalMultiplexer(connectionManager: connection, surfaceHost: MockSurfaceHost())
-        let endpoint = try await multiplexer.attach(threadID: "thread-1", preset: "terminal")
+        let endpoint = try await multiplexer.attach(threadID: "thread-1", sessionID: "terminal", preset: "terminal")
 
         XCTAssertEqual(endpoint.channelID, 7)
-        XCTAssertTrue(multiplexer.endpoint(threadID: "thread-1", preset: "terminal") === endpoint)
+        XCTAssertTrue(multiplexer.endpoint(threadID: "thread-1", sessionID: "terminal") === endpoint)
         multiplexer.detachAll()
     }
 
@@ -32,11 +32,11 @@ final class TerminalMultiplexerTests: XCTestCase {
         }
 
         let multiplexer = TerminalMultiplexer(connectionManager: connection, surfaceHost: MockSurfaceHost())
-        _ = try await multiplexer.attach(threadID: "thread-1", preset: "terminal")
+        _ = try await multiplexer.attach(threadID: "thread-1", sessionID: "terminal", preset: "terminal")
 
         multiplexer.detach(channelID: 12)
 
-        XCTAssertNil(multiplexer.endpoint(threadID: "thread-1", preset: "terminal"))
+        XCTAssertNil(multiplexer.endpoint(threadID: "thread-1", sessionID: "terminal"))
     }
 
     func testDispatchRoutesBinaryFramesToMatchingEndpoint() async throws {
@@ -51,8 +51,8 @@ final class TerminalMultiplexerTests: XCTestCase {
         }
 
         let multiplexer = TerminalMultiplexer(connectionManager: connection, surfaceHost: MockSurfaceHost())
-        let first = try await multiplexer.attach(threadID: "thread-1", preset: "terminal")
-        let second = try await multiplexer.attach(threadID: "thread-2", preset: "terminal")
+        let first = try await multiplexer.attach(threadID: "thread-1", sessionID: "terminal", preset: "terminal")
+        let second = try await multiplexer.attach(threadID: "thread-2", sessionID: "terminal", preset: "terminal")
 
         multiplexer.handleBinaryFrame(makeFrame(channelID: 22, payload: [0xAA]))
 
@@ -74,8 +74,8 @@ final class TerminalMultiplexerTests: XCTestCase {
         }
 
         let multiplexer = TerminalMultiplexer(connectionManager: connection, surfaceHost: MockSurfaceHost())
-        let first = try await multiplexer.attach(threadID: "thread-1", preset: "terminal")
-        let second = try await multiplexer.attach(threadID: "thread-2", preset: "terminal")
+        let first = try await multiplexer.attach(threadID: "thread-1", sessionID: "terminal", preset: "terminal")
+        let second = try await multiplexer.attach(threadID: "thread-2", sessionID: "terminal", preset: "terminal")
 
         channelsByThread = ["thread-1": 80, "thread-2": 81]
         await multiplexer.reattachAll()
@@ -109,7 +109,7 @@ final class TerminalMultiplexerTests: XCTestCase {
         multiplexer.handleBinaryFrame(scrollbackFrame)
 
         // Attach registers the endpoint and flushes buffered frames
-        let endpoint = try await multiplexer.attach(threadID: "thread-1", preset: "terminal")
+        let endpoint = try await multiplexer.attach(threadID: "thread-1", sessionID: "terminal", preset: "terminal")
 
         XCTAssertEqual(endpoint.channelID, 42)
         XCTAssertEqual(endpoint.bufferedFrameCount, 1)
@@ -128,13 +128,13 @@ final class TerminalMultiplexerTests: XCTestCase {
 
         let multiplexer = TerminalMultiplexer(connectionManager: connection, surfaceHost: MockSurfaceHost())
 
-        let first = try await multiplexer.attach(threadID: "thread-1", preset: "terminal")
-        let second = try await multiplexer.attach(threadID: "thread-1", preset: "terminal")
+        let first = try await multiplexer.attach(threadID: "thread-1", sessionID: "terminal", preset: "terminal")
+        let second = try await multiplexer.attach(threadID: "thread-1", sessionID: "terminal", preset: "terminal")
         XCTAssertTrue(first === second)
 
         first.setChannelID(0)
         channelID = 55
-        let third = try await multiplexer.attach(threadID: "thread-1", preset: "terminal")
+        let third = try await multiplexer.attach(threadID: "thread-1", sessionID: "terminal", preset: "terminal")
 
         XCTAssertTrue(first === third)
         XCTAssertEqual(third.channelID, 55)
@@ -180,13 +180,13 @@ final class TerminalMultiplexerTests: XCTestCase {
             surfaceHost: MockSurfaceHost()
         )
 
-        let endpointA = try await multiplexer.attach(threadID: "thread-a", preset: "terminal")
-        let endpointB = try await multiplexer.attach(threadID: "thread-b", preset: "terminal")
+        let endpointA = try await multiplexer.attach(threadID: "thread-a", sessionID: "terminal", preset: "terminal")
+        let endpointB = try await multiplexer.attach(threadID: "thread-b", sessionID: "terminal", preset: "terminal")
         endpointA.forwardRelayPayloadForTesting(Data([0x01, 0x02]))
         endpointB.forwardRelayPayloadForTesting(Data([0x03]))
 
-        multiplexer.detach(threadID: "thread-a", preset: "terminal")
-        multiplexer.detach(threadID: "thread-b", preset: "terminal")
+        multiplexer.detach(threadID: "thread-a", sessionID: "terminal")
+        multiplexer.detach(threadID: "thread-b", sessionID: "terminal")
 
         let sentFrameExpectation = expectation(description: "sent frames routed")
         Task { @MainActor in

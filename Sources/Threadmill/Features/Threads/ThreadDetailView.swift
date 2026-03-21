@@ -195,9 +195,9 @@ struct ThreadDetailView: View {
 
         var persistedTerminalSessions = tabStateManager.terminalSessionIDs(threadID: thread.id)
         let availablePresetNames = Set(appState.presets.map(\.name))
-        persistedTerminalSessions = persistedTerminalSessions.filter { availablePresetNames.contains($0) }
-        if persistedTerminalSessions.isEmpty, let defaultTerminalPresetName = TerminalModeActions.defaultTerminalPresetName(appState: appState) {
-            persistedTerminalSessions = [defaultTerminalPresetName]
+        persistedTerminalSessions = persistedTerminalSessions.filter { availablePresetNames.contains(TerminalModeActions.presetName(forSessionID: $0)) }
+        if persistedTerminalSessions.isEmpty, TerminalModeActions.defaultTerminalPresetName(appState: appState) != nil {
+            persistedTerminalSessions = ["terminal-1"]
         }
         terminalSessionIDs = persistedTerminalSessions
         tabStateManager.setTerminalSessionIDs(persistedTerminalSessions, threadID: thread.id)

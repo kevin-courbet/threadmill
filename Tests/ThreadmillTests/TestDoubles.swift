@@ -303,16 +303,16 @@ final class MockTerminalMultiplexer: TerminalMultiplexing {
     var detachedByThreadPreset: [(threadID: String, preset: String)] = []
     var detachedChannels: [UInt16] = []
     var attachCallCount = 0
-    var attachHandler: ((String, String) async throws -> RelayEndpoint)?
+    var attachHandler: ((String, String, String) async throws -> RelayEndpoint)?
 
-    func endpoint(threadID _: String, preset _: String) -> RelayEndpoint? {
+    func endpoint(threadID _: String, sessionID _: String) -> RelayEndpoint? {
         nil
     }
 
-    func attach(threadID: String, preset: String) async throws -> RelayEndpoint {
+    func attach(threadID: String, sessionID: String, preset: String) async throws -> RelayEndpoint {
         attachCallCount += 1
         if let attachHandler {
-            return try await attachHandler(threadID, preset)
+            return try await attachHandler(threadID, sessionID, preset)
         }
         throw TestError.missingStub
     }
@@ -321,8 +321,8 @@ final class MockTerminalMultiplexer: TerminalMultiplexing {
         detachedChannels.append(channelID)
     }
 
-    func detach(threadID: String, preset: String) {
-        detachedByThreadPreset.append((threadID, preset))
+    func detach(threadID: String, sessionID: String) {
+        detachedByThreadPreset.append((threadID, sessionID))
     }
 
     func detachAll() {}

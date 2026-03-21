@@ -35,7 +35,7 @@ final class AppStateAttachAfterConnectTests: XCTestCase {
             if method == "preset.start" { return ["ok": true] as [String: Any] }
             throw TestError.missingStub
         }
-        multiplexer.attachHandler = { _, _ in
+        multiplexer.attachHandler = { _, _, _ in
             RelayEndpoint(
                 channelID: 1,
                 threadID: "thread-1",

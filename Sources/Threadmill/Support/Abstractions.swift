@@ -97,10 +97,10 @@ protocol SyncServicing: AnyObject {
 
 @MainActor
 protocol TerminalMultiplexing: AnyObject {
-    func endpoint(threadID: String, preset: String) -> RelayEndpoint?
-    func attach(threadID: String, preset: String) async throws -> RelayEndpoint
+    func endpoint(threadID: String, sessionID: String) -> RelayEndpoint?
+    func attach(threadID: String, sessionID: String, preset: String) async throws -> RelayEndpoint
     func detach(channelID: UInt16)
-    func detach(threadID: String, preset: String)
+    func detach(threadID: String, sessionID: String)
     func detachAll()
     func handleBinaryFrame(_ data: Data)
     func reattachAll() async
