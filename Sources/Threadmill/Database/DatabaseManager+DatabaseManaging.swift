@@ -1,0 +1,2 @@
+@MainActor
+extension DatabaseManager: DatabaseManaging {}

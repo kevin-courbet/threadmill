@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import XCTest
 
+@MainActor
 struct UITestHarness {
     let app: XCUIApplication
     let server: MockSpindleServer
@@ -182,137 +183,64 @@ struct UITestHarness {
     }
 
     private static func seedDatabase(at databasePath: String, daemonPort: UInt16, projects: [MockSpindleServer.ProjectFixture]) throws {
-        let databaseURL = URL(fileURLWithPath: databasePath)
-        try FileManager.default.createDirectory(at: databaseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let database = try DatabaseManager(databasePath: databasePath)
+        let remoteID = try database.allRemotes().first(where: { $0.name == "beast" })?.id ?? "remote-ui-test"
 
-        let remoteID = "remote-ui-test"
-        let repos = projects.compactMap(\.repo)
-        let projectInserts = projects.map { project -> String in
-            let presetsData = try! JSONSerialization.data(withJSONObject: project.presets.map {
-                ["name": $0.name, "command": $0.command, "cwd": $0.cwd as Any]
-            })
-            let presetsJSON = String(decoding: presetsData, as: UTF8.self)
-            return "INSERT INTO projects (id, name, remote_path, default_branch, presets_json, remote_id, repo_id) VALUES (\(sql(project.id)), \(sql(project.name)), \(sql(project.path)), \(sql(project.defaultBranch)), \(sql(presetsJSON)), \(sql(remoteID)), \(sql(project.repo?.id)));"
+        try database.saveRemote(
+            Remote(
+                id: remoteID,
+                name: "beast",
+                host: "127.0.0.1",
+                daemonPort: Int(daemonPort),
+                useSSHTunnel: false,
+                cloneRoot: "/home/wsl/dev",
+                isDefault: true
+            )
+        )
+
+        let repos = projects.compactMap(\.repo).map {
+            Repo(
+                id: $0.id,
+                owner: $0.owner,
+                name: $0.name,
+                fullName: $0.fullName,
+                cloneURL: $0.cloneURL,
+                defaultBranch: $0.defaultBranch,
+                isPrivate: $0.isPrivate,
+                cachedAt: Date(timeIntervalSince1970: 1)
+            )
+        }
+        for repo in repos {
+            try database.saveRepo(repo)
         }
 
-        let repoInserts = repos.map { repo in
-            "INSERT INTO repos (id, owner, name, full_name, clone_url, default_branch, is_private, cached_at) VALUES (\(sql(repo.id)), \(sql(repo.owner)), \(sql(repo.name)), \(sql(repo.fullName)), \(sql(repo.cloneURL)), \(sql(repo.defaultBranch)), \(repo.isPrivate ? 1 : 0), \(sql("2026-03-21 00:00:00.000")));"
-        }
-
-        let sqlScript = """
-        PRAGMA foreign_keys = ON;
-        CREATE TABLE grdb_migrations (identifier TEXT NOT NULL PRIMARY KEY);
-        INSERT INTO grdb_migrations (identifier) VALUES
-            ('v1'),
-            ('v2_project_presets'),
-            ('v3_thread_port_offset'),
-            ('v4_chat_conversation'),
-            ('v5_browser_session'),
-            ('v6_remote_model'),
-            ('v7_repo_model'),
-            ('v8_remote_default_flag');
-
-        CREATE TABLE remotes (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE,
-            host TEXT NOT NULL,
-            daemon_port INTEGER NOT NULL,
-            use_ssh_tunnel INTEGER NOT NULL,
-            clone_root TEXT NOT NULL,
-            is_default INTEGER NOT NULL DEFAULT 0
-        );
-
-        CREATE TABLE repos (
-            id TEXT PRIMARY KEY,
-            owner TEXT NOT NULL,
-            name TEXT NOT NULL,
-            full_name TEXT NOT NULL UNIQUE,
-            clone_url TEXT NOT NULL,
-            default_branch TEXT NOT NULL,
-            is_private INTEGER NOT NULL,
-            cached_at TEXT NOT NULL
-        );
-
-        CREATE TABLE projects (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            remote_path TEXT NOT NULL,
-            default_branch TEXT NOT NULL,
-            presets_json TEXT NOT NULL DEFAULT '[]',
-            remote_id TEXT REFERENCES remotes(id) ON DELETE SET NULL,
-            repo_id TEXT REFERENCES repos(id) ON DELETE SET NULL
-        );
-
-        CREATE TABLE threads (
-            id TEXT PRIMARY KEY,
-            project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-            name TEXT NOT NULL,
-            branch TEXT NOT NULL,
-            worktree_path TEXT NOT NULL,
-            status TEXT NOT NULL,
-            source_type TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            tmux_session TEXT NOT NULL DEFAULT '',
-            port_offset INTEGER
-        );
-
-        CREATE TABLE chatConversation (
-            id TEXT NOT NULL PRIMARY KEY,
-            threadID TEXT NOT NULL,
-            opencodeSessionID TEXT,
-            title TEXT NOT NULL DEFAULT '',
-            createdAt REAL NOT NULL,
-            updatedAt REAL NOT NULL,
-            isArchived INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE INDEX idx_chatConversation_threadID ON chatConversation(threadID);
-
-        CREATE TABLE browserSession (
-            id TEXT NOT NULL PRIMARY KEY,
-            threadID TEXT NOT NULL,
-            url TEXT NOT NULL DEFAULT '',
-            title TEXT NOT NULL DEFAULT '',
-            "order" INTEGER NOT NULL,
-            createdAt TEXT NOT NULL
-        );
-        CREATE INDEX idx_browserSession_threadID ON browserSession(threadID);
-        CREATE UNIQUE INDEX idx_remotes_default_true ON remotes(is_default) WHERE is_default = 1;
-
-        INSERT INTO remotes (id, name, host, daemon_port, use_ssh_tunnel, clone_root, is_default)
-        VALUES (\(sql(remoteID)), 'beast', '127.0.0.1', \(daemonPort), 0, '/home/wsl/dev', 1);
-
-        \(repoInserts.joined(separator: "\n"))
-        \(projectInserts.joined(separator: "\n"))
-        """
-
-        try runSQLite(databasePath: databasePath, sqlScript: sqlScript)
-    }
-
-    private static func runSQLite(databasePath: String, sqlScript: String) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        process.arguments = [databasePath]
-
-        let input = Pipe()
-        let output = Pipe()
-        process.standardInput = input
-        process.standardOutput = output
-        process.standardError = output
-
-        try process.run()
-        input.fileHandleForWriting.write(Data(sqlScript.utf8))
-        try input.fileHandleForWriting.close()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
-            let message = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "sqlite3 failed"
-            throw UITestError(message)
-        }
-    }
-
-    private static func sql(_ value: String?) -> String {
-        guard let value else { return "NULL" }
-        return "'\(value.replacingOccurrences(of: "'", with: "''"))'"
+        try database.replaceAllFromDaemon(
+            projects: projects.map {
+                Project(
+                    id: $0.id,
+                    name: $0.name,
+                    remotePath: $0.path,
+                    defaultBranch: $0.defaultBranch,
+                    presets: $0.presets.map { PresetConfig(name: $0.name, command: $0.command, cwd: $0.cwd) },
+                    remoteId: remoteID,
+                    repoId: $0.repo?.id
+                )
+            },
+            threads: projects.map {
+                ThreadModel(
+                    id: $0.thread.id,
+                    projectId: $0.id,
+                    name: $0.thread.name,
+                    branch: $0.thread.branch,
+                    worktreePath: $0.thread.worktreePath,
+                    status: ThreadStatus(rawValue: $0.thread.status) ?? .active,
+                    sourceType: $0.thread.sourceType,
+                    createdAt: $0.thread.createdAt,
+                    tmuxSession: $0.thread.tmuxSession
+                )
+            },
+            remoteId: remoteID
+        )
     }
 
     private func waitFor<T>(timeout: TimeInterval, description: String, body: () -> T?) throws -> T {

@@ -2,7 +2,7 @@ import Foundation
 import GRDB
 
 @MainActor
-final class DatabaseManager: DatabaseManaging {
+final class DatabaseManager {
     struct RemoteDefaults {
         static let beastName = "beast"
         static let beastHost = "beast"

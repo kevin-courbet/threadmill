@@ -11,6 +11,15 @@
 		A10000000000000000000002 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* TestHelpers.swift */; };
 		A10000000000000000000003 /* MockSpindleServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* MockSpindleServer.swift */; };
 		A10000000000000000000004 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* XCTest.framework */; };
+		A10000000000000000000005 /* DatabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* DatabaseManager.swift */; };
+		A10000000000000000000006 /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* Project.swift */; };
+		A10000000000000000000007 /* Thread.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* Thread.swift */; };
+		A10000000000000000000008 /* ThreadStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* ThreadStatus.swift */; };
+		A10000000000000000000009 /* Remote.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* Remote.swift */; };
+		A1000000000000000000000A /* Repo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* Repo.swift */; };
+		A1000000000000000000000B /* ChatConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* ChatConversation.swift */; };
+		A1000000000000000000000C /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* BrowserSession.swift */; };
+		A1000000000000000000000D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000001 /* GRDB */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -20,6 +29,14 @@
 		A20000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000005 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A20000000000000000000006 /* ThreadmillUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ThreadmillUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000007 /* DatabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DatabaseManager.swift; path = ../Sources/Threadmill/Database/DatabaseManager.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000000008 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Project.swift; path = ../Sources/Threadmill/Models/Project.swift; sourceTree = SOURCE_ROOT; };
+		A20000000000000000000009 /* Thread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Thread.swift; path = ../Sources/Threadmill/Models/Thread.swift; sourceTree = SOURCE_ROOT; };
+		A2000000000000000000000A /* ThreadStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ThreadStatus.swift; path = ../Sources/Threadmill/Models/ThreadStatus.swift; sourceTree = SOURCE_ROOT; };
+		A2000000000000000000000B /* Remote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Remote.swift; path = ../Sources/Threadmill/Models/Remote.swift; sourceTree = SOURCE_ROOT; };
+		A2000000000000000000000C /* Repo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Repo.swift; path = ../Sources/Threadmill/Models/Repo.swift; sourceTree = SOURCE_ROOT; };
+		A2000000000000000000000D /* ChatConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ChatConversation.swift; path = ../Sources/Threadmill/Models/ChatConversation.swift; sourceTree = SOURCE_ROOT; };
+		A2000000000000000000000E /* BrowserSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BrowserSession.swift; path = ../Sources/Threadmill/Models/BrowserSession.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -27,6 +44,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1000000000000000000000D /* GRDB in Frameworks */,
 				A10000000000000000000004 /* XCTest.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -37,6 +55,7 @@
 		A40000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
+				A40000000000000000000005 /* ThreadmillSources */,
 				A40000000000000000000002 /* UITests */,
 				A40000000000000000000003 /* Frameworks */,
 				A40000000000000000000004 /* Products */,
@@ -70,6 +89,21 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		A40000000000000000000005 /* ThreadmillSources */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000007 /* DatabaseManager.swift */,
+				A20000000000000000000008 /* Project.swift */,
+				A20000000000000000000009 /* Thread.swift */,
+				A2000000000000000000000A /* ThreadStatus.swift */,
+				A2000000000000000000000B /* Remote.swift */,
+				A2000000000000000000000C /* Repo.swift */,
+				A2000000000000000000000D /* ChatConversation.swift */,
+				A2000000000000000000000E /* BrowserSession.swift */,
+			);
+			name = ThreadmillSources;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -86,6 +120,9 @@
 			dependencies = (
 			);
 			name = ThreadmillUITests;
+			packageProductDependencies = (
+				A90000000000000000000001 /* GRDB */,
+			);
 			productName = ThreadmillUITests;
 			productReference = A20000000000000000000006 /* ThreadmillUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -114,6 +151,9 @@
 				Base,
 			);
 			mainGroup = A40000000000000000000001;
+			packageReferences = (
+				AA0000000000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+			);
 			productRefGroup = A40000000000000000000004 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -138,13 +178,32 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1000000000000000000000C /* BrowserSession.swift in Sources */,
+				A1000000000000000000000B /* ChatConversation.swift in Sources */,
+				A10000000000000000000005 /* DatabaseManager.swift in Sources */,
 				A10000000000000000000003 /* MockSpindleServer.swift in Sources */,
+				A10000000000000000000006 /* Project.swift in Sources */,
+				A10000000000000000000009 /* Remote.swift in Sources */,
+				A1000000000000000000000A /* Repo.swift in Sources */,
 				A10000000000000000000002 /* TestHelpers.swift in Sources */,
+				A10000000000000000000007 /* Thread.swift in Sources */,
+				A10000000000000000000008 /* ThreadStatus.swift in Sources */,
 				A10000000000000000000001 /* TerminalCreationTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AA0000000000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCBuildConfiguration section */
 		A80000000000000000000001 /* Debug */ = {
@@ -264,6 +323,14 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A90000000000000000000001 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA0000000000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A60000000000000000000001 /* Project object */;
 }

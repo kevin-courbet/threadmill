@@ -126,7 +126,7 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 | **Sources/threadmill-relay/** | |
 | `main.c` | ~30-line C PTY bridge: stdin/stdout ↔ Unix socket |
 | **Tests/ThreadmillTests/** | ~100 unit tests with mock doubles |
-| **Tests/ThreadmillUITests/** | UI e2e harness with MockSpindleServer (opt-in) |
+| **UITests/ThreadmillUITests/** | XCUITest e2e harness with MockSpindleServer (opt-in) |
 
 ### Spindle (on beast) — Rust daemon
 

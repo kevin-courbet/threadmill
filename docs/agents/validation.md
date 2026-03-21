@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-01
+updated: 2026-03-21
 ---
 
 # Validation Process
@@ -47,7 +47,7 @@ updated: 2026-03-01
   - file names: `*Tests.swift`
   - test functions: `test...`
 - Spindle integration tests are maintained in the Spindle repository on beast under `/home/wsl/dev/spindle`.
-- UI e2e tests should live with the existing UI test target and be runnable via `swift test --filter ThreadmillUITests` when opt-in env is set.
+- UI e2e tests live under `UITests/ThreadmillUITests/` and run through `task test:ui`, which builds the app with SPM and executes the Xcode UI test project.
 
 ## CI Expectation
 

@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 
+@MainActor
 final class TerminalCreationTests: XCTestCase {
     func testCreatesPresetTerminalsAcrossTwoProjects() throws {
         let fixture = validationFixture()
