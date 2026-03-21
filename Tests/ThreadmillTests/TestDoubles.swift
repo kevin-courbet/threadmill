@@ -16,11 +16,26 @@ struct RecordedRequest {
 @MainActor
 final class MockDaemonConnection: ConnectionManaging {
     var state: ConnectionStatus
+    var debugSnapshot: ConnectionDebugSnapshot {
+        ConnectionDebugSnapshot(
+            status: state.label,
+            sessionReady: sessionReady,
+            reconnectAttempt: reconnectAttempt,
+            lastErrorDescription: lastErrorDescription
+        )
+    }
+    var onStateChange: ((ConnectionStatus) -> Void)?
+    var onConnected: (() -> Void)?
+    var onEvent: ((String, [String: Any]?) -> Void)?
     var startCallCount = 0
     var stopCallCount = 0
+    var sessionReady = true
+    var reconnectAttempt = 0
+    var lastErrorDescription: String?
     var requests: [RecordedRequest] = []
     var sentBinaryFrames: [Data] = []
     var requestHandler: ((String, [String: Any]?, TimeInterval) throws -> Any)?
+    private var binaryFrameHandler: ((Data) -> Void)?
 
     init(state: ConnectionStatus = .disconnected) {
         self.state = state
@@ -44,6 +59,11 @@ final class MockDaemonConnection: ConnectionManaging {
 
     func sendBinaryFrame(_ data: Data) async throws {
         sentBinaryFrames.append(data)
+        binaryFrameHandler?(data)
+    }
+
+    func setBinaryFrameHandler(_ handler: ((Data) -> Void)?) {
+        binaryFrameHandler = handler
     }
 }
 
@@ -69,12 +89,16 @@ final class MockSyncService: SyncServicing {
 
 @MainActor
 final class MockDatabaseManager: DatabaseManaging {
+    var remotes: [Remote] = []
+    var repos: [Repo] = []
     var projects: [Project] = []
     var threads: [ThreadModel] = []
     var conversations: [ChatConversation] = []
     var browserSessions: [BrowserSession] = []
     var updateStatusResult = true
     var updatedStatuses: [(threadID: String, status: ThreadStatus)] = []
+    var replaceAllFromDaemonRemoteIDs: [String] = []
+    private(set) var linkedProjects: [(projectID: String, repoID: String, remoteID: String)] = []
 
     func allProjects() throws -> [Project] {
         projects
@@ -84,14 +108,99 @@ final class MockDatabaseManager: DatabaseManaging {
         threads
     }
 
-    func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel]) throws {
+    func allRemotes() throws -> [Remote] {
+        remotes
+    }
+
+    func allRepos() throws -> [Repo] {
+        repos
+    }
+
+    func remote(id: String) throws -> Remote? {
+        remotes.first(where: { $0.id == id })
+    }
+
+    func repo(id: String) throws -> Repo? {
+        repos.first(where: { $0.id == id })
+    }
+
+    func saveRemote(_ remote: Remote) throws {
+        if let index = remotes.firstIndex(where: { $0.id == remote.id }) {
+            remotes[index] = remote
+        } else {
+            remotes.append(remote)
+        }
+    }
+
+    func ensureDefaultRemoteExists() throws -> Remote {
+        if let currentDefault = remotes.first(where: \.isDefault) {
+            return currentDefault
+        }
+
+        if let beastIndex = remotes.firstIndex(where: { $0.name == DatabaseManager.RemoteDefaults.beastName }) {
+            remotes[beastIndex].isDefault = true
+            return remotes[beastIndex]
+        }
+
+        if let firstRemote = remotes.first {
+            var updatedFirstRemote = firstRemote
+            updatedFirstRemote.isDefault = true
+            remotes[0] = updatedFirstRemote
+            return updatedFirstRemote
+        }
+
+        let defaultRemote = Remote(
+            id: UUID().uuidString,
+            name: DatabaseManager.RemoteDefaults.beastName,
+            host: DatabaseManager.RemoteDefaults.beastHost,
+            daemonPort: DatabaseManager.RemoteDefaults.beastDaemonPort,
+            useSSHTunnel: DatabaseManager.RemoteDefaults.beastUseSSHTunnel,
+            cloneRoot: DatabaseManager.RemoteDefaults.beastCloneRoot,
+            isDefault: true
+        )
+        remotes = [defaultRemote]
+        return defaultRemote
+    }
+
+    func deleteRemote(id: String) throws {
+        remotes.removeAll { $0.id == id }
+    }
+
+    func saveRepo(_ repo: Repo) throws {
+        if let index = repos.firstIndex(where: { $0.id == repo.id }) {
+            repos[index] = repo
+        } else {
+            repos.append(repo)
+        }
+    }
+
+    func deleteRepo(id: String) throws {
+        repos.removeAll { $0.id == id }
+    }
+
+    func replaceAllRepos(_ repos: [Repo]) throws {
+        self.repos = repos
+    }
+
+    func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel], remoteId: String) throws {
         self.projects = projects
         self.threads = threads
+        replaceAllFromDaemonRemoteIDs.append(remoteId)
     }
 
     func updateThreadStatus(threadID: String, status: ThreadStatus) throws -> Bool {
         updatedStatuses.append((threadID, status))
         return updateStatusResult
+    }
+
+    func linkProject(projectID: String, repoID: String, remoteID: String) throws -> Bool {
+        linkedProjects.append((projectID, repoID, remoteID))
+        guard let index = projects.firstIndex(where: { $0.id == projectID }) else {
+            return false
+        }
+        projects[index].repoId = repoID
+        projects[index].remoteId = remoteID
+        return true
     }
 
     func saveConversation(_ conversation: ChatConversation) throws {
@@ -224,6 +333,83 @@ final class MockTerminalMultiplexer: TerminalMultiplexing {
 }
 
 @MainActor
+final class MockRemoteConnectionPool: RemoteConnectionPooling {
+    var connections: [String: any ConnectionManaging] = [:]
+    var addedRemotes: [Remote] = []
+    var updatedRemotes: [Remote] = []
+    var removedRemoteIDs: [String] = []
+    private(set) var ensuredRemoteIDs: [String] = []
+    private(set) var activatedRemoteIDs: [String] = []
+    var activeRemoteId: String?
+
+    func connection(for remoteId: String) -> (any ConnectionManaging)? {
+        connections[remoteId]
+    }
+
+    func activate(remoteId: String) throws {
+        guard connections[remoteId] != nil else {
+            throw RemoteConnectionPoolError.unknownRemote(id: remoteId)
+        }
+
+        activatedRemoteIDs.append(remoteId)
+        activeRemoteId = remoteId
+    }
+
+    func addRemote(_ remote: Remote) {
+        addedRemotes.append(remote)
+        if connections[remote.id] == nil {
+            connections[remote.id] = MockDaemonConnection(state: .disconnected)
+        }
+    }
+
+    func removeRemote(id: String) {
+        removedRemoteIDs.append(id)
+        if let connection = connections.removeValue(forKey: id) {
+            connection.stop()
+        }
+        if activeRemoteId == id {
+            activeRemoteId = nil
+        }
+    }
+
+    func updateRemote(_ remote: Remote) {
+        updatedRemotes.append(remote)
+        if connections[remote.id] == nil {
+            connections[remote.id] = MockDaemonConnection(state: .disconnected)
+        }
+    }
+
+    func ensureConnected(remoteId: String) async throws {
+        guard let connection = connections[remoteId] else {
+            throw RemoteConnectionPoolError.unknownRemote(id: remoteId)
+        }
+
+        ensuredRemoteIDs.append(remoteId)
+        guard connection.state == .disconnected else {
+            return
+        }
+        connection.start()
+    }
+
+    func stopAll() {
+        for connection in connections.values {
+            connection.stop()
+        }
+    }
+}
+
+@MainActor
+func makeSingleRemoteConnectionPool(
+    connection: any ConnectionManaging,
+    remoteID: String = "remote-1"
+) -> MockRemoteConnectionPool {
+    let pool = MockRemoteConnectionPool()
+    pool.connections[remoteID] = connection
+    pool.activeRemoteId = remoteID
+    return pool
+}
+
+@MainActor
 final class MockTunnelManager: TunnelManaging {
     var onExit: ((Int32) -> Void)?
     var startCallCount = 0
@@ -325,8 +511,6 @@ final class MockOpenCodeClient: OpenCodeManaging {
     var getMessagesHandler: ((String, String) async throws -> [OCMessage])?
     var sendPromptResult: Result<Void, Error> = .success(())
     var abortResult: Result<Void, Error> = .success(())
-    var getProvidersResult: Result<[OCProvider], Error> = .failure(TestError.missingStub)
-    var getAgentsResult: Result<[OCAgent], Error> = .failure(TestError.missingStub)
     var getSessionDiffResult: Result<OCDiff, Error> = .failure(TestError.missingStub)
     var healthCheckResult: Result<Bool, Error> = .success(true)
     var eventStream: AsyncStream<OCEvent> = AsyncStream { continuation in
@@ -336,14 +520,14 @@ final class MockOpenCodeClient: OpenCodeManaging {
     private(set) var listedDirectories: [String] = []
     private(set) var fetchedSessions: [(id: String, directory: String)] = []
     private(set) var createdSessionsInDirectories: [String] = []
+    private(set) var createdSessions: [String] = []
     private(set) var initializedSessions: [(id: String, directory: String)] = []
     private(set) var fetchedMessages: [(sessionID: String, directory: String)] = []
     private(set) var promptedSessions: [(sessionID: String, prompt: String, directory: String)] = []
     private(set) var abortedSessions: [(sessionID: String, directory: String)] = []
-    private(set) var providerDirectories: [String] = []
-    private(set) var agentDirectories: [String] = []
     private(set) var diffRequests: [(sessionID: String, directory: String)] = []
     private(set) var streamedDirectories: [String] = []
+    private(set) var invalidateCallCount = 0
 
     func listSessions(directory: String) async throws -> [OCSession] {
         listedDirectories.append(directory)
@@ -357,6 +541,7 @@ final class MockOpenCodeClient: OpenCodeManaging {
 
     func createSession(directory: String) async throws -> OCSession {
         createdSessionsInDirectories.append(directory)
+        createdSessions.append(directory)
         return try createSessionResult.get()
     }
 
@@ -383,16 +568,6 @@ final class MockOpenCodeClient: OpenCodeManaging {
         _ = try abortResult.get()
     }
 
-    func getProviders(directory: String) async throws -> [OCProvider] {
-        providerDirectories.append(directory)
-        return try getProvidersResult.get()
-    }
-
-    func getAgents(directory: String) async throws -> [OCAgent] {
-        agentDirectories.append(directory)
-        return try getAgentsResult.get()
-    }
-
     func getSessionDiff(sessionID: String, directory: String) async throws -> OCDiff {
         diffRequests.append((sessionID, directory))
         return try getSessionDiffResult.get()
@@ -405,5 +580,9 @@ final class MockOpenCodeClient: OpenCodeManaging {
     func streamEvents(directory: String) -> AsyncStream<OCEvent> {
         streamedDirectories.append(directory)
         return eventStream
+    }
+
+    func invalidate() {
+        invalidateCallCount += 1
     }
 }

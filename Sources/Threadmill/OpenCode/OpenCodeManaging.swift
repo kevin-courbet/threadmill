@@ -8,9 +8,8 @@ protocol OpenCodeManaging: AnyObject {
     func getMessages(sessionID: String, directory: String) async throws -> [OCMessage]
     func sendPrompt(sessionID: String, prompt: String, directory: String) async throws
     func abort(sessionID: String, directory: String) async throws
-    func getProviders(directory: String) async throws -> [OCProvider]
-    func getAgents(directory: String) async throws -> [OCAgent]
     func getSessionDiff(sessionID: String, directory: String) async throws -> OCDiff
     func healthCheck() async throws -> Bool
     func streamEvents(directory: String) -> AsyncStream<OCEvent>
+    func invalidate()
 }

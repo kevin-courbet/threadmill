@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import Threadmill
 
@@ -5,6 +6,9 @@ import XCTest
 final class AppStateInteractionBehaviorTests: XCTestCase {
     func testCreateThreadTransitionsFromCreatingToActive() async throws {
         let connection = MockDaemonConnection(state: .connected)
+        connection.sessionReady = false
+        connection.reconnectAttempt = 2
+        connection.lastErrorDescription = "handshake pending"
         let database = MockDatabaseManager()
         let sync = MockSyncService()
         let multiplexer = MockTerminalMultiplexer()
@@ -21,6 +25,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         }
 
         let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        appState.connectionStatus = .connected
 
         var sawCreatingState = false
         sync.syncHandler = {
@@ -42,6 +47,174 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertTrue(sawCreatingState)
         XCTAssertEqual(appState.threads.first?.status, .active)
         XCTAssertEqual(appState.selectedThreadID, creatingThread.id)
+    }
+
+    func testCreateThreadDoesNotSendRPCBeforeConnectionIsReady() async {
+        let connection = MockDaemonConnection(state: .connecting)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = makeProject(id: "project-1")
+        database.projects = [project]
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+
+        do {
+            try await appState.createThread(
+                projectID: project.id,
+                name: "feature-auth",
+                sourceType: "new_feature",
+                branch: nil
+            )
+            XCTFail("Expected createThread to refuse requests before connection is ready")
+        } catch let error as AppStateError {
+            guard case .connectionNotReady = error else {
+                return XCTFail("Unexpected AppStateError: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertTrue(connection.requests.isEmpty)
+    }
+
+    func testCreateThreadFromRepoContextProvisionsThenCreatesThread() async throws {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let remote = Remote(
+            id: "remote-1",
+            name: "beast",
+            host: "beast",
+            daemonPort: 19990,
+            useSSHTunnel: true,
+            cloneRoot: "/home/wsl/dev"
+        )
+        let repo = Repo(
+            id: "repo-1",
+            owner: "anomalyco",
+            name: "threadmill",
+            fullName: "anomalyco/threadmill",
+            cloneURL: "git@github.com:anomalyco/threadmill.git",
+            defaultBranch: "main",
+            isPrivate: true,
+            cachedAt: Date(timeIntervalSince1970: 1)
+        )
+        database.remotes = [remote]
+        database.repos = [repo]
+
+        connection.requestHandler = { method, _, _ in
+            switch method {
+            case "project.lookup":
+                return [
+                    "exists": false,
+                    "is_git_repo": false,
+                    "project_id": NSNull(),
+                ]
+            case "project.clone":
+                return ["id": "project-11"]
+            case "thread.create":
+                return ["id": "thread-11"]
+            case "project.list", "thread.list":
+                return []
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+
+        try await appState.createThread(
+            repo: repo,
+            remote: remote,
+            name: "feature-auth",
+            sourceType: "new_feature",
+            branch: nil
+        )
+
+        XCTAssertEqual(Array(connection.requests.prefix(3).map(\.method)), ["project.lookup", "project.clone", "thread.create"])
+        XCTAssertTrue(connection.requests.contains(where: { $0.method == "project.list" }))
+        XCTAssertEqual(connection.requests[2].params?["project_id"] as? String, "project-11")
+        XCTAssertEqual(connection.requests[2].params?["name"] as? String, "feature-auth")
+        XCTAssertEqual(database.linkedProjects.count, 1)
+    }
+
+    func testCreateThreadForCrossProjectWorkspaceRejectsRepoLinkedLookupProject() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let remote = Remote(
+            id: "remote-1",
+            name: "beast",
+            host: "beast",
+            daemonPort: 19990,
+            useSSHTunnel: true,
+            cloneRoot: "/home/wsl/dev"
+        )
+        let repo = Repo(
+            id: "repo-1",
+            owner: "anomalyco",
+            name: "threadmill",
+            fullName: "anomalyco/threadmill",
+            cloneURL: "git@github.com:anomalyco/threadmill.git",
+            defaultBranch: "main",
+            isPrivate: true,
+            cachedAt: Date(timeIntervalSince1970: 1)
+        )
+        let existingProject = Project(
+            id: "project-1",
+            name: repo.name,
+            remotePath: "/home/wsl",
+            defaultBranch: "main",
+            presets: [PresetConfig(name: "terminal", command: "$SHELL", cwd: nil)],
+            remoteId: remote.id,
+            repoId: repo.id
+        )
+        database.remotes = [remote]
+        database.repos = [repo]
+        database.projects = [existingProject]
+
+        connection.requestHandler = { method, _, _ in
+            switch method {
+            case "project.lookup":
+                return [
+                    "exists": true,
+                    "is_git_repo": true,
+                    "project_id": existingProject.id,
+                ]
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+
+        do {
+            try await appState.createThread(
+                repo: .defaultWorkspace,
+                remote: remote,
+                name: "scratch",
+                sourceType: "main_checkout",
+                branch: nil
+            )
+            XCTFail("Expected hijack protection to reject relink")
+        } catch let error as AppStateError {
+            guard case let .defaultWorkspaceProjectAlreadyLinked(projectID, repoID) = error else {
+                return XCTFail("Unexpected AppStateError: \(error)")
+            }
+            XCTAssertEqual(projectID, existingProject.id)
+            XCTAssertEqual(repoID, repo.id)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertEqual(connection.requests.map(\.method), ["project.lookup"])
+        XCTAssertTrue(database.linkedProjects.isEmpty)
     }
 
     func testCloseThreadRemovesItFromSidebar() async {
@@ -323,6 +496,261 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertTrue(connection.requests.contains(where: { $0.method == "preset.start" }))
     }
 
+    func testStartPresetAttachesWhenPresetAlreadyRunning() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [PresetConfig(name: "terminal", command: "$SHELL", cwd: nil)]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        connection.requestHandler = { method, _, _ in
+            if method == "preset.start" {
+                throw JSONRPCErrorResponse(code: -32000, message: "preset already running: terminal")
+            }
+            throw TestError.missingStub
+        }
+        multiplexer.attachHandler = { threadID, preset in
+            RelayEndpoint(
+                channelID: 7,
+                threadID: threadID,
+                preset: preset,
+                connectionManager: connection,
+                surfaceHost: MockSurfaceHost()
+            )
+        }
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        appState.connectionStatus = .connected
+
+        await appState.startPreset(named: "terminal")
+
+        XCTAssertEqual(appState.selectedPreset, "terminal")
+        XCTAssertEqual(appState.selectedEndpoint?.channelID, 7)
+        XCTAssertEqual(multiplexer.attachCallCount, 1)
+    }
+
+    func testDefaultTerminalSessionPrefersFirstUnopenedPreset() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [
+                PresetConfig(name: "terminal", command: "$SHELL", cwd: nil),
+                PresetConfig(name: "logs", command: "tail -f log", cwd: nil),
+            ]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        appState.selectedPreset = "terminal"
+
+        XCTAssertEqual(TerminalModeActions.defaultTerminalPresetName(appState: appState), "logs")
+    }
+
+    func testAddTerminalSessionSelectsPresetWithoutStartingItTwice() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [
+                PresetConfig(name: "terminal", command: "$SHELL", cwd: nil),
+                PresetConfig(name: "dev-server", command: "bun run dev", cwd: nil),
+            ]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        var nextChannelID = 1
+        connection.requestHandler = { method, _, _ in
+            switch method {
+            case "preset.start":
+                return ["ok": true]
+            case "terminal.attach":
+                defer { nextChannelID += 1 }
+                return ["channel_id": nextChannelID]
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let multiplexer = TerminalMultiplexer(connectionManager: connection, surfaceHost: MockSurfaceHost())
+        defer { multiplexer.detachAll() }
+
+        let appState = AppState()
+        appState.configure(
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
+            databaseManager: database,
+            syncService: sync,
+            multiplexer: multiplexer
+        )
+        appState.reloadFromDatabase()
+
+        let suiteName = "AppStateInteractionBehaviorTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let tabStateManager = ThreadTabStateManager(defaults: defaults, storageKey: suiteName)
+
+        var terminalSessionIDs = ["terminal"]
+        var selectedTerminalSessionID: String? = "terminal"
+
+        TerminalModeActions.addTerminalSession(
+            preset: "dev-server",
+            appState: appState,
+            terminalSessionIDs: Binding(get: { terminalSessionIDs }, set: { terminalSessionIDs = $0 }),
+            selectedTerminalSessionIDBinding: Binding(get: { selectedTerminalSessionID }, set: { selectedTerminalSessionID = $0 }),
+            tabStateManager: tabStateManager
+        )
+
+        let didSelectDevServer = await waitForCondition {
+            selectedTerminalSessionID == "dev-server"
+        }
+        XCTAssertTrue(didSelectDevServer)
+
+        TerminalModeActions.attachSelectedTerminalIfNeeded(
+            appState: appState,
+            selectedTerminalSessionID: selectedTerminalSessionID,
+            threadID: thread.id
+        )
+
+        let didAttachDevServer = await waitForCondition(timeout: 2.0) {
+            appState.selectedEndpoint?.preset == "dev-server"
+        }
+        XCTAssertTrue(didAttachDevServer)
+        XCTAssertEqual(connection.requests.filter { $0.method == "preset.start" }.count, 1)
+        XCTAssertEqual(connection.requests.filter { $0.method == "terminal.attach" }.count, 1)
+    }
+
+    func testTerminalDebugSnapshotReflectsPendingAttachAndErrors() async {
+        let connection = MockDaemonConnection(state: .connected)
+        connection.sessionReady = false
+        connection.reconnectAttempt = 2
+        connection.lastErrorDescription = "handshake pending"
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [PresetConfig(name: "terminal", command: "$SHELL", cwd: nil)]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        connection.requestHandler = { method, _, _ in
+            if method == "preset.start" {
+                throw JSONRPCErrorResponse(code: -32000, message: "boom")
+            }
+            throw TestError.missingStub
+        }
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+
+        await appState.startPreset(named: "terminal")
+
+        let snapshot = appState.terminalDebugSnapshot(for: "terminal")
+        XCTAssertEqual(snapshot?.threadID, thread.id)
+        XCTAssertEqual(snapshot?.preset, "terminal")
+        XCTAssertEqual(snapshot?.connectionStatus, ConnectionStatus.connected.label)
+        XCTAssertEqual(snapshot?.sessionReady, false)
+        XCTAssertEqual(snapshot?.reconnectAttempt, 2)
+        XCTAssertEqual(snapshot?.pendingAttach, false)
+        XCTAssertEqual(snapshot?.endpointAttached, false)
+        XCTAssertEqual(snapshot?.connectionLastError, "handshake pending")
+        XCTAssertTrue(snapshot?.lastStartError?.contains("boom") == true)
+        XCTAssertTrue(snapshot?.summary.contains("sessionReady=false") == true)
+        XCTAssertTrue(snapshot?.summary.contains("lastStartError=") == true)
+    }
+
+    func testAppDebugSnapshotIncludesSelectionConnectionAndTerminalState() async {
+        let connection = MockDaemonConnection(state: .connected)
+        connection.sessionReady = true
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [PresetConfig(name: "terminal", command: "$SHELL", cwd: nil)]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        appState.selectedWorkspaceRemoteID = "remote-1"
+        appState.selectedPreset = "terminal"
+        appState.alertMessage = "attach failed"
+
+        let snapshot = appState.debugSnapshot()
+
+        XCTAssertEqual(snapshot.selectedWorkspaceRemoteID, "remote-1")
+        XCTAssertEqual(snapshot.selectedThreadID, thread.id)
+        XCTAssertEqual(snapshot.selectedPreset, "terminal")
+        XCTAssertEqual(snapshot.connection.status, ConnectionStatus.connected.label)
+        XCTAssertEqual(snapshot.connection.sessionReady, true)
+        XCTAssertEqual(snapshot.terminal?.preset, "terminal")
+        XCTAssertEqual(snapshot.alertMessage, "attach failed")
+        XCTAssertTrue(snapshot.summary.contains("selectedThreadID=thread-1"))
+        XCTAssertTrue(snapshot.summary.contains("connection.sessionReady=true"))
+    }
+
+    func testAppDebugSnapshotIsJSONEncodable() async throws {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [PresetConfig(name: "terminal", command: "$SHELL", cwd: nil)]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        let appState = makeAppState(connection: connection, database: database, sync: sync, multiplexer: multiplexer)
+        let snapshot = appState.debugSnapshot()
+        let data = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(AppStateDebugSnapshot.self, from: data)
+
+        XCTAssertEqual(decoded.selectedThreadID, snapshot.selectedThreadID)
+        XCTAssertEqual(decoded.connection.status, snapshot.connection.status)
+    }
+
     func testThreadScopedPresetActionsIgnoreStaleThreadSelection() async {
         let connection = MockDaemonConnection(state: .connected)
         let database = MockDatabaseManager()
@@ -521,7 +949,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
 
         let appState = AppState()
         appState.configure(
-            connectionManager: connection,
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
             databaseManager: database,
             syncService: sync,
             multiplexer: multiplexer
@@ -577,7 +1005,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
     ) -> AppState {
         let appState = AppState()
         appState.configure(
-            connectionManager: connection,
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
             databaseManager: database,
             syncService: sync,
             multiplexer: multiplexer

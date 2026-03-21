@@ -3,17 +3,99 @@ import Observation
 
 enum AppStateError: LocalizedError {
     case connectionManagerUnavailable
+    case connectionNotReady
     case invalidGitStatusResponse
+    case invalidProjectResponse
+    case defaultWorkspaceProjectAlreadyLinked(projectID: String, repoID: String)
+    case provisioningUnavailable
 
     var errorDescription: String? {
         switch self {
         case .connectionManagerUnavailable:
             "Connection to spindle is unavailable."
+        case .connectionNotReady:
+            "Connection to spindle is still starting. Try again once it finishes connecting."
         case .invalidGitStatusResponse:
             "Invalid response for file.git_status."
+        case .invalidProjectResponse:
+            "Invalid response while preparing the project."
+        case let .defaultWorkspaceProjectAlreadyLinked(projectID, repoID):
+            "Project \(projectID) is already linked to repo \(repoID), refusing to relink as cross-project workspace."
+        case .provisioningUnavailable:
+            "Provisioning service is unavailable."
         }
     }
 }
+
+struct TerminalDebugSnapshot: Codable, Equatable {
+    let threadID: String?
+    let preset: String
+    let connectionStatus: String
+    let sessionReady: Bool
+    let reconnectAttempt: Int
+    let pendingAttach: Bool
+    let endpointAttached: Bool
+    let endpointChannelID: UInt16?
+    let openPresets: [String]
+    let connectionLastError: String?
+    let lastStartError: String?
+    let lastAttachError: String?
+
+    var summary: String {
+        let threadDescription = threadID ?? "nil"
+        let channelDescription = endpointChannelID.map(String.init) ?? "nil"
+        let startErrorDescription = lastStartError ?? "nil"
+        let attachErrorDescription = lastAttachError ?? "nil"
+        let openPresetDescription = openPresets.joined(separator: ",")
+        let connectionDescription = connectionStatus
+        let connectionErrorDescription = connectionLastError ?? "nil"
+
+        return [
+            "thread=\(threadDescription)",
+            "preset=\(preset)",
+            "connection=\(connectionDescription)",
+            "sessionReady=\(sessionReady)",
+            "reconnectAttempt=\(reconnectAttempt)",
+            "pendingAttach=\(pendingAttach)",
+            "endpointAttached=\(endpointAttached)",
+            "channel=\(channelDescription)",
+            "openPresets=\(openPresetDescription)",
+            "connectionLastError=\(connectionErrorDescription)",
+            "lastStartError=\(startErrorDescription)",
+            "lastAttachError=\(attachErrorDescription)",
+        ].joined(separator: "\n")
+    }
+}
+
+struct AppStateDebugSnapshot: Codable, Equatable {
+    let selectedWorkspaceRemoteID: String?
+    let selectedThreadID: String?
+    let selectedPreset: String?
+    let connection: ConnectionDebugSnapshot
+    let terminal: TerminalDebugSnapshot?
+    let alertMessage: String?
+
+    var summary: String {
+        let workspaceRemoteDescription = selectedWorkspaceRemoteID ?? "nil"
+        let threadDescription = selectedThreadID ?? "nil"
+        let presetDescription = selectedPreset ?? "nil"
+        let alertDescription = alertMessage ?? "nil"
+        let terminalSummary = terminal?.summary.replacingOccurrences(of: "\n", with: " | ") ?? "nil"
+
+        return [
+            "selectedWorkspaceRemoteID=\(workspaceRemoteDescription)",
+            "selectedThreadID=\(threadDescription)",
+            "selectedPreset=\(presetDescription)",
+            "connection.status=\(connection.status)",
+            "connection.sessionReady=\(connection.sessionReady)",
+            "connection.reconnectAttempt=\(connection.reconnectAttempt)",
+            "connection.lastError=\(connection.lastErrorDescription ?? "nil")",
+            "terminal=\(terminalSummary)",
+            "alert=\(alertDescription)",
+        ].joined(separator: "\n")
+    }
+}
+
 
 @MainActor
 @Observable
@@ -27,16 +109,45 @@ final class AppState {
         didSet {
             if case .connected = connectionStatus, oldValue != connectionStatus {
                 scheduleAttachSelectedPreset()
+                startStatsTimer()
+            } else if connectionStatus == .disconnected {
+                stopStatsTimer()
+                systemStats = nil
             }
         }
     }
-    var projects: [Project] = []
+    var remotes: [Remote] = [] {
+        didSet {
+            rebuildWorkspacePathsByRemoteID()
+        }
+    }
+    var repos: [Repo] = []
+    var projects: [Project] = [] {
+        didSet {
+            rebuildProjectsByID()
+        }
+    }
     var threads: [ThreadModel] = []
+    var systemStats: SystemStatsResult?
+    private var statsTask: Task<Void, Never>?
+    private let statsPollingEnabled: Bool
+    private let statsRefreshIntervalNanoseconds: UInt64
+
     var isNewThreadSheetPresented = false
+    var alertMessage: String?
+    var selectedWorkspaceRemoteID: String? {
+        didSet {
+            guard oldValue != selectedWorkspaceRemoteID, selectedThreadID == nil else {
+                return
+            }
+            updateActiveRemoteConnection()
+        }
+    }
     var selectedThreadID: String? {
         didSet {
             ensureSelectedPresetIsValid()
             refreshSelectedEndpoint()
+            updateActiveRemoteConnection()
         }
     }
     var selectedPreset: String? {
@@ -50,13 +161,28 @@ final class AppState {
     private(set) var fileService: (any FileBrowsing)?
 
     private(set) var databaseManager: (any DatabaseManaging)?
+    private var provisioningService: (any Provisioning)?
     private var syncService: (any SyncServicing)?
     private var multiplexer: (any TerminalMultiplexing)?
-    private var connectionManager: (any ConnectionManaging)?
+    private var connectionPool: (any RemoteConnectionPooling)?
     private var eventSyncScheduled = false
     private var attachedEndpoints: [AttachmentKey: RelayEndpoint] = [:]
     private var pendingAttachTasks: [AttachmentKey: Task<Void, Never>] = [:]
     private var permanentAttachFailures: Set<AttachmentKey> = []
+    private var lastPresetStartErrors: [AttachmentKey: String] = [:]
+    private var lastAttachErrors: [AttachmentKey: String] = [:]
+    private var workspacePathsByRemoteID: [String: String] = [:]
+    private var projectsByID: [String: Project] = [:]
+
+    init(statsPollingEnabled: Bool = false, statsRefreshInterval: TimeInterval = 5) {
+        self.statsPollingEnabled = statsPollingEnabled
+        let refreshInterval = max(statsRefreshInterval, 0.1)
+        statsRefreshIntervalNanoseconds = UInt64(refreshInterval * 1_000_000_000)
+    }
+
+    private var connectionManager: (any ConnectionManaging)? {
+        connectionForSelectedThread() ?? defaultConnectionManager()
+    }
 
     var selectedThread: ThreadModel? {
         threads.first { $0.id == selectedThreadID }
@@ -66,18 +192,93 @@ final class AppState {
         guard let projectID = selectedThread?.projectId else {
             return nil
         }
-        return projects.first { $0.id == projectID }
+        return projectsByID[projectID]
+    }
+
+    var activeRemoteID: String? {
+        if let activeRemoteID = connectionPool?.activeRemoteId {
+            return activeRemoteID
+        }
+        return remotes.first?.id
+    }
+
+    var defaultWorkspaceRepo: Repo? {
+        repos.first(where: \.isDefaultWorkspace)
+    }
+
+    private func rebuildWorkspacePathsByRemoteID() {
+        workspacePathsByRemoteID = Dictionary(
+            remotes.map { remote in
+                (remote.id, remote.defaultWorkspacePath.normalizedRemotePath)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    private func rebuildProjectsByID() {
+        projectsByID = Dictionary(
+            projects.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    private func isDefaultWorkspaceProject(_ project: Project) -> Bool {
+        if project.repoId == Repo.defaultWorkspaceID {
+            return true
+        }
+
+        if project.repoId != nil {
+            return false
+        }
+
+        guard let remoteID = project.remoteId,
+              let workspacePath = workspacePathsByRemoteID[remoteID]
+        else {
+            return false
+        }
+
+        return project.remotePath.normalizedRemotePath == workspacePath
+    }
+
+    func connectionForSelectedThread() -> (any ConnectionManaging)? {
+        guard let selectedThreadID else {
+            return nil
+        }
+        return connectionForThread(id: selectedThreadID)
     }
 
     var projectsWithThreads: [(Project, [ThreadModel])] {
-        let grouped = Dictionary(grouping: threads, by: \.projectId)
+        let grouped = Dictionary(grouping: visibleThreads, by: \.projectId)
         return projects
+            .filter { !isDefaultWorkspaceProject($0) && $0.repoId == nil }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             .map { project in
-                let rows = (grouped[project.id] ?? [])
-                    .filter { $0.status != .closed && $0.status != .failed }
-                    .sorted { $0.createdAt > $1.createdAt }
+                let rows = (grouped[project.id] ?? []).sorted { $0.createdAt > $1.createdAt }
                 return (project, rows)
+            }
+    }
+
+    var reposWithThreads: [(Repo, [ThreadModel])] {
+        let grouped: [String?: [ThreadModel]] = Dictionary(grouping: visibleThreads) { thread -> String? in
+            guard let project = projectsByID[thread.projectId] else {
+                return nil
+            }
+            if isDefaultWorkspaceProject(project) {
+                return Repo.defaultWorkspaceID
+            }
+            return project.repoId
+        }
+
+        return repos
+            .sorted { lhs, rhs in
+                if lhs.isDefaultWorkspace != rhs.isDefaultWorkspace {
+                    return lhs.isDefaultWorkspace
+                }
+                return lhs.fullName.localizedCaseInsensitiveCompare(rhs.fullName) == .orderedAscending
+            }
+            .map { repo in
+                let rows = (grouped[repo.id] ?? []).sorted { $0.createdAt > $1.createdAt }
+                return (repo, rows)
             }
     }
 
@@ -117,22 +318,70 @@ final class AppState {
         ]
     }
 
+    func terminalDebugSnapshot(for preset: String) -> TerminalDebugSnapshot? {
+        guard let thread = selectedThread else {
+            return nil
+        }
+
+        let key = AttachmentKey(threadID: thread.id, preset: preset)
+        let endpoint = attachedEndpoints[key]
+        let connectionSnapshot = connectionForThread(id: thread.id)?.debugSnapshot
+
+        return TerminalDebugSnapshot(
+            threadID: thread.id,
+            preset: preset,
+            connectionStatus: connectionSnapshot?.status ?? connectionStatus.label,
+            sessionReady: connectionSnapshot?.sessionReady ?? false,
+            reconnectAttempt: connectionSnapshot?.reconnectAttempt ?? 0,
+            pendingAttach: pendingAttachTasks[key] != nil,
+            endpointAttached: endpoint != nil,
+            endpointChannelID: endpoint?.channelID,
+            openPresets: openPresetNames(for: thread.id).sorted(),
+            connectionLastError: connectionSnapshot?.lastErrorDescription,
+            lastStartError: lastPresetStartErrors[key],
+            lastAttachError: lastAttachErrors[key]
+        )
+    }
+
+    func debugSnapshot() -> AppStateDebugSnapshot {
+        let connectionSnapshot = currentConnectionDebugSnapshot()
+        let selectedPresetSnapshot: TerminalDebugSnapshot?
+        if let selectedPreset, selectedPreset != TerminalTabModel.chatTabSelectionID {
+            selectedPresetSnapshot = terminalDebugSnapshot(for: selectedPreset)
+        } else {
+            selectedPresetSnapshot = nil
+        }
+
+        return AppStateDebugSnapshot(
+            selectedWorkspaceRemoteID: selectedWorkspaceRemoteID,
+            selectedThreadID: selectedThreadID,
+            selectedPreset: selectedPreset,
+            connection: connectionSnapshot,
+            terminal: selectedPresetSnapshot,
+            alertMessage: alertMessage
+        )
+    }
+
     func configure(
-        connectionManager: any ConnectionManaging,
+        connectionPool: any RemoteConnectionPooling,
         databaseManager: any DatabaseManaging,
         syncService: any SyncServicing,
         multiplexer: any TerminalMultiplexing,
+        provisioningService: (any Provisioning)? = nil,
         openCodeClient: any OpenCodeManaging = OpenCodeClient(),
         chatConversationService: (any ChatConversationManaging)? = nil,
         fileService: (any FileBrowsing)? = nil
     ) {
-        self.connectionManager = connectionManager
+        self.connectionPool = connectionPool
         self.databaseManager = databaseManager
+        self.provisioningService = provisioningService ?? ProvisioningService(connectionPool: connectionPool)
         self.syncService = syncService
         self.multiplexer = multiplexer
         self.openCodeClient = openCodeClient
         self.chatConversationService = chatConversationService
-        self.fileService = fileService ?? FileService(connectionManager: connectionManager)
+        self.fileService = fileService ?? FileService(connectionProvider: { [weak self] in
+            self?.connectionForSelectedThread() ?? self?.defaultConnectionManager()
+        })
     }
 
     func ensureValidSelection() {
@@ -149,14 +398,47 @@ final class AppState {
         }
 
         do {
+            let previousRemotes = remotes
+            remotes = try databaseManager.allRemotes()
+            reconcileConnectionPool(previousRemotes: previousRemotes, currentRemotes: remotes)
+            repos = try databaseManager.allRepos()
+            injectDefaultWorkspaceRepo()
             projects = try databaseManager.allProjects()
+            normalizeDefaultWorkspaceProjects()
             threads = try databaseManager.allThreads()
+            if selectedWorkspaceRemoteID == nil {
+                selectedWorkspaceRemoteID = remotes.first?.id
+            }
             pruneDetachedThreadEndpoints()
             ensureValidSelection()
             ensureSelectedPresetIsValid()
             refreshSelectedEndpoint()
+            updateActiveRemoteConnection()
         } catch {
             NSLog("threadmill-state: failed to load cache: %@", "\(error)")
+        }
+    }
+
+    private func reconcileConnectionPool(previousRemotes: [Remote], currentRemotes: [Remote]) {
+        guard let connectionPool else {
+            return
+        }
+
+        let previousByID = Dictionary(uniqueKeysWithValues: previousRemotes.map { ($0.id, $0) })
+        let currentByID = Dictionary(uniqueKeysWithValues: currentRemotes.map { ($0.id, $0) })
+
+        for remoteID in previousByID.keys where currentByID[remoteID] == nil {
+            connectionPool.removeRemote(id: remoteID)
+        }
+
+        for remote in currentRemotes {
+            if let previousRemote = previousByID[remote.id] {
+                if previousRemote != remote {
+                    connectionPool.updateRemote(remote)
+                }
+            } else {
+                connectionPool.addRemote(remote)
+            }
         }
     }
 
@@ -265,7 +547,9 @@ final class AppState {
     }
 
     func startPreset(threadID: String, preset: String) async {
-        guard selectedThreadID == threadID, let connectionManager else {
+        guard selectedThreadID == threadID,
+              let connectionManager = connectionForThread(id: threadID)
+        else {
             return
         }
         guard presets.contains(where: { $0.name == preset }) else {
@@ -281,7 +565,15 @@ final class AppState {
                 ],
                 timeout: 20
             )
+            lastPresetStartErrors.removeValue(forKey: AttachmentKey(threadID: threadID, preset: preset))
         } catch {
+            if isPresetAlreadyRunningError(error, preset: preset) {
+                lastPresetStartErrors[AttachmentKey(threadID: threadID, preset: preset)] = String(describing: error)
+                selectedPreset = preset
+                await attachPreset(threadID: threadID, preset: preset)
+                return
+            }
+            lastPresetStartErrors[AttachmentKey(threadID: threadID, preset: preset)] = String(describing: error)
             NSLog("threadmill-state: preset.start failed (%@/%@): %@", threadID, preset, "\(error)")
             return
         }
@@ -307,7 +599,9 @@ final class AppState {
             return
         }
 
-        guard selectedThreadID == threadID, let connectionManager else {
+        guard selectedThreadID == threadID,
+              let connectionManager = connectionForThread(id: threadID)
+        else {
             return
         }
 
@@ -326,6 +620,8 @@ final class AppState {
             pendingAttachTasks[key]?.cancel()
             pendingAttachTasks.removeValue(forKey: key)
             permanentAttachFailures.remove(key)
+            lastPresetStartErrors.removeValue(forKey: key)
+            lastAttachErrors.removeValue(forKey: key)
 
             let wasSelected = selectedPreset == preset
             if wasSelected {
@@ -364,7 +660,7 @@ final class AppState {
             return
         }
 
-        guard let connectionManager, let multiplexer else {
+        guard let connectionManager = connectionForThread(id: requestedThreadID), let multiplexer else {
             return
         }
 
@@ -391,14 +687,20 @@ final class AppState {
         }
 
         do {
-            _ = try await connectionManager.request(
-                method: "preset.start",
-                params: [
-                    "thread_id": requestedThreadID,
-                    "preset": requestedPreset,
-                ],
-                timeout: 20
-            )
+            do {
+                _ = try await connectionManager.request(
+                    method: "preset.start",
+                    params: [
+                        "thread_id": requestedThreadID,
+                        "preset": requestedPreset,
+                    ],
+                    timeout: 20
+                )
+            } catch {
+                if !isPresetAlreadyRunningError(error, preset: requestedPreset) {
+                    throw error
+                }
+            }
             guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
                 return
             }
@@ -409,11 +711,21 @@ final class AppState {
             }
 
             attachedEndpoints[key] = endpoint
+            lastAttachErrors.removeValue(forKey: key)
             selectedEndpoint = endpoint
         } catch {
             handleAttachError(error, key: key, threadID: requestedThreadID)
+            lastAttachErrors[key] = String(describing: error)
             NSLog("threadmill-state: attach failed: %@", "\(error)")
         }
+    }
+
+    private func isPresetAlreadyRunningError(_ error: Error, preset: String) -> Bool {
+        guard let rpcError = error as? JSONRPCErrorResponse else {
+            return false
+        }
+
+        return rpcError.message.contains("preset already running") && rpcError.message.contains(preset)
     }
 
     func detachCurrentTerminal() async {
@@ -429,7 +741,7 @@ final class AppState {
     }
 
     func hideThread(threadID: String) async {
-        guard let connectionManager else {
+        guard let connectionManager = connectionForThread(id: threadID) else {
             return
         }
         detachEndpoints(threadID: threadID)
@@ -447,7 +759,7 @@ final class AppState {
     }
 
     func closeThread(threadID: String) async {
-        guard let connectionManager else {
+        guard let connectionManager = connectionForThread(id: threadID) else {
             return
         }
         detachEndpoints(threadID: threadID)
@@ -468,7 +780,7 @@ final class AppState {
     }
 
     func cancelThreadCreation(threadID: String) async {
-        guard let connectionManager else {
+        guard let connectionManager = connectionForThread(id: threadID) else {
             return
         }
 
@@ -484,8 +796,77 @@ final class AppState {
         }
     }
 
+    func projectId(for repo: Repo, on remote: Remote) -> String? {
+        projects.first { project in
+            project.repoId == repo.id && project.remoteId == remote.id
+        }?.id
+    }
+
+    func lookupProject(path: String, on remoteId: String) async throws -> (exists: Bool, isGitRepo: Bool, projectId: String?) {
+        guard let provisioningService else {
+            throw AppStateError.provisioningUnavailable
+        }
+        return try await provisioningService.lookupProject(path: path, on: remoteId)
+    }
+
+    func ensureRepoOnRemote(repo: Repo, remote: Remote) async throws -> String {
+        guard let provisioningService else {
+            throw AppStateError.provisioningUnavailable
+        }
+
+        let projectID = try await provisioningService.ensureRepoOnRemote(repo: repo, remote: remote)
+        linkProject(
+            projectID: projectID,
+            repoID: repo.id,
+            remoteID: remote.id,
+            projectName: repo.name,
+            remotePath: Remote.joinedRemotePath(root: remote.cloneRoot, owner: repo.owner, repoName: repo.name),
+            defaultBranch: repo.defaultBranch
+        )
+        return projectID
+    }
+
+    func createThread(
+        repo: Repo,
+        remote: Remote,
+        name: String,
+        sourceType: String,
+        branch: String?,
+        prURL: String? = nil
+    ) async throws {
+        if repo.isDefaultWorkspace {
+            let path = remote.defaultWorkspacePath
+            let projectID = try await ensureDefaultWorkspaceOnRemote(remote: remote)
+            try await createThread(
+                projectID: projectID,
+                name: name,
+                sourceType: "main_checkout",
+                branch: branch,
+                prURL: prURL
+            )
+            linkProject(
+                projectID: projectID,
+                repoID: Repo.defaultWorkspaceID,
+                remoteID: remote.id,
+                projectName: Repo.defaultWorkspace.name,
+                remotePath: path,
+                defaultBranch: Repo.defaultWorkspace.defaultBranch
+            )
+            return
+        }
+
+        let projectID = try await ensureRepoOnRemote(repo: repo, remote: remote)
+        try await createThread(
+            projectID: projectID,
+            name: name,
+            sourceType: sourceType,
+            branch: branch,
+            prURL: prURL
+        )
+    }
+
     func reopenThread(threadID: String) async {
-        guard let connectionManager else {
+        guard let connectionManager = connectionForThread(id: threadID) else {
             return
         }
         do {
@@ -498,35 +879,6 @@ final class AppState {
         } catch {
             NSLog("threadmill-state: thread.reopen failed (%@): %@", threadID, "\(error)")
         }
-    }
-
-    func browseDirectories(path: String) async throws -> [String] {
-        guard let connectionManager else {
-            return []
-        }
-
-        let result = try await connectionManager.request(
-            method: "project.browse",
-            params: ["path": path],
-            timeout: 10
-        )
-
-        guard let entries = result as? [[String: Any]] else {
-            return []
-        }
-
-        return entries.compactMap { entry in
-            guard
-                let isDir = entry["is_dir"] as? Bool,
-                isDir,
-                let name = entry["name"] as? String
-            else {
-                return nil
-            }
-
-            return URL(fileURLWithPath: path).appendingPathComponent(name).path
-        }
-        .sorted()
     }
 
     func gitStatus(path: String) async throws -> [String: FileGitStatus] {
@@ -571,7 +923,7 @@ final class AppState {
     }
 
     func removeProject(projectID: String) async {
-        guard let connectionManager else { return }
+        guard let connectionManager = connectionForProject(id: projectID) else { return }
         do {
             _ = try await connectionManager.request(
                 method: "project.remove",
@@ -603,7 +955,7 @@ final class AppState {
     }
 
     func branches(for projectID: String) async throws -> [String] {
-        guard let connectionManager else {
+        guard let connectionManager = connectionForProject(id: projectID) else {
             return []
         }
 
@@ -613,18 +965,6 @@ final class AppState {
             timeout: 10
         )
         return result as? [String] ?? []
-    }
-
-    func ensureOpenCodeRunning() async throws {
-        guard let connectionManager else {
-            throw AppStateError.connectionManagerUnavailable
-        }
-
-        _ = try await connectionManager.request(
-            method: "opencode.ensure",
-            params: nil,
-            timeout: 15
-        )
     }
 
     func createThread(
@@ -643,9 +983,13 @@ final class AppState {
             prURL ?? "<nil>"
         )
 
-        guard let connectionManager else {
+        guard let connectionManager = connectionForProject(id: projectID) else {
             NSLog("threadmill-state: createThread aborted, connection manager unavailable")
             throw AppStateError.connectionManagerUnavailable
+        }
+        guard connectionManager.state == .connected else {
+            NSLog("threadmill-state: createThread aborted, connection not ready")
+            throw AppStateError.connectionNotReady
         }
 
         var params: [String: Any] = [
@@ -665,7 +1009,7 @@ final class AppState {
         do {
             _ = try await connectionManager.request(method: "thread.create", params: params, timeout: 30)
             NSLog("threadmill-state: createThread request sent")
-            await syncService?.syncFromDaemon()
+            await syncRemoteState(forProjectID: projectID, using: connectionManager)
             NSLog("threadmill-state: createThread sync complete")
         } catch {
             NSLog("threadmill-state: createThread failed: %@", "\(error)")
@@ -803,6 +1147,7 @@ final class AppState {
     }
 
     private func handleAttachError(_ error: Error, key: AttachmentKey, threadID: String) {
+        lastAttachErrors[key] = String(describing: error)
         guard isPermanentTerminalAttachError(error) else {
             return
         }
@@ -882,6 +1227,8 @@ final class AppState {
         for key in staleKeys {
             multiplexer?.detach(threadID: key.threadID, preset: key.preset)
             attachedEndpoints.removeValue(forKey: key)
+            lastPresetStartErrors.removeValue(forKey: key)
+            lastAttachErrors.removeValue(forKey: key)
         }
     }
 
@@ -890,6 +1237,8 @@ final class AppState {
         for key in keys {
             multiplexer?.detach(threadID: key.threadID, preset: key.preset)
             attachedEndpoints.removeValue(forKey: key)
+            lastPresetStartErrors.removeValue(forKey: key)
+            lastAttachErrors.removeValue(forKey: key)
         }
         refreshSelectedEndpoint()
     }
@@ -902,7 +1251,345 @@ final class AppState {
         }
 
         multiplexer?.detach(threadID: threadID, preset: preset)
+        lastPresetStartErrors.removeValue(forKey: key)
+        lastAttachErrors.removeValue(forKey: key)
         refreshSelectedEndpoint()
+    }
+
+    private func defaultConnectionManager() -> (any ConnectionManaging)? {
+        guard let connectionPool else {
+            return nil
+        }
+
+        if let activeRemoteID = connectionPool.activeRemoteId,
+           let activeConnection = connectionPool.connection(for: activeRemoteID)
+        {
+            return activeConnection
+        }
+
+        if let firstRemoteID = remotes.first?.id {
+            return connectionPool.connection(for: firstRemoteID)
+        }
+
+        return nil
+    }
+
+    private func currentConnectionDebugSnapshot() -> ConnectionDebugSnapshot {
+        if let threadID = selectedThreadID,
+           let connection = connectionForThread(id: threadID)
+        {
+            return connection.debugSnapshot
+        }
+
+        return defaultConnectionManager()?.debugSnapshot ?? ConnectionDebugSnapshot(
+            status: connectionStatus.label,
+            sessionReady: false,
+            reconnectAttempt: 0,
+            lastErrorDescription: nil
+        )
+    }
+
+    func connectionForThread(id threadID: String) -> (any ConnectionManaging)? {
+        guard let connectionPool else {
+            return nil
+        }
+
+        guard let remoteID = remoteIDForThread(id: threadID) else {
+            return defaultConnectionManager()
+        }
+        return connectionPool.connection(for: remoteID)
+    }
+
+    private func connectionForProject(id projectID: String) -> (any ConnectionManaging)? {
+        guard let connectionPool else {
+            return nil
+        }
+
+        guard let remoteID = remoteIDForProject(id: projectID) else {
+            return defaultConnectionManager()
+        }
+        return connectionPool.connection(for: remoteID)
+    }
+
+    private func remoteIDForThread(id threadID: String) -> String? {
+        guard let projectID = threads.first(where: { $0.id == threadID })?.projectId else {
+            return nil
+        }
+        return remoteIDForProject(id: projectID)
+    }
+
+    private func remoteIDForProject(id projectID: String) -> String? {
+        projectsByID[projectID]?.remoteId
+    }
+
+    private func linkProject(
+        projectID: String,
+        repoID: String,
+        remoteID: String,
+        projectName: String,
+        remotePath: String,
+        defaultBranch: String
+    ) {
+        var shouldPersistLink = true
+
+        if let projectIndex = projects.firstIndex(where: { $0.id == projectID }) {
+            let existingProject = projects[projectIndex]
+            shouldPersistLink = existingProject.repoId != repoID || existingProject.remoteId != remoteID
+            projects[projectIndex].repoId = repoID
+            projects[projectIndex].remoteId = remoteID
+            projects[projectIndex].name = projectName
+            projects[projectIndex].remotePath = remotePath
+        } else {
+            projects.append(
+                Project(
+                    id: projectID,
+                    name: projectName,
+                    remotePath: remotePath,
+                    defaultBranch: defaultBranch,
+                    presets: [],
+                    remoteId: remoteID,
+                    repoId: repoID
+                )
+            )
+        }
+
+        guard shouldPersistLink else {
+            return
+        }
+
+        do {
+            _ = try databaseManager?.linkProject(projectID: projectID, repoID: repoID, remoteID: remoteID)
+        } catch {
+            NSLog("threadmill-state: failed to link project metadata (%@): %@", projectID, "\(error)")
+        }
+    }
+
+    private func selectedRemoteID() -> String? {
+        if let selectedThreadID,
+           let remoteID = remoteIDForThread(id: selectedThreadID)
+        {
+            return remoteID
+        }
+
+        if let selectedWorkspaceRemoteID {
+            return selectedWorkspaceRemoteID
+        }
+
+        if let activeRemoteID = connectionPool?.activeRemoteId {
+            return activeRemoteID
+        }
+
+        return remotes.first?.id
+    }
+
+    private var visibleThreads: [ThreadModel] {
+        return threads.filter { thread in
+            guard thread.status != .closed, thread.status != .failed else {
+                return false
+            }
+
+            guard thread.sourceType == "main_checkout" else {
+                return true
+            }
+
+            guard let project = projectsByID[thread.projectId] else {
+                NSLog(
+                    "threadmill-state: main_checkout thread %@ references unknown project %@",
+                    thread.id,
+                    thread.projectId
+                )
+                return false
+            }
+
+            return isDefaultWorkspaceProject(project)
+        }
+    }
+
+    private func updateActiveRemoteConnection() {
+        guard let connectionPool, let remoteID = selectedRemoteID() else {
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            do {
+                try connectionPool.activate(remoteId: remoteID)
+                try await connectionPool.ensureConnected(remoteId: remoteID)
+            } catch {
+                NSLog("threadmill-state: failed to activate remote connection (%@): %@", remoteID, "\(error)")
+            }
+
+            if let activeConnection = self?.connectionPool?.connection(for: remoteID) {
+                self?.connectionStatus = activeConnection.state
+            }
+        }
+    }
+
+    private func syncRemoteState(forProjectID projectID: String, using connection: any ConnectionManaging) async {
+        guard let databaseManager, let remoteID = remoteIDForProject(id: projectID) else {
+            await syncService?.syncFromDaemon()
+            return
+        }
+
+        let syncService = SyncService(
+            connectionManager: connection,
+            databaseManager: databaseManager,
+            appState: self,
+            remoteId: remoteID
+        )
+        await syncService.syncFromDaemon()
+    }
+
+    private func injectDefaultWorkspaceRepo() {
+        guard !repos.contains(where: \.isDefaultWorkspace) else {
+            return
+        }
+        repos.insert(.defaultWorkspace, at: 0)
+    }
+
+    private func normalizeDefaultWorkspaceProjects() {
+        for project in projects where isDefaultWorkspaceProject(project) {
+            guard let remoteID = project.remoteId else {
+                continue
+            }
+            guard project.repoId == nil || project.repoId == Repo.defaultWorkspaceID else {
+                continue
+            }
+            linkProject(
+                projectID: project.id,
+                repoID: Repo.defaultWorkspaceID,
+                remoteID: remoteID,
+                projectName: Repo.defaultWorkspace.name,
+                remotePath: project.remotePath,
+                defaultBranch: project.defaultBranch
+            )
+        }
+    }
+
+    private func ensureDefaultWorkspaceOnRemote(remote: Remote) async throws -> String {
+        if let projectID = projects.first(where: { isDefaultWorkspaceProject($0) && $0.remoteId == remote.id })?.id {
+            return projectID
+        }
+
+        let path = remote.defaultWorkspacePath
+        let lookup = try await lookupProject(path: path, on: remote.id)
+        let projectID: String
+
+        if let existingProjectID = lookup.projectId {
+            if let existingProject = projectsByID[existingProjectID],
+               let existingRepoID = existingProject.repoId,
+               existingRepoID != Repo.defaultWorkspaceID
+            {
+                NSLog(
+                    "threadmill-state: refusing to relink project %@ already linked to repo %@ as cross-project workspace",
+                    existingProjectID,
+                    existingRepoID
+                )
+                throw AppStateError.defaultWorkspaceProjectAlreadyLinked(
+                    projectID: existingProjectID,
+                    repoID: existingRepoID
+                )
+            }
+            projectID = existingProjectID
+        } else {
+            guard let connection = connectionPool?.connection(for: remote.id) else {
+                throw AppStateError.connectionManagerUnavailable
+            }
+            let result = try await connection.request(method: "project.add", params: ["path": path], timeout: 20)
+            guard let payload = result as? [String: Any], let createdProjectID = payload["id"] as? String else {
+                throw AppStateError.invalidProjectResponse
+            }
+            projectID = createdProjectID
+        }
+
+        linkProject(
+            projectID: projectID,
+            repoID: Repo.defaultWorkspaceID,
+            remoteID: remote.id,
+            projectName: Repo.defaultWorkspace.name,
+            remotePath: path,
+            defaultBranch: Repo.defaultWorkspace.defaultBranch
+        )
+        return projectID
+    }
+
+    private func startStatsTimer() {
+        guard statsPollingEnabled, statsTask == nil else {
+            return
+        }
+
+        statsTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            await self.refreshSystemStats()
+
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: self.statsRefreshIntervalNanoseconds)
+                } catch {
+                    return
+                }
+
+                if Task.isCancelled {
+                    return
+                }
+
+                await self.refreshSystemStats()
+            }
+        }
+    }
+
+    private func stopStatsTimer() {
+        statsTask?.cancel()
+        statsTask = nil
+    }
+
+    private func refreshSystemStats() async {
+        guard case .connected = connectionStatus, let connectionManager else {
+            return
+        }
+
+        do {
+            let result = try await connectionManager.request(
+                method: "system.stats",
+                params: nil,
+                timeout: 5
+            )
+
+            guard JSONSerialization.isValidJSONObject(result) else {
+                systemStats = nil
+                return
+            }
+
+            let payload = try JSONSerialization.data(withJSONObject: result)
+            systemStats = try JSONDecoder().decode(SystemStatsResult.self, from: payload)
+        } catch {
+            systemStats = nil
+            NSLog("threadmill-state: failed to refresh system stats: %@", "\(error)")
+        }
+    }
+
+    func cleanupSystem() async {
+        guard case .connected = connectionStatus, let connectionManager else {
+            return
+        }
+
+        do {
+            _ = try await connectionManager.request(
+                method: "system.cleanup",
+                params: nil,
+                timeout: 30
+            )
+            await refreshSystemStats()
+        } catch {
+            NSLog("threadmill-state: failed to cleanup system: %@", "\(error)")
+        }
+    }
+
+    func shutdown() {
+        stopStatsTimer()
+        openCodeClient?.invalidate()
     }
 
     // MARK: - Keyboard shortcut actions
@@ -913,6 +1600,14 @@ final class AppState {
     }
 
     func openNewThreadSheet() {
+        if repos.isEmpty {
+            alertMessage = "Add a repository first (Cmd+Shift+A)"
+            return
+        }
+        if remotes.isEmpty {
+            alertMessage = "Configure a remote in Settings (Cmd+,)"
+            return
+        }
         isNewThreadSheetPresented = true
     }
 

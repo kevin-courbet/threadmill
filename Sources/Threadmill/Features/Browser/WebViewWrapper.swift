@@ -3,6 +3,7 @@ import WebKit
 
 struct WebViewWrapper: NSViewRepresentable {
     let url: String
+    let sessionID: String
     let onNavigationStateChange: (Bool, Bool, Bool, Double) -> Void
     let onURLChange: (String) -> Void
     let onTitleChange: (String) -> Void
@@ -36,6 +37,7 @@ struct WebViewWrapper: NSViewRepresentable {
         }
 
         context.coordinator.attach(to: webView)
+        context.coordinator.lastLoadedURL = url
         onWebViewCreated(webView)
         load(urlString: url, into: webView)
         return webView
@@ -47,10 +49,12 @@ struct WebViewWrapper: NSViewRepresentable {
             return
         }
 
-        if webView.url?.absoluteString == url {
+        // Only navigate when URL bar changes (navigateToURL), not on KVO feedback
+        if context.coordinator.lastLoadedURL == url {
             return
         }
 
+        context.coordinator.lastLoadedURL = url
         load(urlString: url, into: webView)
     }
 
@@ -70,6 +74,8 @@ struct WebViewWrapper: NSViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         var parent: WebViewWrapper
+        // Tracks the last URL we programmatically loaded to avoid re-navigation on KVO feedback
+        var lastLoadedURL: String?
         private var progressObserver: NSKeyValueObservation?
         private var urlObserver: NSKeyValueObservation?
         private var titleObserver: NSKeyValueObservation?

@@ -5,12 +5,16 @@ final class SyncService: SyncServicing {
     private let connectionManager: any ConnectionManaging
     private let databaseManager: any DatabaseManaging
     private let appState: AppState
+    private let remoteId: String
     private let formatter: ISO8601DateFormatter
 
-    init(connectionManager: any ConnectionManaging, databaseManager: any DatabaseManaging, appState: AppState) {
+    // SyncService is intentionally scoped to one connection/remote.
+    // Multi-remote fan-out sync is handled separately.
+    init(connectionManager: any ConnectionManaging, databaseManager: any DatabaseManaging, appState: AppState, remoteId: String) {
         self.connectionManager = connectionManager
         self.databaseManager = databaseManager
         self.appState = appState
+        self.remoteId = remoteId
         formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     }
@@ -22,7 +26,7 @@ final class SyncService: SyncServicing {
 
             let projects = parseProjects(projectsResult)
             let threads = parseThreads(threadsResult)
-            try databaseManager.replaceAllFromDaemon(projects: projects, threads: threads)
+            try databaseManager.replaceAllFromDaemon(projects: projects, threads: threads, remoteId: remoteId)
             appState.reloadFromDatabase()
         } catch {
             NSLog("threadmill-sync: sync failed: %@", "\(error)")
@@ -49,7 +53,9 @@ final class SyncService: SyncServicing {
                 name: name,
                 remotePath: remotePath,
                 defaultBranch: defaultBranch,
-                presets: presets
+                presets: presets,
+                remoteId: row["remote_id"] as? String ?? row["remoteId"] as? String,
+                repoId: row["repo_id"] as? String ?? row["repoId"] as? String
             )
         }
     }

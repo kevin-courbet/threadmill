@@ -8,12 +8,36 @@ struct OpenFileInfo: Identifiable, Equatable {
     let content: String
 }
 
+struct FileBrowserDebugSnapshot: Codable, Equatable {
+    let rootPath: String
+    let loadingDirectories: [String]
+    let lastErrorMessage: String?
+    let openFileCount: Int
+    let selectedFilePath: String?
+
+    var summary: String {
+        [
+            "rootPath=\(rootPath)",
+            "loadingDirectories=\(loadingDirectories.joined(separator: ","))",
+            "lastError=\(lastErrorMessage ?? "nil")",
+            "openFileCount=\(openFileCount)",
+            "selectedFile=\(selectedFilePath ?? "nil")",
+        ].joined(separator: "\n")
+    }
+}
+
 enum FileServiceError: LocalizedError {
+    case connectionUnavailable
+    case connectionNotReady
     case invalidResponse(method: String)
     case decodeFailed(method: String)
 
     var errorDescription: String? {
         switch self {
+        case .connectionUnavailable:
+            return "Connection to spindle is unavailable."
+        case .connectionNotReady:
+            return "Connection to spindle is still starting. Try again once it finishes connecting."
         case let .invalidResponse(method):
             return "Invalid response for \(method)."
         case let .decodeFailed(method):
@@ -32,14 +56,28 @@ final class FileService: FileBrowsing {
         let entries: [String: FileGitStatus]
     }
 
-    private let connectionManager: any ConnectionManaging
+    private let connectionProvider: () -> (any ConnectionManaging)?
 
     init(connectionManager: any ConnectionManaging) {
-        self.connectionManager = connectionManager
+        self.connectionProvider = { connectionManager }
+    }
+
+    init(connectionProvider: @escaping () -> (any ConnectionManaging)?) {
+        self.connectionProvider = connectionProvider
+    }
+
+    private func activeConnection() throws -> any ConnectionManaging {
+        guard let connection = connectionProvider() else {
+            throw FileServiceError.connectionUnavailable
+        }
+        guard connection.state == .connected else {
+            throw FileServiceError.connectionNotReady
+        }
+        return connection
     }
 
     func listDirectory(path: String) async throws -> [FileBrowserEntry] {
-        let result = try await connectionManager.request(
+        let result = try await activeConnection().request(
             method: "file.list",
             params: ["path": path],
             timeout: 20
@@ -48,7 +86,7 @@ final class FileService: FileBrowsing {
     }
 
     func readFile(path: String) async throws -> FileReadPayload {
-        let result = try await connectionManager.request(
+        let result = try await activeConnection().request(
             method: "file.read",
             params: ["path": path],
             timeout: 20
@@ -57,7 +95,7 @@ final class FileService: FileBrowsing {
     }
 
     func gitStatus(path: String) async throws -> [String: FileGitStatus] {
-        let result = try await connectionManager.request(
+        let result = try await activeConnection().request(
             method: "file.git_status",
             params: ["path": path],
             timeout: 20
@@ -303,5 +341,15 @@ final class FileBrowserViewModel: ObservableObject {
         }
 
         self.selectedFileId = openFiles[index + 1].id
+    }
+
+    var debugSnapshot: FileBrowserDebugSnapshot {
+        FileBrowserDebugSnapshot(
+            rootPath: rootPath,
+            loadingDirectories: loadingDirectories.sorted(),
+            lastErrorMessage: lastErrorMessage,
+            openFileCount: openFiles.count,
+            selectedFilePath: selectedOpenFile?.path
+        )
     }
 }

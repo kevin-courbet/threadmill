@@ -1,9 +1,32 @@
 import Foundation
 
+enum ConnectionManagerError: LocalizedError {
+    case sessionNotReady
+
+    var errorDescription: String? {
+        switch self {
+        case .sessionNotReady:
+            return "Connection to spindle is still negotiating session capabilities."
+        }
+    }
+}
+
 struct ThreadmillConfig {
     let host: String
     let daemonPort: Int
     let useSSHTunnel: Bool
+
+    init(host: String, daemonPort: Int, useSSHTunnel: Bool) {
+        self.host = host
+        self.daemonPort = daemonPort
+        self.useSSHTunnel = useSSHTunnel
+    }
+
+    init(remote: Remote) {
+        self.host = remote.host
+        self.daemonPort = remote.daemonPort
+        self.useSSHTunnel = remote.useSSHTunnel
+    }
 
     static func load(environment: [String: String] = ProcessInfo.processInfo.environment) -> ThreadmillConfig {
         let host = environment["THREADMILL_HOST"] ?? "beast"
@@ -47,6 +70,15 @@ enum ConnectionStatus: Equatable {
 
 @MainActor
 final class ConnectionManager: ConnectionManaging {
+    private enum SessionHandshake {
+        static let protocolVersion = "2026-03-17"
+        static let capabilities = [
+            "state.delta.operations.v1",
+            "preset.output.v1",
+            "rpc.errors.structured.v1",
+        ]
+    }
+
     private let config: ThreadmillConfig
 
     private(set) var state: ConnectionStatus = .disconnected {
@@ -76,8 +108,19 @@ final class ConnectionManager: ConnectionManaging {
 
     private var reconnectTask: Task<Void, Never>?
     private var pingTask: Task<Void, Never>?
+    private var sessionReady = false
+    private var lastErrorDescription: String?
 
     private var binaryFrameHandler: ((Data) -> Void)?
+
+    var debugSnapshot: ConnectionDebugSnapshot {
+        ConnectionDebugSnapshot(
+            status: state.label,
+            sessionReady: sessionReady,
+            reconnectAttempt: reconnectAttempt,
+            lastErrorDescription: lastErrorDescription
+        )
+    }
 
     init(
         config: ThreadmillConfig = .load(),
@@ -137,6 +180,8 @@ final class ConnectionManager: ConnectionManaging {
         shouldRun = false
         cancelScheduledReconnect()
         stopPingLoop()
+        sessionReady = false
+        lastErrorDescription = nil
         webSocketClient.disconnect()
         tunnelManager.stop()
         state = .disconnected
@@ -160,7 +205,11 @@ final class ConnectionManager: ConnectionManaging {
         params: [String: Any]? = nil,
         timeout: TimeInterval = 10
     ) async throws -> Any {
-        try await webSocketClient.sendRequest(method: method, params: params, timeout: timeout)
+        let bypassHandshake = method == "ping" || method == "session.hello"
+        guard bypassHandshake || sessionReady else {
+            throw ConnectionManagerError.sessionNotReady
+        }
+        return try await webSocketClient.sendRequest(method: method, params: params, timeout: timeout)
     }
 
     private func connect(initial: Bool) async {
@@ -197,13 +246,30 @@ final class ConnectionManager: ConnectionManaging {
 
             NSLog("threadmill-conn: sending ping")
             _ = try await request(method: "ping", timeout: 10)
+            NSLog("threadmill-conn: negotiating session")
+            _ = try await request(
+                method: "session.hello",
+                params: [
+                    "client": [
+                        "name": "threadmill",
+                        "version": "dev",
+                    ],
+                    "protocol_version": SessionHandshake.protocolVersion,
+                    "capabilities": SessionHandshake.capabilities,
+                ],
+                timeout: 10
+            )
             reconnectAttempt = 0
+            sessionReady = true
+            lastErrorDescription = nil
             state = .connected
             NSLog("threadmill-conn: CONNECTED")
             startPingLoop()
         } catch {
             NSLog("threadmill-conn: connect failed: %@", "\(error)")
             stopPingLoop()
+            sessionReady = false
+            lastErrorDescription = String(describing: error)
             webSocketClient.disconnect()
             if config.useSSHTunnel {
                 tunnelManager.stop()
@@ -231,6 +297,8 @@ final class ConnectionManager: ConnectionManaging {
 
         state = .disconnected
         stopPingLoop()
+        sessionReady = false
+        lastErrorDescription = "transport dropped"
         webSocketClient.disconnect()
         if config.useSSHTunnel {
             tunnelManager.stop()

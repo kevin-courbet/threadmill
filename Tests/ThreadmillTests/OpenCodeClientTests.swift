@@ -153,6 +153,224 @@ final class OpenCodeClientTests: XCTestCase {
         XCTAssertNil(session.slug)
     }
 
+    func testCreateSessionDoesNotSendRequestBody() async throws {
+        TestURLProtocol.requestHandler = { request in
+            let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(components?.percentEncodedPath, "/session")
+            XCTAssertNil(request.httpBody)
+
+            let response = """
+            {
+              "id": "ses_1",
+              "projectID": "proj_1",
+              "directory": "/tmp/worktree",
+              "title": "Session",
+              "version": "1.1.65",
+              "time": { "created": 1, "updated": 2 }
+            }
+            """.data(using: .utf8)!
+
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                response
+            )
+        }
+
+        let client = makeClient()
+        let session = try await client.createSession(directory: "/tmp/worktree")
+        XCTAssertEqual(session.id, "ses_1")
+    }
+
+    func testInitSessionUsesPreferredModelWhenProviderConnected() async throws {
+        var requestPaths: [String] = []
+
+        TestURLProtocol.requestHandler = { request in
+            let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+            let path = components?.percentEncodedPath ?? ""
+            requestPaths.append(path)
+
+            if path == "/provider" {
+                let payload = """
+                {
+                  "all": [
+                    {
+                      "id": "anthropic",
+                      "name": "Anthropic",
+                      "models": {
+                        "claude-sonnet": {
+                          "id": "claude-sonnet",
+                          "name": "Claude Sonnet"
+                        }
+                      }
+                    }
+                  ],
+                  "connected": ["anthropic"],
+                  "default": {
+                    "anthropic": "claude-sonnet"
+                  }
+                }
+                """.data(using: .utf8)!
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    payload
+                )
+            }
+
+            if path == "/session/ses_1/init" {
+                XCTAssertEqual(request.httpMethod, "POST")
+                let body = try OpenCodeClientTests.requestBodyData(from: request)
+                let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+                // Preferred model takes priority over provider default
+                XCTAssertEqual(payload?["providerID"] as? String, "anthropic")
+                XCTAssertEqual(payload?["modelID"] as? String, "claude-opus-4-6")
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    Data("{}".utf8)
+                )
+            }
+
+            if path == "/session/ses_1" {
+                let payload = """
+                {
+                  "id": "ses_1",
+                  "projectID": "proj_1",
+                  "directory": "/tmp/worktree",
+                  "title": "Session",
+                  "version": "1.1.65",
+                  "time": { "created": 1, "updated": 2 }
+                }
+                """.data(using: .utf8)!
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    payload
+                )
+            }
+
+            XCTFail("Unexpected path: \(path)")
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!,
+                Data()
+            )
+        }
+
+        let client = makeClient()
+        let session = try await client.initSession(id: "ses_1", directory: "/tmp/worktree")
+
+        XCTAssertEqual(session.id, "ses_1")
+        XCTAssertTrue(requestPaths.contains("/provider"))
+    }
+
+    func testInitSessionFallsBackToProviderDefaultWhenPreferredNotConnected() async throws {
+        var requestPaths: [String] = []
+
+        TestURLProtocol.requestHandler = { request in
+            let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+            let path = components?.percentEncodedPath ?? ""
+            requestPaths.append(path)
+
+            if path == "/provider" {
+                let payload = """
+                {
+                  "all": [
+                    {
+                      "id": "google",
+                      "name": "Google",
+                      "models": {
+                        "gemini-3-pro": {
+                          "id": "gemini-3-pro",
+                          "name": "Gemini 3 Pro"
+                        }
+                      }
+                    }
+                  ],
+                  "connected": ["google"],
+                  "default": {
+                    "google": "gemini-3-pro"
+                  }
+                }
+                """.data(using: .utf8)!
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    payload
+                )
+            }
+
+            if path == "/session/ses_2/init" {
+                XCTAssertEqual(request.httpMethod, "POST")
+                let body = try OpenCodeClientTests.requestBodyData(from: request)
+                let payload = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+                // Falls back to provider default when preferred provider not connected
+                XCTAssertEqual(payload?["providerID"] as? String, "google")
+                XCTAssertEqual(payload?["modelID"] as? String, "gemini-3-pro")
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    Data("{}".utf8)
+                )
+            }
+
+            if path == "/session/ses_2" {
+                let payload = """
+                {
+                  "id": "ses_2",
+                  "projectID": "proj_1",
+                  "directory": "/tmp/worktree",
+                  "title": "Session",
+                  "version": "1.1.65",
+                  "time": { "created": 1, "updated": 2 }
+                }
+                """.data(using: .utf8)!
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!,
+                    payload
+                )
+            }
+
+            XCTFail("Unexpected path: \(path)")
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!,
+                Data()
+            )
+        }
+
+        let client = makeClient()
+        let session = try await client.initSession(id: "ses_2", directory: "/tmp/worktree")
+
+        XCTAssertEqual(session.id, "ses_2")
+        XCTAssertTrue(requestPaths.contains("/provider"))
+    }
+
+    private static func requestBodyData(from request: URLRequest) throws -> Data {
+        if let body = request.httpBody {
+            return body
+        }
+
+        guard let stream = request.httpBodyStream else {
+            return Data()
+        }
+
+        stream.open()
+        defer {
+            stream.close()
+        }
+
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+
+        while stream.hasBytesAvailable {
+            let bytesRead = stream.read(&buffer, maxLength: buffer.count)
+            if bytesRead < 0 {
+                throw stream.streamError ?? NSError(domain: "OpenCodeClientTests", code: 1)
+            }
+            if bytesRead == 0 {
+                break
+            }
+            data.append(buffer, count: bytesRead)
+        }
+
+        return data
+    }
+
     func testGetSessionEscapesForwardSlashesInPathComponents() async throws {
         TestURLProtocol.requestHandler = { request in
             let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
@@ -199,14 +417,19 @@ final class OpenCodeClientTests: XCTestCase {
     }
 
     private func makeClient(username: String? = nil, password: String? = nil) -> OpenCodeClient {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [TestURLProtocol.self]
-        let session = URLSession(configuration: configuration)
+        let dataConfiguration = URLSessionConfiguration.ephemeral
+        dataConfiguration.protocolClasses = [TestURLProtocol.self]
+        let sseConfiguration = URLSessionConfiguration.ephemeral
+        sseConfiguration.protocolClasses = [TestURLProtocol.self]
+
+        let session = URLSession(configuration: dataConfiguration)
+        let sseSession = URLSession(configuration: sseConfiguration)
         return OpenCodeClient(
             baseURL: URL(string: "http://127.0.0.1:4101")!,
             username: username,
             password: password,
-            session: session
+            session: session,
+            sseSession: sseSession
         )
     }
 }

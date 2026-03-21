@@ -3,9 +3,11 @@ import Foundation
 import XCTest
 
 final class AXTestClient {
+    private let pid: pid_t
     private let appElement: AXUIElement
 
     init(pid: pid_t) {
+        self.pid = pid
         appElement = AXUIElementCreateApplication(pid)
     }
 
@@ -21,6 +23,10 @@ final class AXTestClient {
         }
     }
 
+    func hasElement(identifier: String) -> Bool {
+        element(identifier: identifier) != nil
+    }
+
     func waitUntilMissing(identifier: String, timeout: TimeInterval = 10) throws {
         _ = try wait(timeout: timeout, description: "Element \(identifier) still present") {
             element(identifier: identifier) == nil ? true : nil
@@ -33,16 +39,41 @@ final class AXTestClient {
         }
     }
 
+    func waitForSheet(timeout: TimeInterval = 10) throws -> AXUIElement {
+        try wait(timeout: timeout, description: "No sheet found") {
+            sheetElement()
+        }
+    }
+
     func click(identifier: String, timeout: TimeInterval = 10) throws {
         let target = try waitForIdentifier(identifier, timeout: timeout)
-        let result = AXUIElementPerformAction(target, kAXPressAction as CFString)
-        XCTAssertEqual(result, .success, "Failed to click \(identifier): \(result.rawValue)")
+        try clickElement(target, label: identifier)
     }
 
     func clickTitle(_ title: String, timeout: TimeInterval = 10) throws {
         let target = try waitForTitle(title, timeout: timeout)
-        let result = AXUIElementPerformAction(target, kAXPressAction as CFString)
-        XCTAssertEqual(result, .success, "Failed to click title \(title): \(result.rawValue)")
+        try clickElement(target, label: title)
+    }
+
+    func sendKey(_ key: String, modifiers: [String] = []) {
+        // Activate the app first so keystrokes go to it, not whatever else is focused
+        NSRunningApplication(processIdentifier: pid)?.activate()
+        Thread.sleep(forTimeInterval: 0.2)
+
+        let source = CGEventSource(stateID: .combinedSessionState)
+        guard let keyCode = keyCode(for: key) else {
+            XCTFail("Unsupported key: \(key)")
+            return
+        }
+
+        let flags = eventFlags(for: modifiers)
+        let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
+        down?.flags = flags
+        up?.flags = flags
+        // Post to the specific process, not the global event tap
+        down?.postToPid(pid)
+        up?.postToPid(pid)
     }
 
     func setText(_ value: String, identifier: String, timeout: TimeInterval = 10) throws {
@@ -82,6 +113,11 @@ final class AXTestClient {
         }
     }
 
+    func findElementWithIdentifierPrefix(_ prefix: String) -> AXUIElement? {
+        var visited = Set<UnsafeRawPointer>()
+        return searchByIdentifierPrefix(element: appElement, prefix: prefix, visited: &visited)
+    }
+
     func debugDumpTitles(limit: Int = 200) {
         var visited = Set<UnsafeRawPointer>()
         var lines: [String] = []
@@ -112,6 +148,26 @@ final class AXTestClient {
 
         for child in childElements(of: element) {
             if let found = search(element: child, identifier: identifier, visited: &visited) {
+                return found
+            }
+        }
+
+        return nil
+    }
+
+    private func searchByIdentifierPrefix(element: AXUIElement, prefix: String, visited: inout Set<UnsafeRawPointer>) -> AXUIElement? {
+        let pointer = UnsafeRawPointer(Unmanaged.passUnretained(element).toOpaque())
+        guard visited.insert(pointer).inserted else {
+            return nil
+        }
+
+        if let currentID = attribute(element: element, name: kAXIdentifierAttribute as CFString) as? String,
+           currentID.hasPrefix(prefix) {
+            return element
+        }
+
+        for child in childElements(of: element) {
+            if let found = searchByIdentifierPrefix(element: child, prefix: prefix, visited: &visited) {
                 return found
             }
         }
@@ -162,6 +218,31 @@ final class AXTestClient {
     private func firstTextField() -> AXUIElement? {
         var visited = Set<UnsafeRawPointer>()
         return searchFirstTextField(element: appElement, visited: &visited)
+    }
+
+    private func sheetElement() -> AXUIElement? {
+        var visited = Set<UnsafeRawPointer>()
+        return searchFirstRole(element: appElement, role: kAXSheetRole as String, visited: &visited)
+    }
+
+    private func searchFirstRole(element: AXUIElement, role: String, visited: inout Set<UnsafeRawPointer>) -> AXUIElement? {
+        let pointer = UnsafeRawPointer(Unmanaged.passUnretained(element).toOpaque())
+        guard visited.insert(pointer).inserted else {
+            return nil
+        }
+
+        if let currentRole = attribute(element: element, name: kAXRoleAttribute as CFString) as? String,
+           currentRole == role {
+            return element
+        }
+
+        for child in childElements(of: element) {
+            if let found = searchFirstRole(element: child, role: role, visited: &visited) {
+                return found
+            }
+        }
+
+        return nil
     }
 
     private func searchFirstTextField(element: AXUIElement, visited: inout Set<UnsafeRawPointer>) -> AXUIElement? {
@@ -228,6 +309,7 @@ final class AXTestClient {
         let names: [String] = [
             kAXChildrenAttribute as String,
             kAXWindowsAttribute as String,
+            "AXSheets",
             kAXRowsAttribute as String,
             kAXTabsAttribute as String,
             kAXContentsAttribute as String,
@@ -296,6 +378,78 @@ final class AXTestClient {
 
         for child in childElements(of: element) {
             dump(element: child, depth: depth + 1, visited: &visited, lines: &lines, limit: limit)
+        }
+    }
+}
+
+private extension AXTestClient {
+    func clickElement(_ element: AXUIElement, label: String) throws {
+        // Activate the app first so clicks go to the right process
+        NSRunningApplication(processIdentifier: pid)?.activate()
+        Thread.sleep(forTimeInterval: 0.1)
+
+        if let center = centerPoint(of: element) {
+            let source = CGEventSource(stateID: .combinedSessionState)
+            let move = CGEvent(mouseEventSource: source, mouseType: .mouseMoved, mouseCursorPosition: center, mouseButton: .left)
+            let down = CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: center, mouseButton: .left)
+            let up = CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: center, mouseButton: .left)
+            move?.postToPid(pid)
+            down?.postToPid(pid)
+            up?.postToPid(pid)
+            return
+        }
+
+        let result = AXUIElementPerformAction(element, kAXPressAction as CFString)
+        XCTAssertEqual(result, .success, "Failed to click \(label): \(result.rawValue)")
+    }
+
+    func centerPoint(of element: AXUIElement) -> CGPoint? {
+        var positionValue: AnyObject?
+        var sizeValue: AnyObject?
+        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success,
+              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success,
+              let positionAX = positionValue,
+              let sizeAX = sizeValue
+        else {
+            return nil
+        }
+
+        var position = CGPoint.zero
+        var size = CGSize.zero
+        let positionValueRef = unsafeBitCast(positionAX, to: AXValue.self)
+        let sizeValueRef = unsafeBitCast(sizeAX, to: AXValue.self)
+        guard AXValueGetType(positionValueRef) == .cgPoint,
+              AXValueGetValue(positionValueRef, .cgPoint, &position),
+              AXValueGetType(sizeValueRef) == .cgSize,
+              AXValueGetValue(sizeValueRef, .cgSize, &size)
+        else {
+            return nil
+        }
+
+        return CGPoint(x: position.x + size.width / 2, y: position.y + size.height / 2)
+    }
+
+    func eventFlags(for modifiers: [String]) -> CGEventFlags {
+        modifiers.reduce(into: CGEventFlags()) { flags, modifier in
+            switch modifier.lowercased() {
+            case "cmd", "command": flags.insert(.maskCommand)
+            case "shift": flags.insert(.maskShift)
+            case "ctrl", "control": flags.insert(.maskControl)
+            case "option", "alt": flags.insert(.maskAlternate)
+            default: break
+            }
+        }
+    }
+
+    func keyCode(for key: String) -> CGKeyCode? {
+        switch key.lowercased() {
+        case "t": return 17
+        case "1": return 18
+        case "2": return 19
+        case "3": return 20
+        case "4": return 21
+        case "tab": return 48
+        default: return nil
         }
     }
 }

@@ -14,6 +14,8 @@ struct Project: Codable, FetchableRecord, PersistableRecord, Identifiable, Equat
     var remotePath: String
     var defaultBranch: String
     var presets: [PresetConfig] = []
+    var remoteId: String? = nil
+    var repoId: String? = nil
 
     static let databaseTableName = "projects"
 
@@ -23,6 +25,8 @@ struct Project: Codable, FetchableRecord, PersistableRecord, Identifiable, Equat
         case remotePath = "remote_path"
         case defaultBranch = "default_branch"
         case presets = "presets_json"
+        case remoteId = "remote_id"
+        case repoId = "repo_id"
     }
 
     enum CodingKeys: String, CodingKey {
@@ -31,6 +35,8 @@ struct Project: Codable, FetchableRecord, PersistableRecord, Identifiable, Equat
         case remotePath = "remote_path"
         case defaultBranch = "default_branch"
         case presets = "presets_json"
+        case remoteId = "remote_id"
+        case repoId = "repo_id"
     }
 }
 

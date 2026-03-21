@@ -59,7 +59,7 @@ final class KeyboardShortcutTests: XCTestCase {
 
         let appState = AppState()
         appState.configure(
-            connectionManager: connection,
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
             databaseManager: database,
             syncService: sync,
             multiplexer: multiplexer
@@ -106,7 +106,7 @@ final class KeyboardShortcutTests: XCTestCase {
 
         let appState = AppState()
         appState.configure(
-            connectionManager: connection,
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
             databaseManager: database,
             syncService: sync,
             multiplexer: multiplexer
@@ -126,5 +126,33 @@ final class KeyboardShortcutTests: XCTestCase {
 
         appState.previousPresetTab()
         XCTAssertEqual(appState.selectedPreset, "logs")
+    }
+
+    func testOpenNewThreadSheetShowsAlertWhenReposOrRemotesMissing() {
+        let appState = AppState()
+
+        appState.openNewThreadSheet()
+
+        XCTAssertEqual(appState.alertMessage, "Add a repository first (Cmd+Shift+A)")
+        XCTAssertFalse(appState.isNewThreadSheetPresented)
+
+        appState.repos = [
+            Repo(
+                id: "repo-1",
+                owner: "anomalyco",
+                name: "threadmill",
+                fullName: "anomalyco/threadmill",
+                cloneURL: "git@github.com:anomalyco/threadmill.git",
+                defaultBranch: "main",
+                isPrivate: true,
+                cachedAt: Date(timeIntervalSince1970: 1)
+            )
+        ]
+        appState.alertMessage = nil
+
+        appState.openNewThreadSheet()
+
+        XCTAssertEqual(appState.alertMessage, "Configure a remote in Settings (Cmd+,)")
+        XCTAssertFalse(appState.isNewThreadSheetPresented)
     }
 }

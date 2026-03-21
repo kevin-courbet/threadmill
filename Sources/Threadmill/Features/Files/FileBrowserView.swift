@@ -61,6 +61,7 @@ struct FileBrowserView: View {
             }
         }
     }
+
 }
 
 /// Tree header matching the tab bar height for visual alignment.

@@ -47,7 +47,7 @@ final class AppStateAttachAfterConnectTests: XCTestCase {
 
         let appState = AppState()
         appState.configure(
-            connectionManager: connection,
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
             databaseManager: database,
             syncService: sync,
             multiplexer: multiplexer
@@ -66,5 +66,44 @@ final class AppStateAttachAfterConnectTests: XCTestCase {
             appState.selectedEndpoint != nil
         }
         XCTAssertTrue(attached, "selectedEndpoint should be set after connectionStatus changes to .connected")
+    }
+
+    func testShutdownStopsStatsPolling() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+        let openCodeClient = MockOpenCodeClient()
+
+        connection.requestHandler = { method, _, _ in
+            if method == "system.stats" {
+                return [:]
+            }
+            throw TestError.missingStub
+        }
+
+        let appState = AppState(statsPollingEnabled: true, statsRefreshInterval: 0.05)
+        appState.configure(
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
+            databaseManager: database,
+            syncService: sync,
+            multiplexer: multiplexer,
+            openCodeClient: openCodeClient
+        )
+
+        appState.connectionStatus = .connected
+
+        let didPoll = await waitForCondition(timeout: 1.0) {
+            connection.requests.contains { $0.method == "system.stats" }
+        }
+        XCTAssertTrue(didPoll)
+
+        let requestCountBeforeShutdown = connection.requests.filter { $0.method == "system.stats" }.count
+        appState.shutdown()
+
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(connection.requests.filter { $0.method == "system.stats" }.count, requestCountBeforeShutdown)
+        XCTAssertEqual(openCodeClient.invalidateCallCount, 1)
     }
 }

@@ -41,3 +41,7 @@ struct ThreadModel: Codable, FetchableRecord, PersistableRecord, Identifiable, E
         case portOffset = "port_offset"
     }
 }
+
+extension ThreadModel {
+    static let project = belongsTo(Project.self)
+}

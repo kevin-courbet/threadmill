@@ -1,46 +1,100 @@
+import AppKit
 import SwiftUI
 
-func instantToggleTransaction() -> Transaction {
-    var transaction = Transaction()
-    transaction.animation = nil
-    transaction.disablesAnimations = true
-    return transaction
-}
-
+/// Emits flat rows into the parent List — no Section, no DisclosureGroup.
+/// List natively animates ForEach row insertion/removal.
 struct ProjectSection: View {
     let project: Project
     let threads: [ThreadModel]
+    let canCreateThread: Bool
     @Binding var selectedThreadID: String?
     let onNewThread: (Project) -> Void
     let onCancelThreadCreation: (ThreadModel) -> Void
     let onHideThread: (ThreadModel) -> Void
     let onCloseThread: (ThreadModel) -> Void
     let onReopenThread: (ThreadModel) -> Void
+    let onRemoveProject: (Project) -> Void
 
     @State private var isExpanded = true
+    @State private var isHeaderHovered = false
+    @State private var threadPendingClose: ThreadModel?
+    @State private var projectPendingRemoval: Project?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        Group {
             header
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+                .listRowBackground(Color.clear)
 
             if isExpanded {
-                mainBranchRow
-
-                if threads.isEmpty {
+                if displayedThreads.isEmpty {
                     Text("No threads yet")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                        .padding(.leading, 38)
+                        .padding(.leading, 48)
                         .padding(.vertical, 3)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 3, trailing: 10))
+                        .listRowBackground(Color.clear)
                 } else {
-                    ForEach(threads) { thread in
+                    ForEach(displayedThreads) { thread in
                         threadRow(thread)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+                            .listRowBackground(Color.clear)
+                            .tag(thread.id)
+                            .accessibilityIdentifier("thread.row.\(thread.id)")
+                            .accessibilityLabel("Open thread \(thread.name)")
+                            .accessibilityValue(thread.branch)
                     }
                 }
             }
         }
-        .padding(.vertical, 4)
-        .accessibilityIdentifier("project.section.\(project.id)")
+        .alert(
+            "Close Thread?",
+            isPresented: Binding(
+                get: { threadPendingClose != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        threadPendingClose = nil
+                    }
+                }
+            ),
+            presenting: threadPendingClose
+        ) { thread in
+            Button("Cancel", role: .cancel) {
+                threadPendingClose = nil
+            }
+            Button("Close Thread", role: .destructive) {
+                onCloseThread(thread)
+                threadPendingClose = nil
+            }
+        } message: { thread in
+            Text("Close \(thread.name)? This will stop the tmux session and close its worktree.")
+        }
+        .alert(
+            "Remove Repository?",
+            isPresented: Binding(
+                get: { projectPendingRemoval != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        projectPendingRemoval = nil
+                    }
+                }
+            ),
+            presenting: projectPendingRemoval
+        ) { pendingProject in
+            Button("Cancel", role: .cancel) {
+                projectPendingRemoval = nil
+            }
+            Button("Remove Repository", role: .destructive) {
+                onRemoveProject(pendingProject)
+                projectPendingRemoval = nil
+            }
+        } message: { pendingProject in
+            Text("Remove \(pendingProject.name) at \(pendingProject.remotePath)?")
+        }
     }
 
     private var header: some View {
@@ -58,13 +112,6 @@ struct ProjectSection: View {
                 .font(.system(size: 13, weight: .semibold))
                 .lineLimit(1)
 
-            Text("\(threads.count)")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.white.opacity(0.06), in: Capsule())
-
             Spacer(minLength: 0)
 
             Button {
@@ -76,45 +123,58 @@ struct ProjectSection: View {
                     .frame(width: 20, height: 20)
                     .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             }
+            .disabled(!canCreateThread)
             .buttonStyle(.plain)
             .accessibilityIdentifier("project.section.new-thread.\(project.id)")
 
             Button {
-                toggleExpanded()
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isExpanded.toggle()
+                }
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    .frame(width: 16, height: 16)
+                    .animation(.easeInOut(duration: 0.15), value: isExpanded)
+                    .frame(width: 20, height: 20)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("project.section.toggle.\(project.id)")
+            .accessibilityIdentifier("project.section.disclosure.\(project.id)")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-    }
+        .background(isHeaderHovered ? Color.white.opacity(0.05) : .clear)
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .contain)
+        .onHover { isHovered in
+            isHeaderHovered = isHovered
+        }
+        .contextMenu {
+            Button("New Thread") {
+                onNewThread(project)
+            }
 
-    private func toggleExpanded() {
-        withTransaction(instantToggleTransaction()) {
-            isExpanded.toggle()
+            Button("Copy Project Name") {
+                copyToPasteboard(project.name)
+            }
+
+            Button("Copy Path") {
+                copyToPasteboard(project.remotePath)
+            }
+
+            Divider()
+
+            Button("Remove Repository", role: .destructive) {
+                projectPendingRemoval = project
+            }
         }
     }
 
-    private var mainBranchRow: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "arrow.triangle.branch")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 14)
-            Text(project.defaultBranch)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 0)
-        }
-        .padding(.leading, 32)
-        .padding(.trailing, 8)
-        .padding(.vertical, 3)
+    private var displayedThreads: [ThreadModel] {
+        threads.sorted { $0.createdAt > $1.createdAt }
     }
 
     @ViewBuilder
@@ -125,10 +185,9 @@ struct ProjectSection: View {
             .padding(.vertical, 5)
             .padding(.horizontal, 10)
             .padding(.leading, 24)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .onTapGesture {
-                selectedThreadID = thread.id
-            }
+            .accessibilityElement(children: .combine)
             .accessibilityIdentifier("thread.row.\(thread.id)")
             .background(isSelected ? Color.white.opacity(0.1) : .clear)
             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
@@ -138,13 +197,27 @@ struct ProjectSection: View {
                         onReopenThread(thread)
                     }
                 } else {
-                    Button("Hide") {
+                    Button("Hide Thread") {
                         onHideThread(thread)
                     }
-                    Button("Close", role: .destructive) {
-                        onCloseThread(thread)
-                    }
+                }
+
+                Button("Copy Branch Name") {
+                    copyToPasteboard(thread.branch)
+                }
+
+                Button("Copy Worktree Path") {
+                    copyToPasteboard(thread.worktreePath)
+                }
+
+                Button("Close Thread", role: .destructive) {
+                    threadPendingClose = thread
                 }
             }
+    }
+
+    private func copyToPasteboard(_ value: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
     }
 }

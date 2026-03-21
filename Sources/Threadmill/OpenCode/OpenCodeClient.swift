@@ -6,6 +6,7 @@ enum OpenCodeClientError: LocalizedError {
     case unexpectedStatusCode(Int)
     case missingDefaultModel
     case invalidSSEPayload
+    case sessionInvalidated
 
     var errorDescription: String? {
         switch self {
@@ -19,6 +20,8 @@ enum OpenCodeClientError: LocalizedError {
             "Unable to determine a default provider/model for session initialization."
         case .invalidSSEPayload:
             "Received invalid UTF-8 from OpenCode SSE stream."
+        case .sessionInvalidated:
+            "OpenCode client has been invalidated."
         }
     }
 }
@@ -27,9 +30,13 @@ final class OpenCodeClient: OpenCodeManaging {
     private let baseURL: URL
     private let username: String?
     private let password: String?
+    private let preferredProviderID: String
+    private let preferredModelID: String
     private let session: URLSession
+    private let sseSession: URLSession
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
+    private(set) var isInvalidated = false
 
     private static let directoryHeaderAllowedCharacters = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
     private static let pathComponentAllowedCharacters: CharacterSet = {
@@ -38,16 +45,42 @@ final class OpenCodeClient: OpenCodeManaging {
         return allowed
     }()
 
+    /// Dedicated URLSession for SSE streams. Long-lived SSE connections must not
+    /// share the same connection pool as regular data requests — otherwise they
+    /// exhaust `httpMaximumConnectionsPerHost` and starve short-lived API calls.
+    private static func makeSSESession() -> URLSession {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = TimeInterval.infinity
+        config.timeoutIntervalForResource = TimeInterval.infinity
+        return URLSession(configuration: config)
+    }
+
+    /// Dedicated URLSession for regular data requests. Using `.shared` causes
+    /// connection pool starvation when combined with SSE streams to the same host,
+    /// even when SSE uses its own session — `.shared`'s internal connection
+    /// management can still deadlock under concurrent load.
+    private static func makeDataSession() -> URLSession {
+        let config = URLSessionConfiguration.default
+        config.httpMaximumConnectionsPerHost = 10
+        return URLSession(configuration: config)
+    }
+
     init(
         baseURL: URL = URL(string: "http://127.0.0.1:4101")!,
         username: String? = nil,
         password: String? = nil,
-        session: URLSession = .shared
+        preferredProviderID: String = "anthropic",
+        preferredModelID: String = "claude-opus-4-6",
+        session: URLSession? = nil,
+        sseSession: URLSession? = nil
     ) {
         self.baseURL = baseURL
         self.username = username
         self.password = password
-        self.session = session
+        self.preferredProviderID = preferredProviderID
+        self.preferredModelID = preferredModelID
+        self.session = session ?? Self.makeDataSession()
+        self.sseSession = sseSession ?? Self.makeSSESession()
     }
 
     func listSessions(directory: String) async throws -> [OCSession] {
@@ -66,7 +99,6 @@ final class OpenCodeClient: OpenCodeManaging {
     }
 
     func initSession(id: String, directory: String) async throws -> OCSession {
-        let sessionID = id
         let providers = try await getProvidersPayload(directory: directory)
         guard let model = defaultModel(from: providers) else {
             throw OpenCodeClientError.missingDefaultModel
@@ -78,7 +110,7 @@ final class OpenCodeClient: OpenCodeManaging {
             messageID: Self.makeMessageID()
         )
         let body = try encoder.encode(initRequest)
-        _ = try await performDataRequest(pathComponents: ["session", sessionID, "init"], method: "POST", directory: directory, body: body)
+        _ = try await performDataRequest(pathComponents: ["session", id, "init"], method: "POST", directory: directory, body: body)
 
         return try await getSession(id: id, directory: directory)
     }
@@ -110,16 +142,6 @@ final class OpenCodeClient: OpenCodeManaging {
         _ = try await performDataRequest(pathComponents: ["session", sessionID, "abort"], method: "POST", directory: directory)
     }
 
-    func getProviders(directory: String) async throws -> [OCProvider] {
-        let payload = try await getProvidersPayload(directory: directory)
-        return normalizeProviders(payload.all)
-    }
-
-    func getAgents(directory: String) async throws -> [OCAgent] {
-        let data = try await performDataRequest(pathComponents: ["agent"], method: "GET", directory: directory)
-        return try decoder.decode([OCAgent].self, from: data)
-    }
-
     func getSessionDiff(sessionID: String, directory: String) async throws -> OCDiff {
         let data = try await performDataRequest(pathComponents: ["session", sessionID, "diff"], method: "GET", directory: directory)
         let files = try decoder.decode([OCDiffFile].self, from: data)
@@ -139,7 +161,7 @@ final class OpenCodeClient: OpenCodeManaging {
                     var request = try makeRequest(pathComponents: ["event"], method: "GET", directory: directory, body: nil)
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
-                    let (bytes, response) = try await session.bytes(for: request)
+                    let (bytes, response) = try await sseSession.bytes(for: request)
                     try validateResponse(response)
 
                     var parser = OCSSEParser()
@@ -164,6 +186,12 @@ final class OpenCodeClient: OpenCodeManaging {
         }
     }
 
+    func invalidate() {
+        isInvalidated = true
+        session.invalidateAndCancel()
+        sseSession.invalidateAndCancel()
+    }
+
     private func getProvidersPayload(directory: String) async throws -> OCProvidersPayload {
         let data = try await performDataRequest(pathComponents: ["provider"], method: "GET", directory: directory)
 
@@ -175,19 +203,12 @@ final class OpenCodeClient: OpenCodeManaging {
         return OCProvidersPayload(all: providers, connected: [], defaultModelByProvider: [:])
     }
 
-    private func normalizeProviders(_ providers: [OCProviderPayload]) -> [OCProvider] {
-        providers.map { provider in
-            let models = provider.models.map { key, value in
-                OCModel(id: value.id ?? key, name: value.name ?? value.id ?? key)
-            }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
-            return OCProvider(id: provider.id, name: provider.name, models: models)
-        }
-        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-    }
-
     private func defaultModel(from payload: OCProvidersPayload) -> OCMessageModel? {
+        // Prefer configured model if its provider is connected
+        if payload.connected.contains(preferredProviderID) {
+            return OCMessageModel(providerID: preferredProviderID, modelID: preferredModelID)
+        }
+
         for providerID in payload.connected {
             if let modelID = payload.defaultModelByProvider[providerID] {
                 return OCMessageModel(providerID: providerID, modelID: modelID)
@@ -208,6 +229,7 @@ final class OpenCodeClient: OpenCodeManaging {
     }
 
     private func performDataRequest(pathComponents: [String], method: String, directory: String?, body: Data? = nil) async throws -> Data {
+        guard !isInvalidated else { throw OpenCodeClientError.sessionInvalidated }
         let request = try makeRequest(pathComponents: pathComponents, method: method, directory: directory, body: body)
         let (data, response) = try await session.data(for: request)
         try validateResponse(response)

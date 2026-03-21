@@ -3,21 +3,25 @@ import XCTest
 
 @MainActor
 final class SidebarNewThreadFlowTests: XCTestCase {
-    func testPerProjectNewThreadActionPreselectsProjectInSheet() {
-        let project = Project(
-            id: "project-2",
-            name: "Demo",
-            remotePath: "/tmp/demo",
-            defaultBranch: "main"
+    func testPerRepoNewThreadActionPreselectsRepoInSheet() {
+        let repo = Repo(
+            id: "repo-2",
+            owner: "anomalyco",
+            name: "threadmill",
+            fullName: "anomalyco/threadmill",
+            cloneURL: "git@github.com:anomalyco/threadmill.git",
+            defaultBranch: "main",
+            isPrivate: true,
+            cachedAt: Date(timeIntervalSince1970: 1)
         )
-        var newThreadProjectID: String?
-        let onNewThread: (Project) -> Void = { tappedProject in
-            newThreadProjectID = preselectedProjectIDForNewThread(from: tappedProject)
+        var newThreadRepo: Repo?
+        let onNewThread: (Repo) -> Void = { tappedRepo in
+            newThreadRepo = tappedRepo
         }
 
-        onNewThread(project)
-        let sheet = NewThreadSheet(preselectedProjectID: newThreadProjectID)
+        onNewThread(repo)
+        let sheet = NewThreadSheet(repo: newThreadRepo!)
 
-        XCTAssertEqual(sheet.preselectedProjectID, project.id)
+        XCTAssertEqual(sheet.preselectedRepo?.id, repo.id)
     }
 }

@@ -1,0 +1,124 @@
+import XCTest
+@testable import Threadmill
+
+@MainActor
+final class ThreadSessionTabsProviderSourceTests: XCTestCase {
+    func testChatSessionCreationUsesHarnessMenuAndDefaultAction() {
+        var requestedHarnesses: [ChatHarness?] = []
+
+        let provider = ThreadSessionTabsProvider(
+            selectedTab: TabItem.chat.id,
+            chatConversations: [],
+            selectedChatConversationID: nil,
+            terminalSessionIDs: [],
+            selectedTerminalSessionID: nil,
+            presets: [],
+            chatHarnesses: ChatHarness.allCases,
+            chatTitle: { _, _, _ in "" },
+            onSelectChatConversation: { _ in },
+            onSelectTerminalSession: { _ in },
+            onArchiveChatConversations: { _ in },
+            onCloseTerminalSessions: { _ in },
+            onCreateChatConversation: { requestedHarnesses.append($0) },
+            onAddDefaultTerminalSession: {},
+            onAddTerminalSession: { _ in },
+            isAddDefaultEnabled: true
+        )
+
+        provider.handleDefaultSessionCreation()
+        provider.addMenuItems.forEach { $0.action() }
+
+        XCTAssertEqual(provider.addButtonHelpText, "New coding session (click) or choose harness (hold)")
+        XCTAssertEqual(provider.addMenuItems.map(\.title), ["OpenCode Serve"])
+        XCTAssertEqual(requestedHarnesses, [nil, .openCodeServe])
+    }
+
+    func testChatSessionTabsLabelNewestUntitledConversationAsNewSession() {
+        let older = ChatConversation(
+            id: "conv-1",
+            threadID: "thread-1",
+            opencodeSessionID: "ses-1",
+            title: "",
+            createdAt: Date(timeIntervalSince1970: 1),
+            updatedAt: Date(timeIntervalSince1970: 1),
+            isArchived: false
+        )
+        let newer = ChatConversation(
+            id: "conv-2",
+            threadID: "thread-1",
+            opencodeSessionID: "ses-2",
+            title: "",
+            createdAt: Date(timeIntervalSince1970: 2),
+            updatedAt: Date(timeIntervalSince1970: 2),
+            isArchived: false
+        )
+
+        let provider = ThreadSessionTabsProvider(
+            selectedTab: TabItem.chat.id,
+            chatConversations: [older, newer],
+            selectedChatConversationID: newer.id,
+            terminalSessionIDs: [],
+            selectedTerminalSessionID: nil,
+            presets: [],
+            chatHarnesses: ChatHarness.allCases,
+            chatTitle: ChatModeActions.chatTitle,
+            onSelectChatConversation: { _ in },
+            onSelectTerminalSession: { _ in },
+            onArchiveChatConversations: { _ in },
+            onCloseTerminalSessions: { _ in },
+            onCreateChatConversation: { _ in },
+            onAddDefaultTerminalSession: {},
+            onAddTerminalSession: { _ in },
+            isAddDefaultEnabled: true
+        )
+
+        XCTAssertEqual(provider.sessionTabs.map(\.title), ["Session 1", "New session"])
+    }
+
+    func testTerminalTabsDisableAddWhenAllPresetsAlreadyOpen() {
+        let provider = ThreadSessionTabsProvider(
+            selectedTab: TabItem.terminal.id,
+            chatConversations: [],
+            selectedChatConversationID: nil,
+            terminalSessionIDs: ["terminal", "logs"],
+            selectedTerminalSessionID: "terminal",
+            presets: [Preset(name: "terminal"), Preset(name: "logs")],
+            chatHarnesses: ChatHarness.allCases,
+            chatTitle: { _, _, _ in "" },
+            onSelectChatConversation: { _ in },
+            onSelectTerminalSession: { _ in },
+            onArchiveChatConversations: { _ in },
+            onCloseTerminalSessions: { _ in },
+            onCreateChatConversation: { _ in },
+            onAddDefaultTerminalSession: {},
+            onAddTerminalSession: { _ in },
+            isAddDefaultEnabled: false
+        )
+
+        XCTAssertTrue(provider.isAddDisabled)
+    }
+
+    func testTerminalTabsExposeRealAddButtonIdentifier() {
+        let provider = ThreadSessionTabsProvider(
+            selectedTab: TabItem.terminal.id,
+            chatConversations: [],
+            selectedChatConversationID: nil,
+            terminalSessionIDs: [],
+            selectedTerminalSessionID: nil,
+            presets: [Preset(name: "terminal")],
+            chatHarnesses: ChatHarness.allCases,
+            chatTitle: { _, _, _ in "" },
+            onSelectChatConversation: { _ in },
+            onSelectTerminalSession: { _ in },
+            onArchiveChatConversations: { _ in },
+            onCloseTerminalSessions: { _ in },
+            onCreateChatConversation: { _ in },
+            onAddDefaultTerminalSession: {},
+            onAddTerminalSession: { _ in },
+            isAddDefaultEnabled: true
+        )
+
+        XCTAssertEqual(provider.addButtonAccessibilityID, "terminal.session.add")
+        XCTAssertFalse(provider.isAddDisabled)
+    }
+}

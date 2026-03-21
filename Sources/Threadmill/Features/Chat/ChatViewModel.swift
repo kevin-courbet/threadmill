@@ -14,24 +14,44 @@ final class ChatViewModel {
 
     private let openCodeClient: any OpenCodeManaging
     private let chatConversationService: any ChatConversationManaging
-    private let ensureOpenCodeRunning: (() async throws -> Void)?
     private var activeThreadID: String?
     private var activeDirectory: String?
-    private var hasEnsuredOpenCodeRunning = false
     private var eventStreamDirectory: String?
     private var eventStreamTask: Task<Void, Never>?
     private var eventStreamToken = UUID()
     private var messageLoadTask: Task<Void, Never>?
     private var messageLoadToken = UUID()
 
+    struct DebugSnapshot: Codable, Equatable {
+        let activeThreadID: String?
+        let activeDirectory: String?
+        let eventStreamDirectory: String?
+        let conversationCount: Int
+        let currentConversationID: String?
+        let messageCount: Int
+        let isGenerating: Bool
+        let lastError: String?
+
+        var summary: String {
+            [
+                "threadID=\(activeThreadID ?? "nil")",
+                "directory=\(activeDirectory ?? "nil")",
+                "eventStreamDirectory=\(eventStreamDirectory ?? "nil")",
+                "conversationCount=\(conversationCount)",
+                "currentConversation=\(currentConversationID ?? "nil")",
+                "messageCount=\(messageCount)",
+                "isGenerating=\(isGenerating)",
+                "lastError=\(lastError ?? "nil")",
+            ].joined(separator: "\n")
+        }
+    }
+
     init(
         openCodeClient: any OpenCodeManaging,
-        chatConversationService: any ChatConversationManaging,
-        ensureOpenCodeRunning: (() async throws -> Void)? = nil
+        chatConversationService: any ChatConversationManaging
     ) {
         self.openCodeClient = openCodeClient
         self.chatConversationService = chatConversationService
-        self.ensureOpenCodeRunning = ensureOpenCodeRunning
     }
 
     @MainActor deinit {
@@ -56,14 +76,16 @@ final class ChatViewModel {
         activeDirectory = directory
 
         do {
-            try await ensureOpenCodeRunningIfNeeded()
             startEventStreamIfNeeded(directory: directory)
 
-            conversations = try await chatConversationService.listConversations(threadID: threadID)
-            conversations.sort { $0.updatedAt > $1.updatedAt }
+            conversations = try await chatConversationService.activeConversations(threadID: threadID)
+            sortConversationsChronologically()
 
             if conversations.isEmpty {
-                await createConversation(threadID: threadID, directory: directory)
+                currentConversation = nil
+                messages = []
+                streamingParts = [:]
+                isGenerating = false
                 return
             }
 
@@ -101,19 +123,8 @@ final class ChatViewModel {
             return
         }
 
-        do {
-            try await ensureOpenCodeRunningIfNeeded()
-        } catch {
-            lastError = error.localizedDescription
-            return
-        }
-
-        if currentConversation == nil {
-            await createConversation(threadID: activeThreadID, directory: directory)
-        }
-
         guard let sessionID = currentConversation?.opencodeSessionID, !sessionID.isEmpty else {
-            lastError = "Conversation session is unavailable."
+            lastError = "Start a coding session before sending a prompt."
             return
         }
 
@@ -139,7 +150,6 @@ final class ChatViewModel {
         }
 
         do {
-            try await ensureOpenCodeRunningIfNeeded()
             try await openCodeClient.abort(sessionID: sessionID, directory: directory)
         } catch {
             lastError = error.localizedDescription
@@ -179,7 +189,6 @@ final class ChatViewModel {
         activeDirectory = resolvedDirectory
 
         do {
-            try await ensureOpenCodeRunningIfNeeded()
             startEventStreamIfNeeded(directory: resolvedDirectory)
             let newConversation = try await chatConversationService.createConversation(
                 threadID: resolvedThreadID,
@@ -201,10 +210,7 @@ final class ChatViewModel {
     }
 
     func archiveConversation(_ conversation: ChatConversation) async {
-        guard
-            let threadID = activeThreadID,
-            let directory = activeDirectory
-        else {
+        guard activeThreadID != nil, activeDirectory != nil else {
             return
         }
 
@@ -222,7 +228,6 @@ final class ChatViewModel {
             }
 
             if conversations.isEmpty {
-                await createConversation(threadID: threadID, directory: directory)
                 return
             }
 
@@ -245,7 +250,6 @@ final class ChatViewModel {
             }
 
             do {
-                try await self.ensureOpenCodeRunningIfNeeded()
                 let loadedMessages = try await self.openCodeClient.getMessages(sessionID: sessionID, directory: directory)
                 guard !Task.isCancelled else {
                     return
@@ -311,15 +315,6 @@ final class ChatViewModel {
                 await self.handleEvent(event, directory: directory)
             }
         }
-    }
-
-    private func ensureOpenCodeRunningIfNeeded() async throws {
-        guard !hasEnsuredOpenCodeRunning else {
-            return
-        }
-
-        try await ensureOpenCodeRunning?()
-        hasEnsuredOpenCodeRunning = true
     }
 
     private func handleEvent(_ event: OCEvent, directory: String) async {
@@ -443,7 +438,7 @@ final class ChatViewModel {
         } else {
             conversations.append(conversation)
         }
-        conversations.sort { $0.updatedAt > $1.updatedAt }
+        sortConversationsChronologically()
     }
 
     private func upsertMessage(_ message: OCMessage, preserveExistingParts: Bool) {
@@ -486,7 +481,7 @@ final class ChatViewModel {
         var updatedConversation = conversations[index]
         updatedConversation.updateTitle(generatedTitle)
         conversations[index] = updatedConversation
-        conversations.sort { $0.updatedAt > $1.updatedAt }
+        sortConversationsChronologically()
 
         if currentConversation?.id == updatedConversation.id {
             currentConversation = updatedConversation
@@ -505,6 +500,28 @@ final class ChatViewModel {
         }
 
         return conversation.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func sortConversationsChronologically() {
+        conversations.sort {
+            if $0.createdAt == $1.createdAt {
+                return $0.id < $1.id
+            }
+            return $0.createdAt < $1.createdAt
+        }
+    }
+
+    var debugSnapshot: DebugSnapshot {
+        DebugSnapshot(
+            activeThreadID: activeThreadID,
+            activeDirectory: activeDirectory,
+            eventStreamDirectory: eventStreamDirectory,
+            conversationCount: conversations.count,
+            currentConversationID: currentConversation?.id,
+            messageCount: messages.count,
+            isGenerating: isGenerating,
+            lastError: lastError
+        )
     }
 }
 

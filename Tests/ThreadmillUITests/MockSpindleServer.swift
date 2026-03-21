@@ -28,6 +28,11 @@ final class MockSpindleServer {
         var tmuxSession: String
     }
 
+    struct RPCRequest {
+        var method: String
+        var params: [String: Any]?
+    }
+
     private final class ClientConnection {
         let connection: NWConnection
 
@@ -122,9 +127,65 @@ final class MockSpindleServer {
     private var projects: [MockProject]
     private var threads: [MockThread]
     private var attachments: [UInt16: (threadID: String, preset: String)] = [:]
+    private var requestLog: [RPCRequest] = []
+    private var stateVersion = 1
     private var nextChannelID: UInt16 = 10
 
     private(set) var port: UInt16 = 0
+
+    func useTerminalFixture(projectID: String = "project-terminal", threadID: String = "thread-terminal") {
+        queue.sync {
+            projects = [
+                MockProject(
+                    id: projectID,
+                    name: "factorio",
+                    path: "/home/wsl/dev/factorio",
+                    defaultBranch: "main",
+                    presets: [
+                        MockPreset(name: "terminal", command: "bash", cwd: nil),
+                        MockPreset(name: "dev-server", command: "bun run dev", cwd: nil),
+                    ]
+                ),
+            ]
+            threads = [
+                MockThread(
+                    id: threadID,
+                    projectID: projectID,
+                    name: "gg",
+                    branch: "gg",
+                    worktreePath: "/home/wsl/dev/.threadmill/factorio/gg",
+                    status: "active",
+                    sourceType: "new_feature",
+                    createdAt: Date(timeIntervalSince1970: 1),
+                    tmuxSession: "tm_factorio_gg"
+                ),
+            ]
+            attachments.removeAll()
+            requestLog.removeAll()
+            stateVersion += 1
+            nextChannelID = 10
+        }
+    }
+
+    func requestCount(method: String) -> Int {
+        queue.sync {
+            requestLog.filter { $0.method == method }.count
+        }
+    }
+
+    func lastRequestParams(method: String) -> [String: Any]? {
+        queue.sync {
+            requestLog.last(where: { $0.method == method })?.params
+        }
+    }
+
+    func requestParams(method: String) -> [[String: Any]] {
+        queue.sync {
+            requestLog
+                .filter { $0.method == method }
+                .compactMap(\.params)
+        }
+    }
 
     init() {
         formatter = ISO8601DateFormatter()
@@ -225,6 +286,8 @@ final class MockSpindleServer {
             }
 
             attachments.removeAll()
+            requestLog.removeAll()
+            stateVersion = 1
             listener?.cancel()
             listener = nil
             port = 0
@@ -273,6 +336,7 @@ final class MockSpindleServer {
         }
 
         let params = request["params"] as? [String: Any]
+        requestLog.append(RPCRequest(method: method, params: params))
         let handled = handle(method: method, id: id, params: params)
         client.sendJSON(handled.response)
         for event in handled.events {
@@ -285,8 +349,77 @@ final class MockSpindleServer {
         case "ping":
             return (ok(id: id, result: "pong"), [])
 
+        case "session.hello":
+            return (
+                ok(
+                    id: id,
+                    result: [
+                        "session_id": "mock-session",
+                        "state_version": stateVersion,
+                        "protocol_version": "2026-03-17",
+                        "capabilities": [
+                            "state.delta.operations.v1",
+                            "preset.output.v1",
+                            "rpc.errors.structured.v1",
+                        ],
+                    ]
+                ),
+                []
+            )
+
+        case "state.snapshot":
+            return (ok(id: id, result: stateSnapshotPayload()), [])
+
+        case "system.stats":
+            return (
+                ok(
+                    id: id,
+                    result: [
+                        "cpu_percent": 12,
+                        "load_avg_1m": 0.12,
+                        "load_avg_5m": 0.08,
+                        "load_avg_15m": 0.05,
+                        "memory_used_mb": 512,
+                        "memory_total_mb": 2048,
+                        "disk_used_gb": 10,
+                        "disk_total_gb": 100,
+                        "uptime_seconds": 1234,
+                        "opencode_running": true,
+                        "opencode_instances": 1,
+                    ]
+                ),
+                []
+            )
+
         case "project.list":
             return (ok(id: id, result: projects.map(projectPayload)), [])
+
+        case "project.lookup":
+            let path = params?["path"] as? String ?? ""
+            if let project = projects.first(where: { $0.path == path }) {
+                return (
+                    ok(
+                        id: id,
+                        result: [
+                            "exists": true,
+                            "is_git_repo": true,
+                            "project_id": project.id,
+                        ]
+                    ),
+                    []
+                )
+            }
+            return (
+                ok(
+                    id: id,
+                    result: [
+                        "exists": false,
+                        "is_git_repo": false,
+                        "project_id": NSNull(),
+                    ]
+                ),
+                []
+            )
 
         case "project.browse":
             let path = params?["path"] as? String ?? "/home/wsl/dev"
@@ -311,8 +444,39 @@ final class MockSpindleServer {
                 ]
             )
             projects.append(project)
-            let event: [String: Any] = ["method": "project.added", "params": ["project_id": project.id]]
+            stateVersion += 1
+            let event: [String: Any] = ["method": "project.added", "params": ["project": projectPayload(project)]]
             return (ok(id: id, result: projectPayload(project)), [event])
+
+        case "project.clone":
+            let url = params?["url"] as? String ?? "https://github.com/example/project.git"
+            let repoName = repoNameFromCloneURL(url)
+            let project = MockProject(
+                id: uniqueProjectID(for: repoName),
+                name: repoName,
+                path: "/home/wsl/dev/\(repoName)",
+                defaultBranch: "main",
+                presets: [
+                    MockPreset(name: "terminal", command: "bash", cwd: nil),
+                    MockPreset(name: "dev-server", command: "bun run dev", cwd: nil),
+                ]
+            )
+            projects.append(project)
+            stateVersion += 1
+            let event: [String: Any] = ["method": "project.added", "params": ["project": projectPayload(project)]]
+            return (ok(id: id, result: projectPayload(project)), [event])
+
+        case "project.remove":
+            let projectID = params?["project_id"] as? String ?? ""
+            let hadProject = projects.contains(where: { $0.id == projectID })
+            projects.removeAll { $0.id == projectID }
+            threads.removeAll { $0.projectID == projectID }
+            if hadProject {
+                stateVersion += 1
+                let event: [String: Any] = ["method": "project.removed", "params": ["project_id": projectID]]
+                return (ok(id: id, result: ["removed": true]), [event])
+            }
+            return (ok(id: id, result: ["removed": false]), [])
 
         case "project.branches":
             return (ok(id: id, result: ["main", "develop", "release/test"]), [])
@@ -342,6 +506,7 @@ final class MockSpindleServer {
                 tmuxSession: "tm_\(projectID)_\(slug(name))"
             )
             threads.insert(thread, at: 0)
+            stateVersion += 1
 
             let progress: [String: Any] = [
                 "method": "thread.progress",
@@ -361,6 +526,7 @@ final class MockSpindleServer {
             }
             let old = threads[index].status
             threads[index].status = "hidden"
+            stateVersion += 1
             let event: [String: Any] = [
                 "method": "thread.status_changed",
                 "params": ["thread_id": threadID, "old": old, "new": "hidden"],
@@ -374,6 +540,7 @@ final class MockSpindleServer {
             }
             let old = threads[index].status
             threads[index].status = "active"
+            stateVersion += 1
             let event: [String: Any] = [
                 "method": "thread.status_changed",
                 "params": ["thread_id": threadID, "old": old, "new": "active"],
@@ -382,8 +549,12 @@ final class MockSpindleServer {
 
         case "thread.close":
             let threadID = params?["thread_id"] as? String ?? ""
+            let didRemove = threads.contains(where: { $0.id == threadID })
             threads.removeAll { $0.id == threadID }
             attachments = attachments.filter { $0.value.threadID != threadID }
+            if didRemove {
+                stateVersion += 1
+            }
             let event: [String: Any] = ["method": "thread.removed", "params": ["thread_id": threadID]]
             return (ok(id: id, result: NSNull()), [event])
 
@@ -419,6 +590,14 @@ final class MockSpindleServer {
     private func allocateChannelID() -> UInt16 {
         defer { nextChannelID = nextChannelID == UInt16.max ? 10 : nextChannelID + 1 }
         return nextChannelID
+    }
+
+    private func stateSnapshotPayload() -> [String: Any] {
+        [
+            "state_version": stateVersion,
+            "projects": projects.map(projectPayload),
+            "threads": threads.map(threadPayload),
+        ]
     }
 
     private func projectPayload(_ project: MockProject) -> [String: Any] {
@@ -497,5 +676,25 @@ final class MockSpindleServer {
             .map { $0.isLetter || $0.isNumber ? String($0) : "-" }
             .joined()
             .replacingOccurrences(of: "--", with: "-")
+    }
+
+    private func repoNameFromCloneURL(_ url: String) -> String {
+        if let parsedURL = URL(string: url), let host = parsedURL.host, !host.isEmpty {
+            let name = parsedURL.deletingPathExtension().lastPathComponent
+            if !name.isEmpty {
+                return name
+            }
+        }
+
+        let pathLike = url
+            .split(separator: ":")
+            .last
+            .map(String.init) ?? url
+        let component = pathLike
+            .split(separator: "/")
+            .last
+            .map(String.init) ?? "project"
+        let trimmed = component.hasSuffix(".git") ? String(component.dropLast(4)) : component
+        return trimmed.isEmpty ? "project" : trimmed
     }
 }

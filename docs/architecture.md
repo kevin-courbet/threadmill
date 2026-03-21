@@ -96,7 +96,7 @@ WKWebView with internal tab bar (separate from mode session tabs). BrowserSessio
 
 ### File Browser
 
-HSplitView: tree sidebar (30%) + content viewer (70%). Tree loaded via `file.list` RPC. Files opened via `file.read` RPC. Content displayed with syntax highlighting (regex-based, Catppuccin palette), line numbers, monospaced font. Git status coloring via `file.git_status` RPC.
+HStack split layout: tree sidebar + content viewer. Tree loaded via `file.list` RPC. Files opened via `file.read` RPC. Content rendered with CodeEditSourceEditor (tree-sitter highlighting via CodeEditLanguages queries), gutter line numbers, and monospaced font. Git status coloring via `file.git_status` RPC.
 
 ## Supervision (Implemented)
 
@@ -364,12 +364,12 @@ Default endpoint is `ws://127.0.0.1:19990` and can be overridden with `THREADMIL
 - [x] WKWebView browser with internal tab bar
 - [x] Browser session GRDB persistence
 - [x] URL bar, back/forward/reload, loading progress
-- [x] File browser: tree + content viewer (HSplitView)
+- [x] File browser: tree + content viewer (HStack split layout)
 - [x] `file.list` RPC with path authorization + TOCTOU hardening
 - [x] `file.read` RPC (5MB cap, UTF-8 only)
 - [x] `file.git_status` RPC (porcelain v1 parsing)
-- [x] Syntax highlighting (regex-based, Catppuccin palette)
-- [x] Line number gutter
+- [x] Syntax highlighting (tree-sitter via CodeEditSourceEditor + CodeEditLanguages)
+- [x] SourceEditor gutter line numbers
 - [x] File type icons (SF Symbol-based)
 - [x] Git status coloring in file tree
 

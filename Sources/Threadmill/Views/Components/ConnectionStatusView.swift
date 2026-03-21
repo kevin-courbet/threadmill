@@ -3,17 +3,6 @@ import SwiftUI
 struct ConnectionStatusView: View {
     let status: ConnectionStatus
 
-    private var color: Color {
-        switch status {
-        case .connected:
-            return .green
-        case .connecting, .reconnecting:
-            return .orange
-        case .disconnected:
-            return .red
-        }
-    }
-
     private var text: String {
         switch status {
         case .connected:
@@ -28,16 +17,16 @@ struct ConnectionStatusView: View {
     }
 
     var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 9, height: 9)
-            .overlay {
-                Circle()
-                    .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+        Group {
+            if status == .disconnected {
+                Image(systemName: "wifi.slash")
+                    .foregroundStyle(.red)
+                    .help(text)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
             }
-            .help(text)
+        }
         .accessibilityElement(children: .ignore)
-        .accessibilityIdentifier("connection.status")
         .accessibilityLabel("Connection")
         .accessibilityValue(status.label)
     }

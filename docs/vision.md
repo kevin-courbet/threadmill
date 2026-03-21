@@ -126,13 +126,13 @@ ports:
 
 ### 12) File Browser
 
-- [x] HSplitView: tree sidebar (30%) + content viewer (70%)
+- [x] HStack split layout: tree sidebar + content viewer
 - [x] Spindle RPCs: file.list, file.read, file.git_status
 - [x] Recursive directory tree with lazy loading
 - [x] File type icons (SF Symbol-based, extension-mapped)
 - [x] Git status coloring (yellow=modified, green=added, blue=untracked, red=deleted)
-- [x] Syntax highlighting (regex-based, Catppuccin palette)
-- [x] Line number gutter
+- [x] Syntax highlighting (tree-sitter via CodeEditSourceEditor + CodeEditLanguages)
+- [x] SourceEditor gutter line numbers
 - [x] File tabs with shared TabContainer/TabLabel/TabCloseButton
 - [x] Sidebar toggle, nav arrows for file tabs
 - [x] Path authorization + TOCTOU hardening in Spindle

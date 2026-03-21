@@ -110,13 +110,11 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 | `Features/Browser/BrowserControlBar.swift` | URL field, back/forward/reload, progress bar |
 | `Features/Browser/BrowserSessionManager.swift` | GRDB-backed browser session management |
 | `Features/Browser/WebViewWrapper.swift` | WKWebView NSViewRepresentable with KVO + delegates |
-| `Features/Files/FileBrowserView.swift` | HSplitView: tree sidebar + content viewer |
+| `Features/Files/FileBrowserView.swift` | HStack split layout: tree sidebar + content viewer |
 | `Features/Files/FileBrowserViewModel.swift` | File operations via Spindle RPCs, git status |
 | `Features/Files/FileTreeView.swift` | Recursive directory tree with git status coloring |
 | `Features/Files/FileContentTabView.swift` | Open file tabs with shared tab components |
-| `Features/Files/CodeEditorView.swift` | NSTextView-based editor with syntax highlighting |
-| `Features/Files/SyntaxHighlighter.swift` | Regex-based syntax coloring (Catppuccin palette) |
-| `Features/Files/LineNumberGutter.swift` | NSRulerView line number gutter |
+| `Features/Files/CodeEditorView.swift` | CodeEditSourceEditor-based editor with tree-sitter highlighting |
 | `Features/Files/LanguageDetection.swift` | File extension → language mapping |
 | `Views/ContentView.swift` | NavigationSplitView, sidebar width |
 | `Views/Components/SessionTabsScrollView.swift` | Capsule session tabs with arrows, +, context menus |
@@ -124,11 +122,11 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 | `Views/Components/TabLabel.swift` | Tab label with icon + title slots |
 | `Views/Components/TabCloseButton.swift` | xmark close button with hover states |
 | `Views/Components/FileIconView.swift` | SF Symbol file type icons by extension |
-| `Views/Components/ConnectionStatusView.swift` | Colored dot (green/yellow/red) |
+| `Views/Components/ConnectionStatusView.swift` | Reusable connection status dot view |
 | **Sources/threadmill-relay/** | |
 | `main.c` | ~30-line C PTY bridge: stdin/stdout ↔ Unix socket |
-| **Tests/ThreadmillTests/** | ~90 unit tests with mock doubles |
-| **Tests/ThreadmillUITests/** | UI e2e harness with MockSpindleServer (opt-in) |
+| **Tests/ThreadmillTests/** | ~100 unit tests with mock doubles |
+| **UITests/ThreadmillUITests/** | XCUITest e2e harness with MockSpindleServer (opt-in) |
 
 ### Spindle (on beast) — Rust daemon
 
@@ -178,7 +176,7 @@ ssh beast "journalctl --user -u spindle -f"      # tail logs
 | Port offset allocation | Multiple dev servers per project don't conflict |
 | Mode switcher (aizen pattern) | Chat/Terminal/Files/Browser modes with session tabs per mode |
 | GRDB for conversations + browser | Local persistence for chat/browser state across app restarts |
-| Regex syntax highlighting | No external tree-sitter deps; lightweight Catppuccin-themed coloring |
+| CodeEditSourceEditor + tree-sitter | Accurate language parsing and highlighting via CodeEditLanguages queries |
 
 ---
 
@@ -238,3 +236,4 @@ Every tmux session gets these env vars:
 | `docs/architecture.md` | Full architecture spec, module structure, milestone status |
 | `docs/vision.md` | Product vision, feature status, milestone checklist |
 | `protocol/threadmill-rpc.schema.json` | JSON-RPC schema (types, methods, events) |
+| `docs/agents/swiftui-patterns.md` | SwiftUI/AppKit patterns: DisclosureGroup custom chevron, hover states, Settings window, GhosttyKit theming |

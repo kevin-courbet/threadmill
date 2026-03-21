@@ -2,47 +2,80 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppState.self) private var appState
-    @State private var showingAddProjectSheet = false
+    @Environment(GitHubAuthManager.self) private var gitHubAuthManager
+    @State private var showingAddRepoSheet = false
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(showingAddProjectSheet: $showingAddProjectSheet)
+            SidebarView(showingAddRepoSheet: $showingAddRepoSheet)
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 400)
         } detail: {
-            if appState.projects.isEmpty {
-                VStack(spacing: 14) {
-                    Image(systemName: "folder.badge.plus")
-                        .font(.system(size: 44, weight: .regular))
-                        .foregroundStyle(.secondary)
-                    Text("Add a repository to get started")
-                        .font(.title3.weight(.semibold))
-                    Button("Add Repository") {
-                        showingAddProjectSheet = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("empty-state.add-repository-button")
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if appState.selectedThread != nil {
-                ThreadDetailView()
-            } else {
-                ContentUnavailableView(
-                    "Select a Thread",
-                    systemImage: "terminal",
-                    description: Text("Choose a thread from the sidebar to open terminal presets.")
-                )
-            }
+            detailContent
         }
         .navigationSplitViewStyle(.balanced)
         .sheet(isPresented: Bindable(appState).isNewThreadSheetPresented) {
-            NewThreadSheet()
+            if let repo = appState.defaultWorkspaceRepo ?? appState.repos.first {
+                NewThreadSheet(repo: repo)
+            }
         }
-        .sheet(isPresented: $showingAddProjectSheet) {
-            AddProjectSheet()
+        .sheet(isPresented: $showingAddRepoSheet) {
+            AddRepoSheet(authManager: gitHubAuthManager)
         }
-        .background {
-            keyboardShortcuts
+        .alert(
+            "Unable to Open New Thread",
+            isPresented: Binding(
+                get: { appState.alertMessage != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        appState.alertMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(appState.alertMessage ?? "")
         }
+        .background { keyboardShortcuts }
+    }
+
+    @ViewBuilder
+    private var detailContent: some View {
+        if appState.repos.isEmpty && appState.projects.isEmpty {
+            defaultWorkspaceEmptyState
+        } else if appState.selectedThread != nil {
+            ThreadDetailView()
+        } else {
+            defaultWorkspaceEmptyState
+        }
+    }
+
+    @ViewBuilder
+    private var defaultWorkspaceEmptyState: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "sparkles.rectangle.stack")
+                .font(.system(size: 40, weight: .regular))
+                .foregroundStyle(.secondary)
+
+            Text("Where do you want to run this?")
+                .font(.title3.weight(.semibold))
+
+            if appState.remotes.isEmpty {
+                Text("Configure a remote in Settings to start using Cross-project.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                Picker("Remote", selection: Bindable(appState).selectedWorkspaceRemoteID) {
+                    ForEach(appState.remotes) { remote in
+                        Text(remote.name).tag(Optional(remote.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: 220)
+                .accessibilityIdentifier("default-workspace.remote-picker")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder

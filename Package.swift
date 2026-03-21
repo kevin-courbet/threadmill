@@ -51,6 +51,7 @@ let package = Package(
                 .linkedFramework("IOSurface"),
                 .linkedFramework("Metal"),
                 .linkedFramework("QuartzCore"),
+                .linkedFramework("Security"),
                 .linkedFramework("UniformTypeIdentifiers"),
                 .linkedFramework("WebKit"),
                 .linkedLibrary("z"),
@@ -61,11 +62,6 @@ let package = Package(
             name: "ThreadmillTests",
             dependencies: ["Threadmill"],
             path: "Tests/ThreadmillTests"
-        ),
-        .testTarget(
-            name: "ThreadmillUITests",
-            dependencies: ["Threadmill"],
-            path: "Tests/ThreadmillUITests"
         )
     ]
 )

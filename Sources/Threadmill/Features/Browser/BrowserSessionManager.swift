@@ -4,6 +4,32 @@ import WebKit
 
 @MainActor
 final class BrowserSessionManager: ObservableObject {
+    struct DebugSnapshot: Codable, Equatable {
+        let sessionCount: Int
+        let activeSessionID: String?
+        let currentURL: String
+        let pageTitle: String
+        let isLoading: Bool
+        let loadingProgress: Double
+        let canGoBack: Bool
+        let canGoForward: Bool
+        let loadError: String?
+
+        var summary: String {
+            [
+                "sessionCount=\(sessionCount)",
+                "activeSessionID=\(activeSessionID ?? "nil")",
+                "currentURL=\(currentURL)",
+                "pageTitle=\(pageTitle)",
+                "isLoading=\(isLoading)",
+                "loadingProgress=\(loadingProgress)",
+                "canGoBack=\(canGoBack)",
+                "canGoForward=\(canGoForward)",
+                "loadError=\(loadError ?? "nil")",
+            ].joined(separator: "\n")
+        }
+    }
+
     @Published var sessions: [BrowserSession] = []
     @Published var activeSessionId: String?
     @Published var canGoBack = false
@@ -17,7 +43,8 @@ final class BrowserSessionManager: ObservableObject {
     private let databaseManager: any DatabaseManaging
     private let threadID: String
     private let defaultURL: String
-    private weak var activeWebView: WKWebView?
+    // Retains WKWebViews so they survive tab switches (ZStack opacity pattern)
+    private var webViews: [String: WKWebView] = [:]
 
     init(databaseManager: any DatabaseManaging, thread: ThreadModel) {
         self.databaseManager = databaseManager
@@ -55,6 +82,7 @@ final class BrowserSessionManager: ObservableObject {
         }
 
         let wasActive = activeSessionId == sessionID
+        webViews.removeValue(forKey: sessionID)
         sessions.remove(at: sessionIndex)
 
         do {
@@ -89,9 +117,18 @@ final class BrowserSessionManager: ObservableObject {
         activeSessionId = sessionID
         currentURL = session.url
         pageTitle = session.title
-        activeWebView = nil
-        resetNavigationState()
         loadError = nil
+
+        if let webView = webViews[sessionID] {
+            updateNavigationState(
+                canGoBack: webView.canGoBack,
+                canGoForward: webView.canGoForward,
+                isLoading: webView.isLoading,
+                loadingProgress: webView.estimatedProgress
+            )
+        } else {
+            resetNavigationState()
+        }
     }
 
     func handleURLChange(sessionID: String, url: String) {
@@ -138,29 +175,34 @@ final class BrowserSessionManager: ObservableObject {
     }
 
     func goBack() {
-        activeWebView?.goBack()
+        guard let id = activeSessionId else { return }
+        webViews[id]?.goBack()
     }
 
     func goForward() {
-        activeWebView?.goForward()
+        guard let id = activeSessionId else { return }
+        webViews[id]?.goForward()
     }
 
     func reload() {
-        activeWebView?.reload()
+        guard let id = activeSessionId else { return }
+        webViews[id]?.reload()
     }
 
-    func registerActiveWebView(_ webView: WKWebView, for sessionID: String) {
-        guard activeSessionId == sessionID else {
-            return
+    func registerWebView(_ webView: WKWebView, for sessionID: String) {
+        webViews[sessionID] = webView
+        if activeSessionId == sessionID {
+            updateNavigationState(
+                canGoBack: webView.canGoBack,
+                canGoForward: webView.canGoForward,
+                isLoading: webView.isLoading,
+                loadingProgress: webView.estimatedProgress
+            )
         }
+    }
 
-        activeWebView = webView
-        updateNavigationState(
-            canGoBack: webView.canGoBack,
-            canGoForward: webView.canGoForward,
-            isLoading: webView.isLoading,
-            loadingProgress: webView.estimatedProgress
-        )
+    func unregisterWebView(for sessionID: String) {
+        webViews.removeValue(forKey: sessionID)
     }
 
     func updateNavigationState(canGoBack: Bool, canGoForward: Bool, isLoading: Bool, loadingProgress: Double) {
@@ -235,5 +277,23 @@ final class BrowserSessionManager: ObservableObject {
     private static func defaultURL(portOffset: Int?) -> String {
         let offset = max(0, portOffset ?? 0)
         return "http://localhost:\(3000 + offset)"
+    }
+
+    var debugSummary: String {
+        debugSnapshot.summary
+    }
+
+    var debugSnapshot: DebugSnapshot {
+        DebugSnapshot(
+            sessionCount: sessions.count,
+            activeSessionID: activeSessionId,
+            currentURL: currentURL,
+            pageTitle: pageTitle,
+            isLoading: isLoading,
+            loadingProgress: loadingProgress,
+            canGoBack: canGoBack,
+            canGoForward: canGoForward,
+            loadError: loadError
+        )
     }
 }

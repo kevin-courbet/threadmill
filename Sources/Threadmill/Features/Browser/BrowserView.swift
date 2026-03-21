@@ -28,25 +28,7 @@ struct BrowserView: View {
             Divider()
 
             ZStack {
-                if let activeSession = manager.activeSession, !activeSession.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    WebViewWrapper(
-                        url: activeSession.url,
-                        onNavigationStateChange: { canGoBack, canGoForward, isLoading, loadingProgress in
-                            manager.updateNavigationState(
-                                canGoBack: canGoBack,
-                                canGoForward: canGoForward,
-                                isLoading: isLoading,
-                                loadingProgress: loadingProgress
-                            )
-                        },
-                        onURLChange: { manager.handleURLChange(sessionID: activeSession.id, url: $0) },
-                        onTitleChange: { manager.handleTitleChange(sessionID: activeSession.id, title: $0) },
-                        onNewTab: { manager.createSession(url: $0) },
-                        onWebViewCreated: { manager.registerActiveWebView($0, for: activeSession.id) },
-                        onLoadError: { manager.handleLoadError($0) }
-                    )
-                    .id(activeSession.id)
-                } else {
+                if manager.sessions.isEmpty {
                     VStack(spacing: 8) {
                         Image(systemName: "globe")
                             .font(.system(size: 48))
@@ -57,6 +39,31 @@ struct BrowserView: View {
                         Text("Enter a URL or open a new tab")
                             .font(.system(size: 11))
                             .foregroundStyle(.tertiary)
+                    }
+                } else {
+                    ForEach(manager.sessions) { session in
+                        let isActive = session.id == manager.activeSessionId
+                        WebViewWrapper(
+                            url: session.url,
+                            sessionID: session.id,
+                            onNavigationStateChange: { canGoBack, canGoForward, isLoading, loadingProgress in
+                                if session.id == manager.activeSessionId {
+                                    manager.updateNavigationState(
+                                        canGoBack: canGoBack,
+                                        canGoForward: canGoForward,
+                                        isLoading: isLoading,
+                                        loadingProgress: loadingProgress
+                                    )
+                                }
+                            },
+                            onURLChange: { manager.handleURLChange(sessionID: session.id, url: $0) },
+                            onTitleChange: { manager.handleTitleChange(sessionID: session.id, title: $0) },
+                            onNewTab: { manager.createSession(url: $0) },
+                            onWebViewCreated: { manager.registerWebView($0, for: session.id) },
+                            onLoadError: { if isActive { manager.handleLoadError($0) } }
+                        )
+                        .opacity(isActive ? 1 : 0)
+                        .allowsHitTesting(isActive)
                     }
                 }
 

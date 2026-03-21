@@ -13,7 +13,7 @@ final class WindowAndSessionTabStylingSourceTests: XCTestCase {
         let source = try loadSource(at: "Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
 
         XCTAssertTrue(source.contains("Label(LocalizedStringKey(tab.localizedKey), systemImage: tab.icon)"))
-        XCTAssertFalse(source.contains("HStack(spacing: 4)"))
+        XCTAssertTrue(source.contains(".pickerStyle(.segmented)"))
     }
 
     func testTabItemUsesAizenIconAssignments() throws {

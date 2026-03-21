@@ -33,6 +33,7 @@ struct SessionTabsScrollView: View {
     let addMenuItems: [SessionAddMenuItem]
     let addButtonHelp: String
     let addButtonAccessibilityID: String
+    let isAddDisabled: Bool
 
     @State private var scrollViewProxy: ScrollViewProxy?
 
@@ -86,7 +87,8 @@ struct SessionTabsScrollView: View {
                 onAddDefault: onAddDefault,
                 addMenuItems: addMenuItems,
                 addButtonHelp: addButtonHelp,
-                addButtonAccessibilityID: addButtonAccessibilityID
+                addButtonAccessibilityID: addButtonAccessibilityID,
+                isDisabled: isAddDisabled
             )
             .padding(.trailing, 8)
         }
@@ -102,6 +104,7 @@ struct SessionTabsScrollView: View {
                     SessionCloseButton {
                         onClose(tab.id)
                     }
+                    .accessibilityIdentifier("session.tab.close.\(tab.id)")
                 }
 
                 if let icon = tab.icon, !icon.isEmpty {
@@ -203,19 +206,20 @@ private struct SessionTabButton<Content: View>: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            content
-                .padding(.leading, 6)
-                .padding(.trailing, 12)
-                .padding(.vertical, 6)
-                .background(
-                    isSelected
-                        ? Color(nsColor: .separatorColor)
-                        : (isHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear),
-                    in: Capsule()
-                )
-        }
-        .buttonStyle(.plain)
+        // Content is laid out directly (not inside a Button label) so nested
+        // buttons (e.g. close) receive their own clicks.
+        content
+            .padding(.leading, 6)
+            .padding(.trailing, 12)
+            .padding(.vertical, 6)
+            .background(
+                isSelected
+                    ? Color(nsColor: .separatorColor)
+                    : (isHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear),
+                in: Capsule()
+            )
+            .contentShape(Capsule())
+            .onTapGesture(perform: action)
         .onHover { hovering in
             isHovering = hovering
         }
@@ -278,8 +282,10 @@ private struct NewTabButton: View {
     let addMenuItems: [SessionAddMenuItem]
     let addButtonHelp: String
     let addButtonAccessibilityID: String
+    let isDisabled: Bool
 
-    @State private var isHovering = false
+    @State private var isPlusHovering = false
+    @State private var isChevronHovering = false
     @State private var clickTrigger = 0
 
     var body: some View {
@@ -291,8 +297,10 @@ private struct NewTabButton: View {
                 plusLabel
             }
             .buttonStyle(.plain)
+            .disabled(isDisabled)
+            .opacity(isDisabled ? 0.35 : 1)
             .onHover { hovering in
-                isHovering = hovering
+                isPlusHovering = hovering
             }
             .help(addButtonHelp)
             .accessibilityIdentifier(addButtonAccessibilityID)
@@ -303,31 +311,57 @@ private struct NewTabButton: View {
                 button
             }
         } else {
-            let menu = Menu {
-                ForEach(addMenuItems) { item in
-                    Button(item.title, action: item.action)
+            HStack(spacing: 2) {
+                let plusButton = Button {
+                    clickTrigger += 1
+                    onAddDefault()
+                } label: {
+                    plusLabel
                 }
-            } label: {
-                plusLabel
-            } primaryAction: {
-                clickTrigger += 1
-                onAddDefault()
-            }
-            .menuStyle(.button)
-            .menuIndicator(.visible)
-            .buttonStyle(.plain)
-            .onHover { hovering in
-                isHovering = hovering
-            }
-            .help(addButtonHelp)
-            .accessibilityIdentifier(addButtonAccessibilityID)
+                .buttonStyle(.plain)
+                .disabled(isDisabled)
+                .opacity(isDisabled ? 0.35 : 1)
+                .onHover { hovering in
+                    isPlusHovering = hovering
+                }
+                .help(addButtonHelp)
+                .accessibilityIdentifier(addButtonAccessibilityID)
 
-            if #available(macOS 14.0, *) {
-                menu.symbolEffect(.bounce, value: clickTrigger)
-            } else {
-                menu
+                if #available(macOS 14.0, *) {
+                    plusButton.symbolEffect(.bounce, value: clickTrigger)
+                } else {
+                    plusButton
+                }
+
+                Menu {
+                    ForEach(addMenuItems) { item in
+                        Button(item.title, action: item.action)
+                    }
+                } label: {
+                    chevronLabel
+                }
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
+                .buttonStyle(.plain)
+                .onHover { hovering in
+                    isChevronHovering = hovering
+                }
+                .help(addButtonHelp)
+                .accessibilityIdentifier("\(addButtonAccessibilityID).menu")
             }
+            .padding(.leading, 1)
+            .padding(.trailing, 1)
         }
+    }
+
+    private var chevronLabel: some View {
+        Image(systemName: "chevron.down")
+            .font(.system(size: 9, weight: .semibold))
+            .frame(width: 16, height: 24)
+            .background(
+                isChevronHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
     }
 
     private var plusLabel: some View {
@@ -335,7 +369,7 @@ private struct NewTabButton: View {
             .font(.system(size: 11))
             .frame(width: 24, height: 24)
             .background(
-                isHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear,
+                isPlusHovering ? Color(nsColor: .separatorColor).opacity(0.5) : Color.clear,
                 in: Circle()
             )
     }

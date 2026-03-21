@@ -6,7 +6,24 @@ tasks:
     cmds:
       - task: build
       - task: spindle:restart
-      - open .build/debug/Threadmill
+      - task: open
+
+  run:app:
+    desc: Build and launch Threadmill without restarting Spindle
+    cmds:
+      - task: build
+      - task: open
+
+  open:
+    desc: Open the packaged Threadmill app
+    cmds:
+      - task: app:bundle
+      - open .build/debug/Threadmill.app
+
+  app:bundle:
+    desc: Package Threadmill as a macOS app bundle
+    cmds:
+      - bash Scripts/package_app.sh
 
   spindle:restart:
     desc: Rebuild and restart Spindle daemon on beast
@@ -47,7 +64,9 @@ tasks:
     env:
       THREADMILL_RUN_UI_E2E: "1"
     cmds:
-      - swift test --filter ThreadmillUITests
+      - swift build --product Threadmill
+      - bash Scripts/package_app.sh
+      - xcodebuild test -project UITests/ThreadmillUITests.xcodeproj -scheme ThreadmillUITests -destination 'platform=macOS'
 
   build:
     desc: Build Threadmill

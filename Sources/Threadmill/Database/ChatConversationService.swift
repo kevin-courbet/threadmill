@@ -26,8 +26,6 @@ final class ChatConversationService: ChatConversationManaging {
 
     func createConversation(threadID: String, directory: String) async throws -> ChatConversation {
         var conversation = ChatConversation(threadID: threadID)
-        try databaseManager.saveConversation(conversation)
-
         let session = try await openCodeClient.createSession(directory: directory)
         conversation.linkSession(session.id)
         try databaseManager.saveConversation(conversation)

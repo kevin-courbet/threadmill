@@ -87,4 +87,29 @@ final class ThreadDetailViewSourceTests: XCTestCase {
 
         XCTAssertFalse(source.contains(".toolbar {}"))
     }
+
+    func testThreadDetailUsesSegmentedModePickerInToolbar() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
+        let source = try String(contentsOf: sourcePath, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("Picker(\"Mode\", selection: $selectedTab)"))
+        XCTAssertTrue(source.contains(".pickerStyle(.segmented)"))
+        XCTAssertTrue(source.contains("ToolbarItem(placement: .automatic) {\n                        modePicker"))
+    }
+
+    func testThreadDetailProvidesStableModeAccessibilityIdentifiers() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
+        let source = try String(contentsOf: sourcePath, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("accessibilityIdentifier(\"mode.tab.\\(tab.id)\")"))
+        XCTAssertTrue(source.contains(".accessibilityIdentifier(\"mode.picker\")"))
+    }
 }

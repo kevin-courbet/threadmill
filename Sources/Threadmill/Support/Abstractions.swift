@@ -1,6 +1,14 @@
 import Foundation
 import GhosttyKit
 
+
+struct ConnectionDebugSnapshot: Codable, Equatable {
+    let status: String
+    let sessionReady: Bool
+    let reconnectAttempt: Int
+    let lastErrorDescription: String?
+}
+
 struct FileBrowserEntry: Identifiable, Hashable, Codable {
     let name: String
     let path: String
@@ -35,17 +43,33 @@ protocol FileBrowsing: AnyObject {
 @MainActor
 protocol ConnectionManaging: AnyObject {
     var state: ConnectionStatus { get }
+    var debugSnapshot: ConnectionDebugSnapshot { get }
+    var onStateChange: ((ConnectionStatus) -> Void)? { get set }
+    var onConnected: (() -> Void)? { get set }
+    var onEvent: ((String, [String: Any]?) -> Void)? { get set }
     func start()
     func stop()
     func request(method: String, params: [String: Any]?, timeout: TimeInterval) async throws -> Any
     func sendBinaryFrame(_ data: Data) async throws
+    func setBinaryFrameHandler(_ handler: ((Data) -> Void)?)
 }
 
 @MainActor
 protocol DatabaseManaging: AnyObject {
     func allProjects() throws -> [Project]
     func allThreads() throws -> [ThreadModel]
-    func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel]) throws
+    func allRemotes() throws -> [Remote]
+    func allRepos() throws -> [Repo]
+    func remote(id: String) throws -> Remote?
+    func repo(id: String) throws -> Repo?
+    func saveRemote(_ remote: Remote) throws
+    func ensureDefaultRemoteExists() throws -> Remote
+    func deleteRemote(id: String) throws
+    func saveRepo(_ repo: Repo) throws
+    func deleteRepo(id: String) throws
+    func replaceAllRepos(_ repos: [Repo]) throws
+    func replaceAllFromDaemon(projects: [Project], threads: [ThreadModel], remoteId: String) throws
+    func linkProject(projectID: String, repoID: String, remoteID: String) throws -> Bool
     func updateThreadStatus(threadID: String, status: ThreadStatus) throws -> Bool
     func saveConversation(_ conversation: ChatConversation) throws
     func conversation(id: String) throws -> ChatConversation?

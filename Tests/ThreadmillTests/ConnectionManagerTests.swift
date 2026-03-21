@@ -43,6 +43,9 @@ final class ConnectionManagerTests: XCTestCase {
             if method == "ping" {
                 return "pong"
             }
+            if method == "session.hello" {
+                return ["session_id": "sess-1"]
+            }
             throw TestError.missingStub
         }
 
@@ -50,6 +53,7 @@ final class ConnectionManagerTests: XCTestCase {
             config: ThreadmillConfig(host: "beast", daemonPort: 19990, useSSHTunnel: true),
             tunnelManager: tunnel,
             webSocketClient: webSocket,
+            maxReconnectAttempts: 1,
             reconnectDelay: { _ in 0.05 }
         )
 
@@ -65,6 +69,70 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(Array(states.prefix(2)), [.connecting, .connected])
         XCTAssertEqual(tunnel.startCallCount, 1)
         XCTAssertEqual(webSocket.connectURLs.count, 1)
+        XCTAssertEqual(webSocket.sentRequests.map(\.method), ["ping", "session.hello"])
+        manager.stop()
+    }
+
+    func testSessionHelloFailurePreventsConnectedState() async {
+        let tunnel = MockTunnelManager()
+        let webSocket = MockWebSocketClient()
+
+        webSocket.requestHandler = { method, _, _ in
+            switch method {
+            case "ping":
+                return "pong"
+            case "session.hello":
+                throw TestError.forcedFailure
+            default:
+                return ["ok": true]
+            }
+        }
+
+        let manager = ConnectionManager(
+            config: ThreadmillConfig(host: "beast", daemonPort: 19990, useSSHTunnel: true),
+            tunnelManager: tunnel,
+            webSocketClient: webSocket,
+            reconnectDelay: { _ in 0.05 }
+        )
+
+        manager.start()
+
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertNotEqual(manager.state, .connected)
+        XCTAssertEqual(Array(webSocket.sentRequests.prefix(2).map(\.method)), ["ping", "session.hello"])
+        manager.stop()
+    }
+
+    func testDebugSnapshotReflectsSessionNegotiationFailure() async {
+        let tunnel = MockTunnelManager()
+        let webSocket = MockWebSocketClient()
+        webSocket.requestHandler = { method, _, _ in
+            if method == "ping" {
+                return "pong"
+            }
+            if method == "session.hello" {
+                throw TestError.forcedFailure
+            }
+            throw TestError.missingStub
+        }
+
+        let manager = ConnectionManager(
+            config: ThreadmillConfig(host: "beast", daemonPort: 19990, useSSHTunnel: true),
+            tunnelManager: tunnel,
+            webSocketClient: webSocket,
+            maxReconnectAttempts: 1,
+            reconnectDelay: { _ in 0.05 }
+        )
+
+        manager.start()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        let snapshot = manager.debugSnapshot
+        XCTAssertFalse(snapshot.sessionReady)
+        XCTAssertNotNil(snapshot.lastErrorDescription)
+        XCTAssertNotEqual(snapshot.status, ConnectionStatus.connected.label)
+
         manager.stop()
     }
 }

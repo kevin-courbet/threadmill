@@ -6,6 +6,8 @@ struct ChatView: View {
     let selectedConversationID: String?
     let reloadToken: Int
     let showsConversationTabBar: Bool
+    let chatHarnesses: [ChatHarness]
+    let onCreateConversationWithHarness: ((ChatHarness) -> Void)?
     let onConversationStateChange: (([ChatConversation], ChatConversation?) -> Void)?
 
     @State private var viewModel: ChatViewModel
@@ -24,10 +26,11 @@ struct ChatView: View {
         directory: String,
         openCodeClient: any OpenCodeManaging,
         chatConversationService: any ChatConversationManaging,
-        ensureOpenCodeRunning: (() async throws -> Void)? = nil,
         selectedConversationID: String? = nil,
         reloadToken: Int = 0,
         showsConversationTabBar: Bool = true,
+        chatHarnesses: [ChatHarness] = ChatHarness.allCases,
+        onCreateConversationWithHarness: ((ChatHarness) -> Void)? = nil,
         onConversationStateChange: (([ChatConversation], ChatConversation?) -> Void)? = nil
     ) {
         self.threadID = threadID
@@ -35,11 +38,12 @@ struct ChatView: View {
         self.selectedConversationID = selectedConversationID
         self.reloadToken = reloadToken
         self.showsConversationTabBar = showsConversationTabBar
+        self.chatHarnesses = chatHarnesses
+        self.onCreateConversationWithHarness = onCreateConversationWithHarness
         self.onConversationStateChange = onConversationStateChange
         _viewModel = State(initialValue: ChatViewModel(
             openCodeClient: openCodeClient,
-            chatConversationService: chatConversationService,
-            ensureOpenCodeRunning: ensureOpenCodeRunning
+            chatConversationService: chatConversationService
         ))
     }
 
@@ -49,52 +53,56 @@ struct ChatView: View {
                 conversationTabBar
             }
 
-            ZStack(alignment: .bottomTrailing) {
-                messageList
+            if hasActiveConversation {
+                ZStack(alignment: .bottomTrailing) {
+                    messageList
 
-                if shouldShowJumpButton {
-                    Button {
-                        jumpRequestToken += 1
-                    } label: {
-                        Label("Jump to latest", systemImage: "arrow.down.circle.fill")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                    }
-                    .buttonStyle(.plain)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(Color.primary.opacity(0.2), lineWidth: 0.5)
-                    )
-                    .shadow(color: Color.black.opacity(0.16), radius: 5, y: 2)
-                    .padding(.trailing, 18)
-                    .padding(.bottom, 12)
-                }
-            }
-
-            if let lastError = viewModel.lastError, !lastError.isEmpty {
-                Text(lastError)
-                    .font(.caption2)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-            }
-
-            ChatInputView(
-                text: $draftText,
-                isGenerating: viewModel.isGenerating,
-                onSend: sendPrompt,
-                onAbort: {
-                    Task {
-                        await viewModel.abort()
+                    if shouldShowJumpButton {
+                        Button {
+                            jumpRequestToken += 1
+                        } label: {
+                            Label("Jump to latest", systemImage: "arrow.down.circle.fill")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                        }
+                        .buttonStyle(.plain)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(Color.primary.opacity(0.2), lineWidth: 0.5)
+                        )
+                        .shadow(color: Color.black.opacity(0.16), radius: 5, y: 2)
+                        .padding(.trailing, 18)
+                        .padding(.bottom, 12)
                     }
                 }
-            )
-            .padding(.horizontal, 12)
-            .padding(.bottom, 12)
-            .padding(.top, 8)
+
+                if let lastError = viewModel.lastError, !lastError.isEmpty {
+                    Text(lastError)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                }
+
+                ChatInputView(
+                    text: $draftText,
+                    isGenerating: viewModel.isGenerating,
+                    onSend: sendPrompt,
+                    onAbort: {
+                        Task {
+                            await viewModel.abort()
+                        }
+                    }
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+                .padding(.top, 8)
+            } else {
+                chatEmptyState
+            }
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .task(id: "\(threadID)::\(directory)::\(reloadToken)") {
@@ -139,6 +147,70 @@ struct ChatView: View {
         }
 
         await viewModel.selectConversation(conversation)
+    }
+
+    private var hasActiveConversation: Bool {
+        viewModel.currentConversation != nil
+    }
+
+    private var chatEmptyState: some View {
+        VStack(spacing: 20) {
+            VStack(spacing: 8) {
+                Image(systemName: "bubble.left.and.bubble.right")
+                    .font(.system(size: 28, weight: .regular))
+                    .foregroundStyle(.secondary)
+
+                Text("Start a coding session")
+                    .font(.title3.weight(.semibold))
+
+                Text("Pick a harness to start an agentic chat session for this thread.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            HStack(spacing: 12) {
+                ForEach(chatHarnesses) { harness in
+                    Button {
+                        startConversation(using: harness)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(harness.title)
+                                .font(.callout.weight(.semibold))
+                            Text("Create new session")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(minWidth: 180, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("chat.harness.\(harness.id)")
+                }
+            }
+
+            if let lastError = viewModel.lastError, !lastError.isEmpty {
+                Text(lastError)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(24)
+        .accessibilityIdentifier("chat.empty-state")
+    }
+
+    private func startConversation(using harness: ChatHarness) {
+        if let onCreateConversationWithHarness {
+            onCreateConversationWithHarness(harness)
+            return
+        }
+
+        Task {
+            await viewModel.createConversation(threadID: threadID, directory: directory)
+        }
     }
 
     private var conversationTabBar: some View {
@@ -230,10 +302,10 @@ struct ChatView: View {
         }
 
         if index == 0 {
-            return "New chat"
+            return "New session"
         }
 
-        return "Chat \(index + 1)"
+        return "Session \(index + 1)"
     }
 
     private var messageList: some View {

@@ -3,11 +3,13 @@ import AppKit
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isBootstrapped = false
-    private let connectionManager = ConnectionManager()
     private let surfaceHost = GhosttySurfaceHost()
     private let openCodeClient = OpenCodeClient()
 
+    private var remoteConnectionPool: RemoteConnectionPool?
+    private var primaryConnectionManager: (any ConnectionManaging)?
     private var databaseManager: DatabaseManager?
+    private var provisioningService: ProvisioningService?
     private var chatConversationService: ChatConversationService?
     private var syncService: SyncService?
     private var multiplexer: TerminalMultiplexer?
@@ -29,56 +31,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         do {
             let databaseManager = try DatabaseManager()
-            let multiplexer = TerminalMultiplexer(connectionManager: connectionManager, surfaceHost: surfaceHost)
-            let syncService = SyncService(
-                connectionManager: connectionManager,
-                databaseManager: databaseManager,
-                appState: appState
+
+            do {
+                try databaseManager.syncRemotesFromConfigFile()
+            } catch {
+                NSLog("threadmill-bootstrap: failed to sync remotes from config file: %@", "\(error)")
+            }
+
+            let defaultRemote = try databaseManager.ensureDefaultRemoteExists()
+            let remotes = try databaseManager.allRemotes()
+            let effectiveRemotes = remotes.isEmpty ? [defaultRemote] : remotes
+
+            let selectedRemote = effectiveRemotes.first(where: \.isDefault) ?? defaultRemote
+            let connectionPool = RemoteConnectionPool(
+                remotes: effectiveRemotes,
+                activeRemoteId: selectedRemote.id,
+                onConnectionCreated: { [weak self, weak appState] connection in
+                    guard let self, let appState else {
+                        return
+                    }
+                    self.configureConnectionHandlers(for: connection, appState: appState)
+                }
             )
+            guard let primaryConnectionManager = connectionPool.connection(for: selectedRemote.id) else {
+                fatalError("Failed to bootstrap Threadmill: default remote connection unavailable")
+            }
+
+            let multiplexer = TerminalMultiplexer(
+                connectionResolver: { [weak appState] threadID in
+                    appState?.connectionForThread(id: threadID)
+                },
+                surfaceHost: surfaceHost
+            )
+            let syncService = SyncService(
+                connectionManager: primaryConnectionManager,
+                databaseManager: databaseManager,
+                appState: appState,
+                remoteId: selectedRemote.id
+            )
+            let provisioningService = ProvisioningService(connectionPool: connectionPool)
             let chatConversationService = ChatConversationService(
                 databaseManager: databaseManager,
                 openCodeClient: openCodeClient
             )
 
             self.databaseManager = databaseManager
+            remoteConnectionPool = connectionPool
+            self.primaryConnectionManager = primaryConnectionManager
             self.multiplexer = multiplexer
             self.syncService = syncService
+            self.provisioningService = provisioningService
             self.chatConversationService = chatConversationService
             self.appState = appState
 
             appState.configure(
-                connectionManager: connectionManager,
+                connectionPool: connectionPool,
                 databaseManager: databaseManager,
                 syncService: syncService,
                 multiplexer: multiplexer,
+                provisioningService: provisioningService,
                 openCodeClient: openCodeClient,
                 chatConversationService: chatConversationService
             )
             appState.reloadFromDatabase()
 
-            connectionManager.onStateChange = { [weak appState] status in
-                appState?.connectionStatus = status
-            }
-
-            connectionManager.onConnected = { [weak self] in
-                Task { @MainActor [weak self] in
-                    await self?.multiplexer?.reattachAll()
-                    await self?.syncService?.syncFromDaemon()
-                }
-            }
-
-            connectionManager.onEvent = { [weak appState] method, params in
-                appState?.handleDaemonEvent(method: method, params: params)
-            }
-
-            connectionManager.setBinaryFrameHandler { [weak self] data in
-                Task { @MainActor [weak self] in
-                    self?.multiplexer?.handleBinaryFrame(data)
-                }
-            }
-
-            appState.connectionStatus = connectionManager.state
-            connectionManager.start()
+            appState.connectionStatus = primaryConnectionManager.state
+            primaryConnectionManager.start()
             isBootstrapped = true
         } catch {
             fatalError("Failed to bootstrap Threadmill: \(error)")
@@ -87,10 +105,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_: Notification) {
         Task { @MainActor [weak self] in
+            self?.appState?.shutdown()
             self?.appState?.selectedEndpoint = nil
             self?.multiplexer?.detachAll()
-            self?.connectionManager.stop()
+            self?.remoteConnectionPool?.stopAll()
             self?.surfaceHost.shutdown()
+        }
+    }
+
+    private func configureConnectionHandlers(for connection: any ConnectionManaging, appState: AppState) {
+        connection.onStateChange = { [weak appState] status in
+            appState?.connectionStatus = status
+        }
+
+        connection.onConnected = { [weak self] in
+            Task { @MainActor [weak self] in
+                await self?.multiplexer?.reattachAll()
+                await self?.syncService?.syncFromDaemon()
+            }
+        }
+
+        connection.onEvent = { [weak appState] method, params in
+            appState?.handleDaemonEvent(method: method, params: params)
+        }
+
+        connection.setBinaryFrameHandler { [weak self] data in
+            Task { @MainActor [weak self] in
+                self?.multiplexer?.handleBinaryFrame(data)
+            }
         }
     }
 }
