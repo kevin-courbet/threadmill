@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import Threadmill
 
@@ -562,6 +563,85 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         appState.selectedPreset = "terminal"
 
         XCTAssertEqual(TerminalModeActions.defaultTerminalPresetName(appState: appState), "logs")
+    }
+
+    func testAddTerminalSessionSelectsPresetWithoutStartingItTwice() async {
+        let connection = MockDaemonConnection(state: .connected)
+        let database = MockDatabaseManager()
+        let sync = MockSyncService()
+
+        let project = Project(
+            id: "project-1",
+            name: "demo",
+            remotePath: "/tmp/demo",
+            defaultBranch: "main",
+            presets: [
+                PresetConfig(name: "terminal", command: "$SHELL", cwd: nil),
+                PresetConfig(name: "dev-server", command: "bun run dev", cwd: nil),
+            ]
+        )
+        let thread = makeThread(id: "thread-1", projectID: project.id, status: .active)
+        database.projects = [project]
+        database.threads = [thread]
+
+        var nextChannelID = 1
+        connection.requestHandler = { method, _, _ in
+            switch method {
+            case "preset.start":
+                return ["ok": true]
+            case "terminal.attach":
+                defer { nextChannelID += 1 }
+                return ["channel_id": nextChannelID]
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let multiplexer = TerminalMultiplexer(connectionManager: connection, surfaceHost: MockSurfaceHost())
+        defer { multiplexer.detachAll() }
+
+        let appState = AppState()
+        appState.configure(
+            connectionPool: makeSingleRemoteConnectionPool(connection: connection),
+            databaseManager: database,
+            syncService: sync,
+            multiplexer: multiplexer
+        )
+        appState.reloadFromDatabase()
+
+        let suiteName = "AppStateInteractionBehaviorTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let tabStateManager = ThreadTabStateManager(defaults: defaults, storageKey: suiteName)
+
+        var terminalSessionIDs = ["terminal"]
+        var selectedTerminalSessionID: String? = "terminal"
+
+        TerminalModeActions.addTerminalSession(
+            preset: "dev-server",
+            appState: appState,
+            terminalSessionIDs: Binding(get: { terminalSessionIDs }, set: { terminalSessionIDs = $0 }),
+            selectedTerminalSessionIDBinding: Binding(get: { selectedTerminalSessionID }, set: { selectedTerminalSessionID = $0 }),
+            tabStateManager: tabStateManager
+        )
+
+        let didSelectDevServer = await waitForCondition {
+            selectedTerminalSessionID == "dev-server"
+        }
+        XCTAssertTrue(didSelectDevServer)
+
+        TerminalModeActions.attachSelectedTerminalIfNeeded(
+            appState: appState,
+            selectedTerminalSessionID: selectedTerminalSessionID,
+            threadID: thread.id
+        )
+
+        let didAttachDevServer = await waitForCondition(timeout: 2.0) {
+            appState.selectedEndpoint?.preset == "dev-server"
+        }
+        XCTAssertTrue(didAttachDevServer)
+        XCTAssertEqual(connection.requests.filter { $0.method == "preset.start" }.count, 1)
+        XCTAssertEqual(connection.requests.filter { $0.method == "terminal.attach" }.count, 1)
     }
 
     func testTerminalDebugSnapshotReflectsPendingAttachAndErrors() async {

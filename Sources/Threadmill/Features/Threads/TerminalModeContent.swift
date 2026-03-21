@@ -149,17 +149,8 @@ enum TerminalModeActions {
 
         terminalSessionIDs.wrappedValue.append(preset)
         tabStateManager.setTerminalSessionIDs(terminalSessionIDs.wrappedValue, threadID: threadID)
-
-        Task {
-            await appState.startPreset(threadID: threadID, preset: preset)
-            await MainActor.run {
-                guard appState.selectedThreadID == threadID else {
-                    return
-                }
-                selectedTerminalSessionIDBinding.wrappedValue = preset
-                tabStateManager.setSelectedSessionID(preset, modeID: TabItem.terminal.id, threadID: threadID)
-            }
-        }
+        selectedTerminalSessionIDBinding.wrappedValue = preset
+        tabStateManager.setSelectedSessionID(preset, modeID: TabItem.terminal.id, threadID: threadID)
     }
 
     static func closeTerminalSessions(
