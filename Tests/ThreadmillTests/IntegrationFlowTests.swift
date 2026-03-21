@@ -267,13 +267,22 @@ final class IntegrationFlowTests: XCTestCase {
     }
 
     private func waitUntilFrameCount(_ connection: MockDaemonConnection, equals expected: Int) async -> Bool {
-        for _ in 0 ..< 100 {
-            if connection.sentBinaryFrames.count == expected {
+        await waitForCondition {
+            connection.sentBinaryFrames.count == expected
+        }
+    }
+
+    private func waitForCondition(timeout: Duration = .seconds(5), _ condition: @escaping () -> Bool) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        var interval: UInt64 = 1_000_000
+        while ContinuousClock.now < deadline {
+            if condition() {
                 return true
             }
-            try? await Task.sleep(nanoseconds: 10_000_000)
+            try? await Task.sleep(nanoseconds: interval)
+            interval = min(interval * 2, 50_000_000)
         }
-        return connection.sentBinaryFrames.count == expected
+        return condition()
     }
 }
 

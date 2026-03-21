@@ -156,6 +156,143 @@ final class AgentSessionManagerTests: XCTestCase {
         try await promptTask.value
     }
 
+    func testRequestPermissionRequestIsAutoApproved() async throws {
+        let connection = MockDaemonConnection(state: .connected)
+        let agentManager = MockAgentManager()
+        agentManager.startResult = .success(77)
+
+        let manager = AgentSessionManager(
+            agentManager: agentManager,
+            connectionManager: connection,
+            projectIDResolver: { threadID in
+                threadID == "thread-1" ? "project-1" : nil
+            }
+        )
+
+        let startTask = Task {
+            try await manager.startSession(
+                agentConfig: AgentConfig(name: "opencode", command: "opencode", cwd: nil),
+                threadID: "thread-1"
+            )
+        }
+
+        let didSendInit = await waitUntilFrameCount(connection, equals: 1)
+        XCTAssertTrue(didSendInit)
+        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[0], result: InitializeResponse(protocolVersion: 1, agentCapabilities: AgentCapabilities())))
+        let didSendSessionNew = await waitUntilFrameCount(connection, equals: 2)
+        XCTAssertTrue(didSendSessionNew)
+        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[1], result: NewSessionResponse(sessionId: SessionId("acp-session-1"))))
+        _ = try await startTask.value
+
+        let request = JSONRPCRequest(
+            id: .number(99),
+            method: "request_permission",
+            params: try anyCodable(from: RequestPermissionRequest(
+                message: "allow?",
+                options: [PermissionOption(kind: "allow", name: "Allow", optionId: "allow-opt")]
+            ))
+        )
+        var requestPayload = try JSONEncoder().encode(request)
+        requestPayload.append(0x0A)
+        manager.handleBinaryFrame(makeFrame(channelID: 77, payload: Array(requestPayload)))
+
+        let didSendPermissionResponse = await waitUntilFrameCount(connection, equals: 3)
+        XCTAssertTrue(didSendPermissionResponse)
+        let response = try decodeResponse(from: connection.sentBinaryFrames[2])
+        XCTAssertEqual(response.id, .number(99))
+        XCTAssertNil(response.error)
+        let result = try XCTUnwrap(response.result)
+        let resultData = try JSONEncoder().encode(result)
+        let permissionResponse = try JSONDecoder().decode(RequestPermissionResponse.self, from: resultData)
+        XCTAssertEqual(permissionResponse.outcome.outcome, "selected")
+        XCTAssertEqual(permissionResponse.outcome.optionId, "allow-opt")
+    }
+
+    func testUnsupportedIncomingRequestReceivesMethodNotFoundError() async throws {
+        let connection = MockDaemonConnection(state: .connected)
+        let agentManager = MockAgentManager()
+        agentManager.startResult = .success(77)
+
+        let manager = AgentSessionManager(
+            agentManager: agentManager,
+            connectionManager: connection,
+            projectIDResolver: { threadID in
+                threadID == "thread-1" ? "project-1" : nil
+            }
+        )
+
+        let startTask = Task {
+            try await manager.startSession(
+                agentConfig: AgentConfig(name: "opencode", command: "opencode", cwd: nil),
+                threadID: "thread-1"
+            )
+        }
+
+        let didSendInit = await waitUntilFrameCount(connection, equals: 1)
+        XCTAssertTrue(didSendInit)
+        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[0], result: InitializeResponse(protocolVersion: 1, agentCapabilities: AgentCapabilities())))
+        let didSendSessionNew = await waitUntilFrameCount(connection, equals: 2)
+        XCTAssertTrue(didSendSessionNew)
+        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[1], result: NewSessionResponse(sessionId: SessionId("acp-session-1"))))
+        _ = try await startTask.value
+
+        let request = JSONRPCRequest(id: .string("abc"), method: "unknown/method", params: nil)
+        var requestPayload = try JSONEncoder().encode(request)
+        requestPayload.append(0x0A)
+        manager.handleBinaryFrame(makeFrame(channelID: 77, payload: Array(requestPayload)))
+
+        let didSendErrorResponse = await waitUntilFrameCount(connection, equals: 3)
+        XCTAssertTrue(didSendErrorResponse)
+        let response = try decodeResponse(from: connection.sentBinaryFrames[2])
+        XCTAssertEqual(response.id, .string("abc"))
+        XCTAssertNil(response.result)
+        XCTAssertEqual(response.error?.code, -32601)
+    }
+
+    func testSetModelSendsRequestAndConsumesResponse() async throws {
+        let connection = MockDaemonConnection(state: .connected)
+        let agentManager = MockAgentManager()
+        agentManager.startResult = .success(77)
+
+        let manager = AgentSessionManager(
+            agentManager: agentManager,
+            connectionManager: connection,
+            projectIDResolver: { threadID in
+                threadID == "thread-1" ? "project-1" : nil
+            }
+        )
+
+        let startTask = Task {
+            try await manager.startSession(
+                agentConfig: AgentConfig(name: "opencode", command: "opencode", cwd: nil),
+                threadID: "thread-1"
+            )
+        }
+
+        let didSendInit = await waitUntilFrameCount(connection, equals: 1)
+        XCTAssertTrue(didSendInit)
+        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[0], result: InitializeResponse(protocolVersion: 1, agentCapabilities: AgentCapabilities())))
+        let didSendSessionNew = await waitUntilFrameCount(connection, equals: 2)
+        XCTAssertTrue(didSendSessionNew)
+        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[1], result: NewSessionResponse(sessionId: SessionId("acp-session-1"))))
+        let sessionID = try await startTask.value
+
+        let setModelTask = Task { try await manager.setModel(sessionID: sessionID, modelID: "claude-3-7") }
+        let didSendSetModel = await waitUntilFrameCount(connection, equals: 3)
+        XCTAssertTrue(didSendSetModel)
+
+        let request = try decodeRequest(from: connection.sentBinaryFrames[2])
+        XCTAssertEqual(request.method, "session/set_model")
+        let params = try XCTUnwrap(request.params)
+        let paramsData = try JSONEncoder().encode(params)
+        let typedParams = try JSONDecoder().decode(SetModelRequest.self, from: paramsData)
+        XCTAssertEqual(typedParams.sessionId.value, "acp-session-1")
+        XCTAssertEqual(typedParams.modelId, "claude-3-7")
+
+        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[2], result: SetModelResponse(success: true)))
+        try await setModelTask.value
+    }
+
     private func makeResponseFrame<ResultPayload: Encodable>(
         channelID: UInt16,
         requestFrame: Data,
@@ -187,6 +324,11 @@ final class AgentSessionManagerTests: XCTestCase {
     private func decodeRequest(from frame: Data) throws -> JSONRPCRequest {
         let payload = frame.dropFirst(2).dropLast()
         return try JSONDecoder().decode(JSONRPCRequest.self, from: payload)
+    }
+
+    private func decodeResponse(from frame: Data) throws -> JSONRPCResponse {
+        let payload = frame.dropFirst(2).dropLast()
+        return try JSONDecoder().decode(JSONRPCResponse.self, from: payload)
     }
 
     private func waitUntilFrameCount(_ connection: MockDaemonConnection, equals expected: Int) async -> Bool {

@@ -196,6 +196,78 @@ final class AgentSessionManager {
         )
     }
 
+    func setModel(sessionID: String, modelID: String) async throws {
+        guard let context = sessionsByID[sessionID] else {
+            throw AgentSessionManagerError.unknownSession(sessionID)
+        }
+
+        guard let channelID = context.channelID else {
+            throw AgentSessionManagerError.sessionDisconnected(sessionID)
+        }
+
+        let _: SetModelResponse = try await sendRequest(
+            method: "session/set_model",
+            params: SetModelRequest(sessionId: SessionId(context.acpSessionID), modelId: modelID),
+            channelID: channelID,
+            timeout: 20
+        )
+    }
+
+    func setConfigOption(sessionID: String, key: String, value: SessionConfigOptionValue) async throws {
+        guard let context = sessionsByID[sessionID] else {
+            throw AgentSessionManagerError.unknownSession(sessionID)
+        }
+
+        guard let channelID = context.channelID else {
+            throw AgentSessionManagerError.sessionDisconnected(sessionID)
+        }
+
+        let _: SetSessionConfigOptionResponse = try await sendRequest(
+            method: "session/set_config_option",
+            params: SetSessionConfigOptionRequest(
+                sessionId: SessionId(context.acpSessionID),
+                configId: SessionConfigId(key),
+                value: value
+            ),
+            channelID: channelID,
+            timeout: 20
+        )
+    }
+
+    func loadSession(sessionID: String, acpSessionID: String) async throws -> LoadSessionResponse {
+        guard let context = sessionsByID[sessionID] else {
+            throw AgentSessionManagerError.unknownSession(sessionID)
+        }
+
+        guard let channelID = context.channelID else {
+            throw AgentSessionManagerError.sessionDisconnected(sessionID)
+        }
+
+        return try await sendRequest(
+            method: "session/load",
+            params: LoadSessionRequest(sessionId: SessionId(acpSessionID)),
+            channelID: channelID,
+            timeout: 20
+        )
+    }
+
+    func listSessions(sessionID: String) async throws -> ListSessionsResponse {
+        guard let context = sessionsByID[sessionID] else {
+            throw AgentSessionManagerError.unknownSession(sessionID)
+        }
+
+        guard let channelID = context.channelID else {
+            throw AgentSessionManagerError.sessionDisconnected(sessionID)
+        }
+
+        return try await sendRequest(
+            method: "session/list",
+            params: ListSessionsRequest(),
+            channelID: channelID,
+            timeout: 20
+        )
+    }
+
     func handleConnectionStateChanged(_ status: ConnectionStatus, on connection: any ConnectionManaging) {
         guard isManagedConnection(connection) else {
             return
@@ -301,26 +373,35 @@ final class AgentSessionManager {
         let payload = try JSONEncoder().encode(request)
 
         let key = PendingRequestKey(channelID: channelID, requestID: requestIDString)
-        let timeoutTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-            await MainActor.run {
-                self?.resumePendingRequest(channelID: channelID, requestID: requestIDString, with: .failure(AgentSessionManagerError.requestTimedOut))
-            }
-        }
-
-        defer { timeoutTask.cancel() }
-
-        let response = try await withCheckedThrowingContinuation { continuation in
-            pendingRequests[key] = continuation
-            Task {
-                do {
-                    try await sendFrame(payload, channelID: channelID)
-                } catch {
-                    await MainActor.run {
-                        self.resumePendingRequest(channelID: channelID, requestID: requestIDString, with: .failure(error))
-                    }
+        let response: JSONRPCResponse
+        do {
+            response = try await withThrowingTaskGroup(of: JSONRPCResponse.self) { group in
+                group.addTask {
+                    try await self.awaitResponse(
+                        key: key,
+                        payload: payload,
+                        channelID: channelID,
+                        requestID: requestIDString
+                    )
                 }
+                group.addTask {
+                    try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    throw AgentSessionManagerError.requestTimedOut
+                }
+
+                guard let firstResult = try await group.next() else {
+                    throw AgentSessionManagerError.rpcError("No RPC response task result")
+                }
+                group.cancelAll()
+                return firstResult
             }
+        } catch {
+            resumePendingRequest(
+                channelID: channelID,
+                requestID: requestIDString,
+                with: .failure(AgentSessionManagerError.requestTimedOut)
+            )
+            throw error
         }
 
         if let rpcError = response.error {
@@ -331,6 +412,26 @@ final class AgentSessionManager {
         }
         let resultData = try JSONEncoder().encode(result)
         return try JSONDecoder().decode(Response.self, from: resultData)
+    }
+
+    private func awaitResponse(
+        key: PendingRequestKey,
+        payload: Data,
+        channelID: UInt16,
+        requestID: String
+    ) async throws -> JSONRPCResponse {
+        try await withCheckedThrowingContinuation { continuation in
+            pendingRequests[key] = continuation
+            Task {
+                do {
+                    try await sendFrame(payload, channelID: channelID)
+                } catch {
+                    await MainActor.run {
+                        self.resumePendingRequest(channelID: channelID, requestID: requestID, with: .failure(error))
+                    }
+                }
+            }
+        }
     }
 
     private func sendFrame(_ payload: Data, channelID: UInt16) async throws {
@@ -352,9 +453,75 @@ final class AgentSessionManager {
             resumePendingRequest(channelID: channelID, requestID: response.id.description, with: .success(response))
         case let .notification(notification):
             handleNotification(notification, channelID: channelID)
-        case .request:
-            break
+        case let .request(request):
+            handleRequest(request, channelID: channelID)
         }
+    }
+
+    private func handleRequest(_ request: JSONRPCRequest, channelID: UInt16) {
+        if request.method == "request_permission" || request.method == "session/request_permission" {
+            let permissionRequest: RequestPermissionRequest?
+            if let params = request.params {
+                do {
+                    let paramsData = try JSONEncoder().encode(params)
+                    permissionRequest = try JSONDecoder().decode(RequestPermissionRequest.self, from: paramsData)
+                } catch {
+                    permissionRequest = nil
+                }
+            } else {
+                permissionRequest = nil
+            }
+
+            let allowOptionID = permissionRequest?.options?.first(where: { $0.kind.localizedCaseInsensitiveContains("allow") })?.optionId
+                ?? permissionRequest?.options?.first?.optionId
+                ?? "allow"
+            let response = RequestPermissionResponse(outcome: PermissionOutcome(optionId: allowOptionID))
+            Task {
+                do {
+                    try await sendRPCResponse(id: request.id, result: response, channelID: channelID)
+                } catch {
+                    NSLog("threadmill-agent: failed to send request_permission response on channel %hu: %@", channelID, "\(error)")
+                }
+            }
+            return
+        }
+
+        if request.method == "fs/read_text_file" || request.method == "fs/write_text_file" || request.method.hasPrefix("terminal/") {
+            Task {
+                do {
+                    try await sendRPCMethodNotFound(id: request.id, method: request.method, channelID: channelID)
+                } catch {
+                    NSLog("threadmill-agent: failed to send unsupported method error on channel %hu: %@", channelID, "\(error)")
+                }
+            }
+            return
+        }
+
+        Task {
+            do {
+                try await sendRPCMethodNotFound(id: request.id, method: request.method, channelID: channelID)
+            } catch {
+                NSLog("threadmill-agent: failed to send unknown method error on channel %hu: %@", channelID, "\(error)")
+            }
+        }
+    }
+
+    private func sendRPCMethodNotFound(id: RequestId, method: String, channelID: UInt16) async throws {
+        let response = JSONRPCResponse(
+            id: id,
+            result: nil,
+            error: JSONRPCError(code: -32601, message: "Method not found: \(method)", data: nil)
+        )
+        let payload = try JSONEncoder().encode(response)
+        try await sendFrame(payload, channelID: channelID)
+    }
+
+    private func sendRPCResponse<ResultPayload: Encodable>(id: RequestId, result: ResultPayload, channelID: UInt16) async throws {
+        let resultData = try JSONEncoder().encode(result)
+        let resultValue = try JSONDecoder().decode(AnyCodable.self, from: resultData)
+        let response = JSONRPCResponse(id: id, result: resultValue, error: nil)
+        let payload = try JSONEncoder().encode(response)
+        try await sendFrame(payload, channelID: channelID)
     }
 
     private func handleNotification(_ notification: JSONRPCNotification, channelID: UInt16) {
