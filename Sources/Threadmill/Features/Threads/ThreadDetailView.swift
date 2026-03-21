@@ -48,7 +48,20 @@ struct ThreadDetailView: View {
                 }
 
                 .background { ThreadModeKeyboardShortcuts(selectedTab: $selectedTab, visibleModeIDs: visibleModeIDs) }
-                .task(id: thread.id) { await restoreThreadState(thread) }
+                .task(id: thread.id) {
+                    selectedTab = normalizedModeID(tabStateManager.selectedMode(threadID: thread.id))
+                    terminalSessionIDs = []
+                    selectedTerminalSessionID = nil
+                    chatConversations = []
+                    selectedChatConversationID = nil
+                    await restoreThreadState(thread)
+                }
+                .onChange(of: appState.selectedThreadID) { _, _ in
+                    terminalSessionIDs = []
+                    selectedTerminalSessionID = nil
+                    chatConversations = []
+                    selectedChatConversationID = nil
+                }
                 .onChange(of: selectedTab) { _, nextModeID in
                     guard let thread = appState.selectedThread else { return }
                     let modeID = normalizedModeID(nextModeID)
@@ -96,9 +109,11 @@ struct ThreadDetailView: View {
             ForEach(visibleModeTabs) { tab in
                 Label(LocalizedStringKey(tab.localizedKey), systemImage: tab.icon)
                     .tag(tab.id)
+                    .accessibilityIdentifier("mode.tab.\(tab.id)")
             }
         }
         .pickerStyle(.segmented)
+        .accessibilityIdentifier("mode.picker")
         .animation(.easeInOut(duration: 0.2), value: selectedTab)
     }
 

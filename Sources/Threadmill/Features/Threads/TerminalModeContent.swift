@@ -136,25 +136,28 @@ enum TerminalModeActions {
             return
         }
 
-        if !terminalSessionIDs.wrappedValue.contains(preset) {
-            terminalSessionIDs.wrappedValue.append(preset)
-        }
-        selectedTerminalSessionIDBinding.wrappedValue = preset
-
         guard let thread = appState.selectedThread else {
             return
         }
         let threadID = thread.id
+
+        if terminalSessionIDs.wrappedValue.contains(preset) {
+            selectedTerminalSessionIDBinding.wrappedValue = preset
+            tabStateManager.setSelectedSessionID(preset, modeID: TabItem.terminal.id, threadID: threadID)
+            return
+        }
+
+        terminalSessionIDs.wrappedValue.append(preset)
         tabStateManager.setTerminalSessionIDs(terminalSessionIDs.wrappedValue, threadID: threadID)
 
         Task {
             await appState.startPreset(threadID: threadID, preset: preset)
             await MainActor.run {
-                attachSelectedTerminalIfNeeded(
-                    appState: appState,
-                    selectedTerminalSessionID: selectedTerminalSessionIDBinding.wrappedValue,
-                    threadID: threadID
-                )
+                guard appState.selectedThreadID == threadID else {
+                    return
+                }
+                selectedTerminalSessionIDBinding.wrappedValue = preset
+                tabStateManager.setSelectedSessionID(preset, modeID: TabItem.terminal.id, threadID: threadID)
             }
         }
     }

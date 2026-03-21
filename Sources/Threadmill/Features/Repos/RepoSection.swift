@@ -199,6 +199,7 @@ struct RepoSection: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("thread.row.\(thread.id)")
             .background(isSelected ? Color.white.opacity(0.1) : .clear)
             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             .contextMenu {

@@ -64,7 +64,9 @@ tasks:
     env:
       THREADMILL_RUN_UI_E2E: "1"
     cmds:
-      - swift test --filter ThreadmillUITests
+      - swift build --product Threadmill
+      - bash Scripts/package_app.sh
+      - xcodebuild test -project UITests/ThreadmillUITests.xcodeproj -scheme ThreadmillUITests -destination 'platform=macOS'
 
   build:
     desc: Build Threadmill
