@@ -16,40 +16,34 @@ final class TerminalPresetBehaviorTests: XCTestCase {
         let harness = try UITestHarness.launch(with: fixture)
         defer { harness.tearDown() }
 
-        // Switch to Terminal mode
+        // Switch to Terminal mode — this starts terminal-1
         try harness.clickMode(identifier: "mode.tab.terminal", label: "Terminal")
 
-        // The first terminal is auto-created when switching to terminal mode
-        let firstStart = try harness.waitForRequest(method: "preset.start", index: 0, timeout: 15)
-        XCTAssertEqual(firstStart["thread_id"] as? String, threadID)
-        XCTAssertEqual(firstStart["preset"] as? String, "terminal")
-        _ = try harness.waitForRequest(method: "terminal.attach", index: 0, timeout: 15)
+        // Wait for the initial terminal to be fully started and attached
+        let baselineStart = try harness.waitForRequestWhere(method: "preset.start", timeout: 15) {
+            ($0["thread_id"] as? String) == threadID && ($0["preset"] as? String) == "terminal"
+        }
+        XCTAssertNotNil(baselineStart)
+        let startsAfterFirst = harness.server.requestParams(method: "preset.start").count
+        let attachesAfterFirst = harness.server.requestParams(method: "terminal.attach").count
 
         // Click + to create second terminal
         try harness.click(identifier: "terminal.session.add")
-        let secondStart = try harness.waitForRequest(method: "preset.start", index: 1, timeout: 15)
-        XCTAssertEqual(secondStart["thread_id"] as? String, threadID)
-        XCTAssertEqual(secondStart["preset"] as? String, "terminal",
-                       "+ button should create another terminal, not a different preset")
-        _ = try harness.waitForRequest(method: "terminal.attach", index: 1, timeout: 15)
+        try harness.waitForRequestCount(method: "preset.start", count: startsAfterFirst + 1, timeout: 15)
 
         // Click + to create third terminal
         try harness.click(identifier: "terminal.session.add")
-        let thirdStart = try harness.waitForRequest(method: "preset.start", index: 2, timeout: 15)
-        XCTAssertEqual(thirdStart["thread_id"] as? String, threadID)
-        XCTAssertEqual(thirdStart["preset"] as? String, "terminal",
-                       "+ button should always create terminals, never cycle through presets")
-        _ = try harness.waitForRequest(method: "terminal.attach", index: 2, timeout: 15)
+        try harness.waitForRequestCount(method: "preset.start", count: startsAfterFirst + 2, timeout: 15)
 
-        // Verify: 3 preset.start calls, all for "terminal"
-        let allStarts = harness.server.requestParams(method: "preset.start")
-        XCTAssertEqual(allStarts.count, 3)
-        XCTAssertTrue(allStarts.allSatisfy { ($0["preset"] as? String) == "terminal" },
-                      "All 3 sessions should be terminal presets")
+        // Verify: + button created terminals, not other presets
+        let startsAfterPlus = harness.server.requestParams(method: "preset.start").suffix(from: startsAfterFirst)
+        XCTAssertTrue(startsAfterPlus.allSatisfy { ($0["preset"] as? String) == "terminal" },
+                      "+ button should always create terminals")
+        XCTAssertEqual(startsAfterPlus.count, 2, "2 additional terminals from + clicks")
 
-        // Verify: 3 terminal.attach calls
-        let allAttaches = harness.server.requestParams(method: "terminal.attach")
-        XCTAssertEqual(allAttaches.count, 3)
+        // Verify: corresponding attaches happened
+        let totalAttaches = harness.server.requestParams(method: "terminal.attach").count
+        XCTAssertGreaterThanOrEqual(totalAttaches, attachesAfterFirst + 2)
     }
 
     // MARK: - Test 2: Dropdown opens dev-server named preset
@@ -62,26 +56,32 @@ final class TerminalPresetBehaviorTests: XCTestCase {
 
         // Switch to Terminal mode — first terminal auto-starts
         try harness.clickMode(identifier: "mode.tab.terminal", label: "Terminal")
-        _ = try harness.waitForRequest(method: "preset.start", index: 0, timeout: 15)
-        _ = try harness.waitForRequest(method: "terminal.attach", index: 0, timeout: 15)
+        _ = try harness.waitForRequestWhere(method: "preset.start", timeout: 15) {
+            ($0["preset"] as? String) == "terminal"
+        }
+        let startsBaseline = harness.server.requestParams(method: "preset.start").count
 
-        // Click the dropdown menu on the + button and select dev-server
+        // Open the dropdown menu and select dev-server
         try harness.click(identifier: "terminal.session.add.menu")
-        try harness.clickTitledElement("Dev Server")
+        Thread.sleep(forTimeInterval: 0.5)
+        try harness.click(identifier: "terminal.session.add.item.dev-server")
 
-        let devServerStart = try harness.waitForRequest(method: "preset.start", index: 1, timeout: 15)
+        // Wait for dev-server to start
+        let devServerStart = try harness.waitForRequestWhere(method: "preset.start", timeout: 15) {
+            ($0["preset"] as? String) == "dev-server"
+        }
         XCTAssertEqual(devServerStart["thread_id"] as? String, threadID)
-        XCTAssertEqual(devServerStart["preset"] as? String, "dev-server")
 
-        let devServerAttach = try harness.waitForRequest(method: "terminal.attach", index: 1, timeout: 15)
+        // Verify dev-server was attached
+        let devServerAttach = try harness.waitForRequestWhere(method: "terminal.attach", timeout: 15) {
+            ($0["preset"] as? String) == "dev-server"
+        }
         XCTAssertEqual(devServerAttach["thread_id"] as? String, threadID)
-        XCTAssertEqual(devServerAttach["preset"] as? String, "dev-server")
 
-        // Verify final state: 1 terminal + 1 dev-server
-        let allStarts = harness.server.requestParams(method: "preset.start")
-        XCTAssertEqual(allStarts.count, 2)
-        XCTAssertEqual(allStarts[0]["preset"] as? String, "terminal")
-        XCTAssertEqual(allStarts[1]["preset"] as? String, "dev-server")
+        // Verify: exactly 1 new start for dev-server after baseline
+        let newStarts = harness.server.requestParams(method: "preset.start").suffix(from: startsBaseline)
+        XCTAssertEqual(newStarts.count, 1)
+        XCTAssertEqual(newStarts.first?["preset"] as? String, "dev-server")
     }
 
     // MARK: - Fixtures

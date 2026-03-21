@@ -286,6 +286,7 @@ private struct NewTabButton: View {
 
     @State private var isPlusHovering = false
     @State private var isChevronHovering = false
+    @State private var isMenuPresented = false
     @State private var clickTrigger = 0
 
     var body: some View {
@@ -333,21 +334,36 @@ private struct NewTabButton: View {
                     plusButton
                 }
 
-                Menu {
-                    ForEach(addMenuItems) { item in
-                        Button(item.title, action: item.action)
-                    }
+                Button {
+                    isMenuPresented.toggle()
                 } label: {
                     chevronLabel
                 }
-                .menuStyle(.button)
-                .menuIndicator(.hidden)
                 .buttonStyle(.plain)
+                .disabled(isDisabled)
+                .opacity(isDisabled ? 0.35 : 1)
                 .onHover { hovering in
                     isChevronHovering = hovering
                 }
                 .help(addButtonHelp)
                 .accessibilityIdentifier("\(addButtonAccessibilityID).menu")
+                .sheet(isPresented: $isMenuPresented) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Start Preset")
+                            .font(.headline)
+
+                        ForEach(addMenuItems) { item in
+                            Button(item.title) {
+                                isMenuPresented = false
+                                item.action()
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityIdentifier("\(addButtonAccessibilityID).item.\(item.id)")
+                        }
+                    }
+                    .padding(16)
+                    .frame(minWidth: 240)
+                }
             }
             .padding(.leading, 1)
             .padding(.trailing, 1)

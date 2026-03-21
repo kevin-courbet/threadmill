@@ -39,6 +39,8 @@ struct UITestHarness {
         let harness = UITestHarness(app: app, server: server, tempDirectory: tempDirectory, appProcess: appProcess)
         _ = try harness.waitForRequest(method: "session.hello", index: 0, timeout: 15)
         _ = try harness.waitForRequest(method: "project.list", index: 0, timeout: 15)
+        // Let the app fully process the handshake and sync before interacting
+        Thread.sleep(forTimeInterval: 1)
         return harness
     }
 
@@ -57,7 +59,11 @@ struct UITestHarness {
     }
 
     func waitForTitledElement(_ title: String, timeout: TimeInterval = 15) throws -> XCUIElement {
+        let anyMatchingTitle = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@ OR title == %@ OR value == %@", title, title, title))
+            .firstMatch
         let candidates = [
+            anyMatchingTitle,
             app.buttons[title].firstMatch,
             app.staticTexts[title].firstMatch,
             app.outlines.buttons[title].firstMatch,
@@ -96,6 +102,18 @@ struct UITestHarness {
 
     func pressKey(_ key: XCUIKeyboardKey, modifiers: XCUIElement.KeyModifierFlags = []) {
         app.typeKey(key, modifierFlags: modifiers)
+    }
+
+    func waitForRequestWhere(method: String, timeout: TimeInterval, predicate: ([String: Any]) -> Bool) throws -> [String: Any] {
+        try waitFor(timeout: timeout, description: "\(method) matching predicate") {
+            server.requestParams(method: method).first(where: predicate)
+        }
+    }
+
+    func waitForRequestCount(method: String, count: Int, timeout: TimeInterval) throws {
+        _ = try waitFor(timeout: timeout, description: "\(method) count >= \(count)") {
+            server.requestParams(method: method).count >= count ? true : nil
+        }
     }
 
     func waitForRequest(method: String, index: Int, timeout: TimeInterval) throws -> [String: Any] {

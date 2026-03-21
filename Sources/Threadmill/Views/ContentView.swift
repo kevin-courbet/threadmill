@@ -45,6 +45,7 @@ struct ContentView: View {
             defaultWorkspaceEmptyState
         } else if appState.selectedThread != nil {
             ThreadDetailView()
+                .id(appState.selectedThread?.id)
         } else {
             defaultWorkspaceEmptyState
         }

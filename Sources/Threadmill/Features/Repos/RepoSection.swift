@@ -198,6 +198,9 @@ struct RepoSection: View {
             .padding(.leading, 24)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
+            .onTapGesture {
+                selectedThreadID = thread.id
+            }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("thread.row.\(thread.id)")
             .background(isSelected ? Color.white.opacity(0.1) : .clear)

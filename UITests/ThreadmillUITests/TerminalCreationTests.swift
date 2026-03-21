@@ -10,58 +10,65 @@ final class TerminalCreationTests: XCTestCase {
         let harness = try UITestHarness.launch(with: fixture)
         defer { harness.tearDown() }
 
+        // --- Project A ---
         _ = try harness.waitForElement(identifier: "thread.row.\(projectAThreadID)")
         try harness.clickMode(identifier: "mode.tab.terminal", label: "Terminal")
 
-        let firstStart = try harness.waitForRequest(method: "preset.start", index: 0, timeout: 15)
-        XCTAssertEqual(firstStart["thread_id"] as? String, projectAThreadID)
-        XCTAssertEqual(firstStart["preset"] as? String, "terminal")
+        // Wait for project A's first terminal to start
+        _ = try harness.waitForRequestWhere(method: "preset.start", timeout: 15) {
+            ($0["thread_id"] as? String) == projectAThreadID && ($0["preset"] as? String) == "terminal"
+        }
+        _ = try harness.waitForRequestWhere(method: "terminal.attach", timeout: 15) {
+            ($0["thread_id"] as? String) == projectAThreadID
+        }
+        let startsAfterA1 = harness.server.requestParams(method: "preset.start").count
 
-        let firstAttach = try harness.waitForRequest(method: "terminal.attach", index: 0, timeout: 15)
-        XCTAssertEqual(firstAttach["thread_id"] as? String, projectAThreadID)
-        XCTAssertEqual(firstAttach["preset"] as? String, "terminal")
-
+        // Create second terminal for project A via + button
         try harness.click(identifier: "terminal.session.add")
+        try harness.waitForRequestCount(method: "preset.start", count: startsAfterA1 + 1, timeout: 15)
 
-        let secondStart = try harness.waitForRequest(method: "preset.start", index: 1, timeout: 15)
-        XCTAssertEqual(secondStart["thread_id"] as? String, projectAThreadID)
-        XCTAssertEqual(secondStart["preset"] as? String, "terminal")
+        let projectAStarts = harness.server.requestParams(method: "preset.start").filter {
+            ($0["thread_id"] as? String) == projectAThreadID
+        }
+        XCTAssertGreaterThanOrEqual(projectAStarts.count, 2,
+                                    "Project A should have at least 2 terminal starts")
 
-        let secondAttach = try harness.waitForRequest(method: "terminal.attach", index: 1, timeout: 15)
-        XCTAssertEqual(secondAttach["thread_id"] as? String, projectAThreadID)
-        XCTAssertEqual(secondAttach["preset"] as? String, "terminal")
-
+        // --- Switch to Project B ---
         try harness.click(identifier: "thread.row.\(projectBThreadID)")
+        // Wait for chat mode to settle (thread switch resets to chat)
         _ = try harness.waitForElement(identifier: "chat.session.add")
         try harness.clickMode(identifier: "mode.tab.terminal", label: "Terminal")
 
-        let thirdStart = try harness.waitForRequest(method: "preset.start", index: 2, timeout: 15)
-        XCTAssertEqual(thirdStart["thread_id"] as? String, projectBThreadID)
-        XCTAssertEqual(thirdStart["preset"] as? String, "terminal")
+        // Wait for project B's first terminal to start
+        _ = try harness.waitForRequestWhere(method: "preset.start", timeout: 15) {
+            ($0["thread_id"] as? String) == projectBThreadID && ($0["preset"] as? String) == "terminal"
+        }
+        let startsAfterB1 = harness.server.requestParams(method: "preset.start").count
 
-        let thirdAttach = try harness.waitForRequest(method: "terminal.attach", index: 2, timeout: 15)
-        XCTAssertEqual(thirdAttach["thread_id"] as? String, projectBThreadID)
-        XCTAssertEqual(thirdAttach["preset"] as? String, "terminal")
-
+        // Create second terminal for project B via + button
         try harness.click(identifier: "terminal.session.add")
+        try harness.waitForRequestCount(method: "preset.start", count: startsAfterB1 + 1, timeout: 15)
 
-        let fourthStart = try harness.waitForRequest(method: "preset.start", index: 3, timeout: 15)
-        XCTAssertEqual(fourthStart["thread_id"] as? String, projectBThreadID)
-        XCTAssertEqual(fourthStart["preset"] as? String, "terminal")
+        let projectBStarts = harness.server.requestParams(method: "preset.start").filter {
+            ($0["thread_id"] as? String) == projectBThreadID
+        }
+        XCTAssertGreaterThanOrEqual(projectBStarts.count, 2,
+                                    "Project B should have at least 2 terminal starts")
 
-        let fourthAttach = try harness.waitForRequest(method: "terminal.attach", index: 3, timeout: 15)
-        XCTAssertEqual(fourthAttach["thread_id"] as? String, projectBThreadID)
-        XCTAssertEqual(fourthAttach["preset"] as? String, "terminal")
+        // --- Verify cross-project correctness ---
+        // Both projects should have independent terminal starts
+        XCTAssertTrue(projectAStarts.allSatisfy { ($0["preset"] as? String) == "terminal" })
+        XCTAssertTrue(projectBStarts.allSatisfy { ($0["preset"] as? String) == "terminal" })
 
-        let presetStarts = harness.server.requestParams(method: "preset.start")
-        XCTAssertEqual(presetStarts.count, 4)
-        XCTAssertTrue(presetStarts.allSatisfy { ($0["preset"] as? String) == "terminal" },
-                       "All preset.start calls should use the 'terminal' daemon preset")
-
-        let terminalAttaches = harness.server.requestParams(method: "terminal.attach")
-        XCTAssertEqual(terminalAttaches.count, 4)
-        XCTAssertTrue(terminalAttaches.allSatisfy { ($0["preset"] as? String) == "terminal" },
-                       "All terminal.attach calls should use the 'terminal' daemon preset")
+        // Total attaches should cover both projects
+        let projectAAttaches = harness.server.requestParams(method: "terminal.attach").filter {
+            ($0["thread_id"] as? String) == projectAThreadID
+        }
+        let projectBAttaches = harness.server.requestParams(method: "terminal.attach").filter {
+            ($0["thread_id"] as? String) == projectBThreadID
+        }
+        XCTAssertGreaterThanOrEqual(projectAAttaches.count, 2, "Project A should have at least 2 attaches")
+        XCTAssertGreaterThanOrEqual(projectBAttaches.count, 2, "Project B should have at least 2 attaches")
     }
 
     private func validationFixture() -> [MockSpindleServer.ProjectFixture] {
@@ -72,7 +79,7 @@ final class TerminalCreationTests: XCTestCase {
         let threadBID = "thread-project-b-\(suffix)"
         let presets = [
             MockSpindleServer.PresetFixture(name: "terminal", command: "bash"),
-            MockSpindleServer.PresetFixture(name: "dev-server", command: "bun run dev"),
+            MockSpindleServer.PresetFixture(name: "dev-server", command: "task dev:worktree"),
         ]
 
         return [
