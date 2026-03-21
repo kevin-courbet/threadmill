@@ -8,6 +8,13 @@ struct ChatSessionView: View {
             ChatMessageList(viewModel: viewModel)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+            if viewModel.isStreaming {
+                ChatProcessingIndicator(thoughtText: viewModel.currentThought)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 4)
+                    .transition(.opacity)
+            }
+
             ChatInputBar(viewModel: viewModel)
                 .padding(.horizontal, 12)
                 .padding(.top, 8)

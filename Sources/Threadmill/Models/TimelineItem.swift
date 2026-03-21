@@ -13,6 +13,7 @@ struct MessageTimelineItem: Identifiable {
     var role: Role
     var content: [ContentBlock]
     var timestamp: Date
+    var renderVersion: Int = 0
 
     var plainText: String {
         content.compactMap { block in
@@ -30,14 +31,26 @@ struct MessageTimelineItem: Identifiable {
            case let .text(existingText) = content[lastIndex]
         {
             content[lastIndex] = .text(TextContent(text: existingText.text + incomingText.text))
+            renderVersion &+= 1
             return
         }
         content.append(block)
+        renderVersion &+= 1
+    }
+
+    mutating func append(contentsOf blocks: [ContentBlock]) {
+        guard !blocks.isEmpty else {
+            return
+        }
+        for block in blocks {
+            append(block)
+        }
     }
 }
 
 struct ToolCallTimelineItem: Identifiable {
     var toolCall: ToolCall
+    var renderVersion: Int = 0
 
     var id: String { toolCall.id }
     var timestamp: Date { toolCall.timestamp }
@@ -82,7 +95,7 @@ enum TimelineItem: Identifiable {
     case toolCallGroup(ToolCallGroup)
     case turnSummary(TurnSummary)
 
-    var id: String {
+    var stableId: String {
         switch self {
         case let .message(message):
             return "message:\(message.id)"
@@ -93,6 +106,23 @@ enum TimelineItem: Identifiable {
         case let .turnSummary(summary):
             return "turn-summary:\(summary.id)"
         }
+    }
+
+    var renderId: String {
+        switch self {
+        case let .message(message):
+            return "\(stableId):\(message.renderVersion)"
+        case let .toolCall(toolCall):
+            return "\(stableId):\(toolCall.renderVersion)"
+        case let .toolCallGroup(group):
+            return "\(stableId):\(group.toolCalls.count)"
+        case .turnSummary:
+            return stableId
+        }
+    }
+
+    var id: String {
+        renderId
     }
 
     var timestamp: Date {

@@ -20,7 +20,7 @@ final class TimelineModelTests: XCTestCase {
         viewModel.rebuildTimelineWithGrouping(isStreaming: false)
 
         XCTAssertEqual(viewModel.timelineItems.count, 2)
-        XCTAssertEqual(viewModel.timelineItems.map(\.id), ["message:user-1", "message:assistant-1"])
+        XCTAssertEqual(viewModel.timelineItems.map(\.stableId), ["message:user-1", "message:assistant-1"])
     }
 
     func testSingleToolCallFlushesIntoGroupBeforeAgentMessage() {
@@ -34,8 +34,8 @@ final class TimelineModelTests: XCTestCase {
         viewModel.rebuildTimelineWithGrouping(isStreaming: false)
 
         XCTAssertEqual(viewModel.timelineItems.count, 3)
-        XCTAssertEqual(viewModel.timelineItems[1].id, "tool-call-group:assistant-1")
-        XCTAssertEqual(viewModel.timelineItems[2].id, "message:assistant-1")
+        XCTAssertEqual(viewModel.timelineItems[1].stableId, "tool-call-group:assistant-1")
+        XCTAssertEqual(viewModel.timelineItems[2].stableId, "message:assistant-1")
     }
 
     func testConsecutiveExplorationCallsClusterInGroup() {
@@ -102,7 +102,7 @@ final class TimelineModelTests: XCTestCase {
         XCTAssertEqual(summary.modifiedFiles, ["Sources/main.swift"])
     }
 
-    func testStreamingTextDeltasUpdateInPlaceViaItemIndex() {
+    func testStreamingTextDeltasUpdateInPlaceViaItemIndex() async {
         let viewModel = ChatSessionViewModel(agentSessionManager: nil)
         viewModel.handleSessionUpdate(
             SessionUpdateNotification(
@@ -110,7 +110,9 @@ final class TimelineModelTests: XCTestCase {
                 update: .agentMessageChunk(.text(TextContent(text: "Hel")))
             )
         )
-        let firstIDs = viewModel.timelineItems.map(\.id)
+        try? await Task.sleep(for: .milliseconds(70))
+        let firstStableIDs = viewModel.timelineItems.map(\.stableId)
+        let firstRenderIDs = viewModel.timelineItems.map(\.renderId)
 
         viewModel.handleSessionUpdate(
             SessionUpdateNotification(
@@ -118,9 +120,12 @@ final class TimelineModelTests: XCTestCase {
                 update: .agentMessageChunk(.text(TextContent(text: "lo")))
             )
         )
+        try? await Task.sleep(for: .milliseconds(70))
 
-        XCTAssertEqual(viewModel.timelineItems.map(\.id), firstIDs)
+        XCTAssertEqual(viewModel.timelineItems.map(\.stableId), firstStableIDs)
+        XCTAssertNotEqual(viewModel.timelineItems.map(\.renderId), firstRenderIDs)
         XCTAssertEqual(viewModel.itemIndex["message:streaming-agent"], 0)
+        XCTAssertFalse(viewModel.timelineItems.isEmpty)
         guard case let .message(message) = viewModel.timelineItems[0] else {
             return XCTFail("Expected timeline item to be message")
         }
@@ -141,7 +146,7 @@ final class TimelineModelTests: XCTestCase {
 
         viewModel.rebuildTimelineWithGrouping(isStreaming: false)
 
-        let ids = viewModel.timelineItems.map(\.id)
+        let ids = viewModel.timelineItems.map(\.stableId)
         XCTAssertEqual(ids, [
             "message:user-1",
             "tool-call-group:assistant-1",

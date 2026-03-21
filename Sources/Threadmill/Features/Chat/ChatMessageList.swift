@@ -25,6 +25,10 @@ struct ChatMessageList: View {
         Array(items[displayRange])
     }
 
+    private var lastRenderID: String {
+        items.last?.renderId ?? ""
+    }
+
     private var childToolCalls: [String: [ToolCallTimelineItem]] {
         var grouped: [String: [ToolCallTimelineItem]] = [:]
         for call in viewModel.toolCallsByID.values {
@@ -52,9 +56,9 @@ struct ChatMessageList: View {
                             loadMoreButton(proxy: proxy)
                         }
 
-                        ForEach(displayItems, id: \.id) { item in
+                        ForEach(displayItems, id: \.renderId) { item in
                             itemView(item)
-                                .id(item.id)
+                                .id(item.stableId)
                         }
 
                         Color.clear
@@ -115,6 +119,12 @@ struct ChatMessageList: View {
                 }
                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
             }
+            .onChange(of: lastRenderID) { _, _ in
+                guard viewModel.isStreaming, !userScrolledUp else {
+                    return
+                }
+                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+            }
         }
     }
 
@@ -139,7 +149,7 @@ struct ChatMessageList: View {
                 return
             }
 
-            let anchorID = displayItems.first?.id
+            let anchorID = displayItems.first?.stableId
             loadedItemCount += min(windowStep, remainingItemCount)
 
             Task { @MainActor in

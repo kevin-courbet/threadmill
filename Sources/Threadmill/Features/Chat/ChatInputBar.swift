@@ -15,6 +15,16 @@ struct ChatInputBar: View {
         min(140, max(44, measuredHeight))
     }
 
+    private var borderState: AnimatedGradientBorderState {
+        if viewModel.isStreaming {
+            return .streaming
+        }
+        if viewModel.currentMode?.lowercased() == "plan" {
+            return .plan
+        }
+        return .idleFocused
+    }
+
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
@@ -62,6 +72,14 @@ struct ChatInputBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            AnimatedGradientBorder(
+                state: borderState,
+                cornerRadius: 18,
+                lineWidth: viewModel.isStreaming ? 1.7 : 1.0
+            )
+            .allowsHitTesting(false)
+        }
         .background {
             Button("") {
                 Task { await viewModel.cycleModeForward() }
