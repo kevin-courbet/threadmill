@@ -169,6 +169,7 @@ final class AppState {
     private(set) var openCodeClient: (any OpenCodeManaging)?
     private(set) var chatConversationService: (any ChatConversationManaging)?
     private(set) var fileService: (any FileBrowsing)?
+    private(set) var agentSessionManager: AgentSessionManager?
 
     private(set) var databaseManager: (any DatabaseManaging)?
     private var provisioningService: (any Provisioning)?
@@ -384,7 +385,8 @@ final class AppState {
         provisioningService: (any Provisioning)? = nil,
         openCodeClient: any OpenCodeManaging = OpenCodeClient(),
         chatConversationService: (any ChatConversationManaging)? = nil,
-        fileService: (any FileBrowsing)? = nil
+        fileService: (any FileBrowsing)? = nil,
+        agentSessionManager: AgentSessionManager? = nil
     ) {
         self.connectionPool = connectionPool
         self.databaseManager = databaseManager
@@ -393,6 +395,7 @@ final class AppState {
         self.multiplexer = multiplexer
         self.openCodeClient = openCodeClient
         self.chatConversationService = chatConversationService
+        self.agentSessionManager = agentSessionManager
         self.fileService = fileService ?? FileService(connectionProvider: { [weak self] in
             self?.connectionForSelectedThread() ?? self?.defaultConnectionManager()
         })

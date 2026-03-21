@@ -101,7 +101,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 multiplexer: multiplexer,
                 provisioningService: provisioningService,
                 openCodeClient: openCodeClient,
-                chatConversationService: chatConversationService
+                chatConversationService: chatConversationService,
+                agentSessionManager: agentSessionManager
             )
             appState.reloadFromDatabase()
 

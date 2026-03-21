@@ -1,119 +1,40 @@
+import ACPModel
 import AppKit
 import SwiftUI
 
 struct MessageBubbleView: View {
-    let message: OCMessage
+    let message: MessageTimelineItem
 
     @State private var isHovering = false
-    @State private var copyConfirmed = false
-    @State private var isThinkingExpanded = false
-
-    private var role: ChatMessageRole {
-        ChatMessageRole(rawValue: message.role.lowercased()) ?? .assistant
-    }
-
-    private var segments: [MessageSegment] {
-        var values: [MessageSegment] = []
-        var pendingTools: [OCMessagePart] = []
-
-        func flushTools() {
-            guard !pendingTools.isEmpty else {
-                return
-            }
-            values.append(.tools(pendingTools))
-            pendingTools.removeAll(keepingCapacity: true)
-        }
-
-        for part in message.parts {
-            if part.isReasoningPart {
-                continue
-            }
-
-            if part.isToolPart {
-                pendingTools.append(part)
-                continue
-            }
-
-            flushTools()
-
-            if let text = part.renderText {
-                values.append(.text(text))
-            } else if !part.isStepBoundaryPart, !part.raw.isEmpty, let rawDump = chatFormattedJSON(part.raw.foundationValue) {
-                values.append(.raw(rawDump))
-            }
-        }
-
-        flushTools()
-        return values
-    }
-
-    private var thinkingBlocks: [String] {
-        message.parts.compactMap { part in
-            guard part.isReasoningPart else {
-                return nil
-            }
-            return part.renderText
-        }
-    }
+    @State private var copied = false
 
     var body: some View {
         Group {
-            switch role {
+            switch message.role {
             case .user:
-                userBody
+                userRow
             case .assistant:
-                assistantBody
+                agentRow
             case .system:
-                systemBody
+                systemRow
             }
         }
         .contentShape(Rectangle())
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.12)) {
-                isHovering = hovering
-            }
-        }
-        .transition(
-            .asymmetric(
-                insertion: .scale(scale: 0.95).combined(with: .opacity),
-                removal: .opacity
-            )
-        )
+        .onHover { isHovering = $0 }
     }
 
-    private var userBody: some View {
-        HStack(alignment: .bottom, spacing: 0) {
-            Spacer(minLength: 40)
-
-            VStack(alignment: .leading, spacing: 8) {
-                if segments.isEmpty {
-                    Text("(empty prompt)")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(segments.indices, id: \.self) { index in
-                        segmentView(segments[index], useMarkdown: false)
-                    }
-                }
-
-                if let timestampText {
-                    Text(timestampText)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                }
+    private var userRow: some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: 36)
+            VStack(alignment: .leading, spacing: 6) {
+                textContent
+                timestamp
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
+            .padding(.vertical, 10)
             .frame(maxWidth: 420, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.ultraThinMaterial)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color(nsColor: .separatorColor).opacity(0.3), lineWidth: 0.5)
-            )
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(alignment: .topTrailing) {
                 copyButton
                     .padding(8)
@@ -121,180 +42,77 @@ struct MessageBubbleView: View {
         }
     }
 
-    private var assistantBody: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Text("Assistant")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-
-                if let timestampText {
-                    Text(timestampText)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 0)
-
-                copyButton
-            }
-
-            if !thinkingBlocks.isEmpty {
-                thinkingSection
-            }
-
-            if segments.isEmpty {
-                if thinkingBlocks.isEmpty {
-                    Text("Thinking...")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                ForEach(segments.indices, id: \.self) { index in
-                    segmentView(segments[index], useMarkdown: true)
-                }
-            }
+    private var agentRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            textContent
+            timestamp
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var thinkingSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.14)) {
-                    isThinkingExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: isThinkingExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                    Text("Thinking...")
-                        .font(.system(size: 11, weight: .semibold))
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            if isThinkingExpanded {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(thinkingBlocks.indices, id: \.self) { index in
-                        Text(thinkingBlocks[index])
-                            .font(.callout.italic())
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
-                    }
-                }
-                .padding(.leading, 14)
-            }
+        .overlay(alignment: .topTrailing) {
+            copyButton
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
-    private var systemBody: some View {
+    private var systemRow: some View {
         VStack(spacing: 2) {
-            Text(flattenedText.isEmpty ? "System" : flattenedText)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary.opacity(0.9))
-
-            if let timestampText {
-                Text(timestampText)
-                    .font(.system(size: 10, weight: .regular))
-                    .foregroundStyle(.secondary.opacity(0.8))
-            }
+            Text(plainText.isEmpty ? "System" : plainText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            timestamp
         }
         .frame(maxWidth: .infinity)
     }
 
-    @ViewBuilder
-    private func segmentView(_ segment: MessageSegment, useMarkdown: Bool) -> some View {
-        switch segment {
-        case let .text(text):
-            if useMarkdown {
-                MarkdownView(text: text)
-            } else {
-                Text(text)
-                    .font(.body)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
-            }
+    private var textContent: some View {
+        Text(plainText.isEmpty ? "..." : plainText)
+            .font(.body)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-        case let .raw(raw):
-            CodeBlockView(code: raw, language: "json")
-
-        case let .tools(parts):
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(parts) { part in
-                    ToolCallView(part: part)
-                }
-            }
-        }
+    private var timestamp: some View {
+        Text(Self.timestampFormatter.string(from: message.timestamp))
+            .font(.system(size: 10, weight: .regular))
+            .foregroundStyle(.secondary)
     }
 
     private var copyButton: some View {
         Button {
-            guard !flattenedText.isEmpty else {
+            guard !plainText.isEmpty else {
                 return
             }
             NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(flattenedText, forType: .string)
-            copyConfirmed = true
+            NSPasteboard.general.setString(plainText, forType: .string)
+            copied = true
             Task {
-                try? await Task.sleep(for: .seconds(1.5))
-                copyConfirmed = false
+                try? await Task.sleep(for: .seconds(1.2))
+                copied = false
             }
         } label: {
-            Image(systemName: copyConfirmed ? "checkmark" : "doc.on.doc")
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(copyConfirmed ? Color.green : .secondary)
+                .foregroundStyle(copied ? Color.green : .secondary)
                 .padding(5)
-                .background(Color(nsColor: .windowBackgroundColor).opacity(0.5), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .background(Color(nsColor: .windowBackgroundColor).opacity(0.55), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
         .buttonStyle(.plain)
-        .opacity(isHovering || copyConfirmed ? 1 : 0)
-        .animation(.easeOut(duration: 0.12), value: isHovering)
-        .accessibilityLabel(copyConfirmed ? "Copied" : "Copy message")
+        .opacity(isHovering || copied ? 1 : 0)
+        .accessibilityLabel(copied ? "Copied" : "Copy message")
     }
 
-    private var timestampText: String? {
-        guard let time = message.time?.completed ?? message.time?.created else {
-            return nil
-        }
-        return MessageBubbleTimestampFormatter.shared.string(from: Date(timeIntervalSince1970: time))
-    }
-
-    private var flattenedText: String {
-        let chunks: [String] = message.parts.compactMap { part in
-            if let text = part.renderText {
-                return text
+    private var plainText: String {
+        message.content.compactMap { block in
+            switch block {
+            case let .text(content):
+                return content.text
+            default:
+                return nil
             }
-            if !part.isStepBoundaryPart, !part.raw.isEmpty {
-                return chatFormattedJSON(part.raw.foundationValue)
-            }
-            return nil
         }
-        return chunks.joined(separator: "\n\n")
+        .joined()
     }
-}
 
-private enum ChatMessageRole: String {
-    case user
-    case assistant
-    case system
-}
-
-private enum MessageSegment {
-    case text(String)
-    case raw(String)
-    case tools([OCMessagePart])
-}
-
-private final class MessageBubbleTimestampFormatter {
-    static let shared: DateFormatter = {
+    private static let timestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .none
         formatter.timeStyle = .short

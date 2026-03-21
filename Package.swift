@@ -42,6 +42,9 @@ let package = Package(
                 "CodeEditLanguages",
             ],
             path: "Sources/Threadmill",
+            exclude: [
+                "_Fridge",
+            ],
             resources: [
                 .process("../../Resources/Assets.xcassets")
             ],

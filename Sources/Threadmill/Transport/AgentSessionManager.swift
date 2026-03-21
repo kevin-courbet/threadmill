@@ -73,8 +73,38 @@ final class AgentSessionManager {
             throw AgentSessionManagerError.unknownThread(threadID)
         }
 
+        return try await startSession(agentConfig: agentConfig, threadID: threadID, projectID: projectID, sessionIDOverride: nil)
+    }
+
+    @discardableResult
+    func switchAgent(sessionID: String, agentConfig: AgentConfig) async throws -> String {
+        guard let existing = sessionsByID[sessionID] else {
+            throw AgentSessionManagerError.unknownSession(sessionID)
+        }
+
+        guard let projectID = projectIDResolver(existing.threadID) else {
+            throw AgentSessionManagerError.unknownThread(existing.threadID)
+        }
+
+        try await agentManager.stopAgent(channelID: existing.channelID)
+        cleanupSession(sessionID: sessionID)
+
+        return try await startSession(
+            agentConfig: agentConfig,
+            threadID: existing.threadID,
+            projectID: projectID,
+            sessionIDOverride: sessionID
+        )
+    }
+
+    private func startSession(
+        agentConfig: AgentConfig,
+        threadID: String,
+        projectID: String,
+        sessionIDOverride: String?
+    ) async throws -> String {
         let channelID = try await agentManager.startAgent(projectID: projectID, agentName: agentConfig.name)
-        let sessionID = UUID().uuidString
+        let sessionID = sessionIDOverride ?? UUID().uuidString
         var context = SessionContext(
             id: sessionID,
             threadID: threadID,
@@ -148,6 +178,19 @@ final class AgentSessionManager {
             method: "session/cancel",
             params: CancelSessionRequest(sessionId: SessionId(context.acpSessionID)),
             channelID: context.channelID
+        )
+    }
+
+    func setMode(sessionID: String, modeID: String) async throws {
+        guard let context = sessionsByID[sessionID] else {
+            throw AgentSessionManagerError.unknownSession(sessionID)
+        }
+
+        let _: SetModeResponse = try await sendRequest(
+            method: "session/set_mode",
+            params: SetModeRequest(sessionId: SessionId(context.acpSessionID), modeId: modeID),
+            channelID: context.channelID,
+            timeout: 20
         )
     }
 

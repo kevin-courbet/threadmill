@@ -2,19 +2,16 @@ import Foundation
 import XCTest
 
 final class ChatViewSourceTests: XCTestCase {
-    func testJumpToLatestVisibilityDependsOnIsNearBottom() throws {
+    func testChatSessionViewUsesMessageListAndInputBar() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Chat/ChatView.swift")
+        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Chat/ChatSessionView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
-        XCTAssertTrue(source.contains("@State private var isNearBottom = true"))
-        XCTAssertTrue(source.contains("!isNearBottom"))
-        XCTAssertTrue(source.contains("if hasActiveConversation"))
-        XCTAssertTrue(source.contains("chatEmptyState"))
-        XCTAssertFalse(source.contains("Picker(\"Model\""))
-        XCTAssertFalse(source.contains("ChatModelSelectionStore"))
+        XCTAssertTrue(source.contains("VStack(spacing: 0)"))
+        XCTAssertTrue(source.contains("ChatMessageList"))
+        XCTAssertTrue(source.contains("ChatInputBar"))
     }
 }

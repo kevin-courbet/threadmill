@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 struct ToolCallView: View {
@@ -131,6 +132,39 @@ struct ToolCallView: View {
             }
             .frame(maxHeight: 170)
             .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+        }
+    }
+}
+
+private func chatFormattedJSON(_ value: OCJSONValue) -> String? {
+    chatFormattedJSON(value.foundationValue)
+}
+
+private func chatFormattedJSON(_ object: Any) -> String? {
+    guard JSONSerialization.isValidJSONObject(object) else {
+        return nil
+    }
+    guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]) else {
+        return nil
+    }
+    return String(data: data, encoding: .utf8)
+}
+
+private extension OCJSONValue {
+    var foundationValue: Any {
+        switch self {
+        case let .string(value):
+            return value
+        case let .number(value):
+            return value
+        case let .bool(value):
+            return value
+        case let .object(value):
+            return value.mapValues(\.foundationValue)
+        case let .array(value):
+            return value.map(\.foundationValue)
+        case .null:
+            return NSNull()
         }
     }
 }

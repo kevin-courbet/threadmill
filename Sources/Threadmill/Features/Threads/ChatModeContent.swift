@@ -11,22 +11,15 @@ struct ChatModeContent: View {
     let onConversationStateChange: ([ChatConversation], ChatConversation?) -> Void
 
     var body: some View {
-        if let openCodeClient = appState.openCodeClient,
-           let chatConversationService = appState.chatConversationService
-        {
-            ChatView(
-                threadID: thread.id,
-                directory: thread.worktreePath,
-                openCodeClient: openCodeClient,
-                chatConversationService: chatConversationService,
-                selectedConversationID: selectedConversationID,
-                reloadToken: reloadToken,
-                showsConversationTabBar: false,
-                chatHarnesses: chatHarnesses,
-                onCreateConversationWithHarness: onCreateConversationWithHarness,
-                onConversationStateChange: onConversationStateChange
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        if let chatConversationService = appState.chatConversationService {
+            ChatSessionView(viewModel: viewModel)
+                .task(id: reloadToken) {
+                    await refreshConversationState(with: chatConversationService)
+                }
+                .task(id: selectedConversationID) {
+                    await refreshConversationState(with: chatConversationService)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ContentUnavailableView(
                 "Chat unavailable",
@@ -34,6 +27,40 @@ struct ChatModeContent: View {
                 description: Text("OpenCode services are not configured.")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var viewModel: ChatSessionViewModel {
+        let selectedConversation = selectedConversationID.flatMap { conversationID in
+            appState.chatConversationService.flatMap { _ in
+                try? appState.databaseManager?.conversation(id: conversationID)
+            }
+        }
+        let selectedProjectAgents = appState.selectedProject?.agents ?? []
+
+        return ChatSessionViewModel(
+            agentSessionManager: appState.agentSessionManager,
+            sessionID: selectedConversation?.agentSessionID,
+            threadID: thread.id,
+            availableModes: [],
+            selectedAgentName: selectedConversation?.agentType ?? selectedProjectAgents.first?.name ?? "opencode",
+            availableAgents: selectedProjectAgents
+        )
+    }
+
+    private func refreshConversationState(with service: any ChatConversationManaging) async {
+        do {
+            let conversations = try await service.activeConversations(threadID: thread.id)
+            let sorted = conversations.sorted { lhs, rhs in
+                if lhs.createdAt == rhs.createdAt {
+                    return lhs.id < rhs.id
+                }
+                return lhs.createdAt < rhs.createdAt
+            }
+            let current = sorted.first { $0.id == selectedConversationID }
+            onConversationStateChange(sorted, current)
+        } catch {
+            onConversationStateChange([], nil)
         }
     }
 }

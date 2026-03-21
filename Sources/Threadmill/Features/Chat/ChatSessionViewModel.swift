@@ -11,6 +11,8 @@ final class ChatSessionViewModel {
     var isStreaming = false
     var currentMode: String?
     var availableModes: [ModeInfo]
+    var selectedAgentName: String
+    var availableAgents: [AgentConfig]
     var sessionTitle: String?
 
     var userMessages: [MessageTimelineItem] = []
@@ -18,18 +20,25 @@ final class ChatSessionViewModel {
     var toolCallsByID: [String: ToolCallTimelineItem] = [:]
 
     private let agentSessionManager: AgentSessionManager?
-    private let sessionID: String?
+    private(set) var sessionID: String?
+    private let threadID: String?
     private let streamingUserMessageID = "streaming-user"
     private let streamingAgentMessageID = "streaming-agent"
 
     init(
         agentSessionManager: AgentSessionManager?,
         sessionID: String? = nil,
-        availableModes: [ModeInfo] = []
+        threadID: String? = nil,
+        availableModes: [ModeInfo] = [],
+        selectedAgentName: String = "opencode",
+        availableAgents: [AgentConfig] = []
     ) {
         self.agentSessionManager = agentSessionManager
         self.sessionID = sessionID
+        self.threadID = threadID
         self.availableModes = availableModes
+        self.selectedAgentName = selectedAgentName
+        self.availableAgents = availableAgents
 
         agentSessionManager?.onSessionUpdate = { [weak self] incomingSessionID, update in
             guard let self else {
@@ -40,6 +49,68 @@ final class ChatSessionViewModel {
             }
             self.handleSessionUpdate(update)
         }
+    }
+
+    func selectAgent(named name: String) async {
+        guard !isStreaming else {
+            return
+        }
+
+        guard let selectedAgent = availableAgents.first(where: { $0.name == name }) else {
+            selectedAgentName = name
+            return
+        }
+
+        if let sessionID, let agentSessionManager {
+            do {
+                _ = try await agentSessionManager.switchAgent(sessionID: sessionID, agentConfig: selectedAgent)
+            } catch {
+                return
+            }
+        } else if let threadID, let agentSessionManager {
+            do {
+                sessionID = try await agentSessionManager.startSession(agentConfig: selectedAgent, threadID: threadID)
+            } catch {
+                return
+            }
+        }
+
+        selectedAgentName = name
+    }
+
+    func setMode(_ modeID: String) async {
+        guard let sessionID, let agentSessionManager else {
+            currentMode = modeID
+            return
+        }
+
+        do {
+            try await agentSessionManager.setMode(sessionID: sessionID, modeID: modeID)
+            currentMode = modeID
+        } catch {
+            return
+        }
+    }
+
+    func cycleModeForward() async {
+        guard !availableModes.isEmpty else {
+            return
+        }
+
+        let orderedIDs = availableModes.map(\.id)
+        guard let firstID = orderedIDs.first else {
+            return
+        }
+
+        let currentID = currentMode ?? firstID
+        let nextID: String
+        if let currentIndex = orderedIDs.firstIndex(of: currentID) {
+            nextID = orderedIDs[(currentIndex + 1) % orderedIDs.count]
+        } else {
+            nextID = firstID
+        }
+
+        await setMode(nextID)
     }
 
     func sendPrompt(text: String) async {
