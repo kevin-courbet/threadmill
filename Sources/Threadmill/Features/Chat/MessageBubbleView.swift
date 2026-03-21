@@ -4,6 +4,7 @@ import SwiftUI
 
 struct MessageBubbleView: View {
     let message: MessageTimelineItem
+    var renderMarkdown = false
 
     @State private var isHovering = false
     @State private var copied = false
@@ -64,10 +65,16 @@ struct MessageBubbleView: View {
     }
 
     private var textContent: some View {
-        Text(plainText.isEmpty ? "..." : plainText)
-            .font(.body)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        Group {
+            if renderMarkdown {
+                MarkdownView(text: plainText, isStreaming: message.id == "streaming-agent")
+            } else {
+                Text(plainText.isEmpty ? "..." : plainText)
+                    .font(.body)
+                    .textSelection(.enabled)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var timestamp: some View {

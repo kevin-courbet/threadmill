@@ -25,6 +25,20 @@ struct ChatMessageList: View {
         Array(items[displayRange])
     }
 
+    private var childToolCalls: [String: [ToolCallTimelineItem]] {
+        var grouped: [String: [ToolCallTimelineItem]] = [:]
+        for call in viewModel.toolCallsByID.values {
+            guard let parentID = call.toolCall.parentToolCallId else {
+                continue
+            }
+            grouped[parentID, default: []].append(call)
+        }
+        for key in grouped.keys {
+            grouped[key]?.sort { $0.timestamp < $1.timestamp }
+        }
+        return grouped
+    }
+
     private var remainingItemCount: Int {
         displayRange.lowerBound
     }
@@ -108,14 +122,14 @@ struct ChatMessageList: View {
     private func itemView(_ item: TimelineItem) -> some View {
         switch item {
         case let .message(message):
-            MessageBubbleView(message: message)
+            MessageBubbleView(message: message, renderMarkdown: message.role == .assistant)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        case .toolCall:
-            placeholderCard(title: "Tool call rendering arrives in Phase 5")
-        case .toolCallGroup:
-            placeholderCard(title: "Tool call groups arrive in Phase 5")
-        case .turnSummary:
-            placeholderCard(title: "Turn summaries arrive in Phase 5")
+        case let .toolCall(toolCall):
+            ToolCallView(item: toolCall, childToolCalls: childToolCalls[toolCall.id] ?? [])
+        case let .toolCallGroup(group):
+            ToolCallGroupView(group: group, childToolCalls: childToolCalls)
+        case let .turnSummary(summary):
+            TurnSummaryView(summary: summary)
         }
     }
 
@@ -145,13 +159,4 @@ struct ChatMessageList: View {
         .buttonStyle(.plain)
     }
 
-    private func placeholderCard(title: String) -> some View {
-        Text(title)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-    }
 }
