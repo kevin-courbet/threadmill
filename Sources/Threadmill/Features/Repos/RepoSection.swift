@@ -7,6 +7,7 @@ struct RepoSection: View {
     let repo: Repo
     let linkedProject: Project?
     let threads: [ThreadModel]
+    let pinnedThreadIDs: Set<String>
     let canCreateThread: Bool
     @Binding var selectedThreadID: String?
     let onNewThread: (Repo) -> Void
@@ -15,6 +16,7 @@ struct RepoSection: View {
     let onCloseThread: (ThreadModel) -> Void
     let onReopenThread: (ThreadModel) -> Void
     let onRemoveProject: (Project) -> Void
+    let onTogglePin: (ThreadModel) -> Void
 
     @State private var isExpanded = true
     @State private var isHeaderHovered = false
@@ -158,6 +160,11 @@ struct RepoSection: View {
         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         .contentShape(Rectangle())
         .accessibilityElement(children: .contain)
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isExpanded.toggle()
+            }
+        }
         .onHover { isHovered in
             isHeaderHovered = isHovered
         }
@@ -190,40 +197,49 @@ struct RepoSection: View {
 
     @ViewBuilder
     private func threadRow(_ thread: ThreadModel) -> some View {
+        let isPinned = pinnedThreadIDs.contains(thread.id)
+
         ThreadRow(
             thread: thread,
             isSelected: selectedThreadID == thread.id,
-            onCancelCreation: onCancelThreadCreation
+            isPinned: isPinned,
+            onCancelCreation: onCancelThreadCreation,
+            onTogglePin: onTogglePin
         )
-        .padding(.leading, 24)
         .onTapGesture {
             selectedThreadID = thread.id
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("thread.row.\(thread.id)")
         .contextMenu {
-                if thread.status == .hidden {
-                    Button("Reopen") {
-                        onReopenThread(thread)
-                    }
-                } else {
-                    Button("Hide Thread") {
-                        onHideThread(thread)
-                    }
-                }
+            Button(isPinned ? "Unpin Thread" : "Pin Thread") {
+                onTogglePin(thread)
+            }
 
-                Button("Copy Branch Name") {
-                    copyToPasteboard(thread.branch)
-                }
+            Divider()
 
-                Button("Copy Worktree Path") {
-                    copyToPasteboard(thread.worktreePath)
+            if thread.status == .hidden {
+                Button("Reopen") {
+                    onReopenThread(thread)
                 }
-
-                Button("Close Thread", role: .destructive) {
-                    threadPendingClose = thread
+            } else {
+                Button("Hide Thread") {
+                    onHideThread(thread)
                 }
             }
+
+            Button("Copy Branch Name") {
+                copyToPasteboard(thread.branch)
+            }
+
+            Button("Copy Worktree Path") {
+                copyToPasteboard(thread.worktreePath)
+            }
+
+            Button("Close Thread", role: .destructive) {
+                threadPendingClose = thread
+            }
+        }
     }
 
     private func copyToPasteboard(_ value: String) {

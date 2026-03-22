@@ -139,6 +139,18 @@ final class AppState {
     }
     var threads: [ThreadModel] = []
     var systemStats: SystemStatsResult?
+    var pinnedThreadIDs: Set<String> = {
+        guard let data = UserDefaults.standard.data(forKey: "pinnedThreadIDs"),
+              let ids = try? JSONDecoder().decode(Set<String>.self, from: data)
+        else { return [] }
+        return ids
+    }() {
+        didSet {
+            if let data = try? JSONEncoder().encode(pinnedThreadIDs) {
+                UserDefaults.standard.set(data, forKey: "pinnedThreadIDs")
+            }
+        }
+    }
     private var statsTask: Task<Void, Never>?
     private let statsPollingEnabled: Bool
     private let statsRefreshIntervalNanoseconds: UInt64
@@ -256,6 +268,20 @@ final class AppState {
             return nil
         }
         return connectionForThread(id: selectedThreadID)
+    }
+
+    func togglePin(threadID: String) {
+        if pinnedThreadIDs.contains(threadID) {
+            pinnedThreadIDs.remove(threadID)
+        } else {
+            pinnedThreadIDs.insert(threadID)
+        }
+    }
+
+    var pinnedThreads: [ThreadModel] {
+        visibleThreads
+            .filter { pinnedThreadIDs.contains($0.id) }
+            .sorted { $0.createdAt > $1.createdAt }
     }
 
     var projectsWithThreads: [(Project, [ThreadModel])] {

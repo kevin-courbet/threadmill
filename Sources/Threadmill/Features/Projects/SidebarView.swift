@@ -1,9 +1,11 @@
+import AppKit
 import SwiftUI
 
 struct SidebarView: View {
     @Environment(AppState.self) private var appState
     @Binding var showingAddRepoSheet: Bool
     @State private var newThreadTarget: NewThreadTarget?
+    @State private var threadPendingClose: ThreadModel?
 
     private var sidebarBackground: Color {
         Color(red: 0.06, green: 0.07, blue: 0.09)
@@ -21,6 +23,11 @@ struct SidebarView: View {
 
         VStack(spacing: 0) {
             List(selection: $bindableState.selectedThreadID) {
+                // Pinned threads section — above everything else
+                if !appState.pinnedThreads.isEmpty {
+                    pinnedSection
+                }
+
                 ForEach(sidebarItems) { item in
                     switch item {
                     case .repo(let repo, let threads):
@@ -28,6 +35,7 @@ struct SidebarView: View {
                             repo: repo,
                             linkedProject: linkedProject(for: repo),
                             threads: threads,
+                            pinnedThreadIDs: appState.pinnedThreadIDs,
                             canCreateThread: !appState.remotes.isEmpty,
                             selectedThreadID: $bindableState.selectedThreadID,
                             onNewThread: { repo in
@@ -47,6 +55,9 @@ struct SidebarView: View {
                             },
                             onRemoveProject: { project in
                                 Task { await appState.removeProject(projectID: project.id) }
+                            },
+                            onTogglePin: { thread in
+                                appState.togglePin(threadID: thread.id)
                             }
                         )
 
@@ -54,6 +65,7 @@ struct SidebarView: View {
                         ProjectSection(
                             project: project,
                             threads: threads,
+                            pinnedThreadIDs: appState.pinnedThreadIDs,
                             canCreateThread: !appState.remotes.isEmpty,
                             selectedThreadID: $bindableState.selectedThreadID,
                             onNewThread: { project in
@@ -73,6 +85,9 @@ struct SidebarView: View {
                             },
                             onRemoveProject: { project in
                                 Task { await appState.removeProject(projectID: project.id) }
+                            },
+                            onTogglePin: { thread in
+                                appState.togglePin(threadID: thread.id)
                             }
                         )
                     }
@@ -132,6 +147,140 @@ struct SidebarView: View {
                 }
             }
         }
+        .alert(
+            "Close Thread?",
+            isPresented: Binding(
+                get: { threadPendingClose != nil },
+                set: { if !$0 { threadPendingClose = nil } }
+            ),
+            presenting: threadPendingClose
+        ) { thread in
+            Button("Cancel", role: .cancel) { threadPendingClose = nil }
+            Button("Close Thread", role: .destructive) {
+                Task { await appState.closeThread(threadID: thread.id) }
+                threadPendingClose = nil
+            }
+        } message: { thread in
+            Text("Close \(thread.name)? This will stop the tmux session and close its worktree.")
+        }
+    }
+
+    // MARK: - Pinned Section
+
+    @State private var isPinnedExpanded = true
+    @State private var isPinnedHeaderHovered = false
+
+    @ViewBuilder
+    private var pinnedSection: some View {
+        // Header
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(Color.orange.opacity(0.8))
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .rotationEffect(.degrees(45))
+            }
+            .frame(width: 22, height: 22)
+
+            Text("Pinned")
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isPinnedExpanded.toggle()
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isPinnedExpanded ? 90 : 0))
+                    .animation(.easeInOut(duration: 0.15), value: isPinnedExpanded)
+                    .frame(width: 20, height: 20)
+                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(isPinnedHeaderHovered ? Color.white.opacity(0.05) : .clear)
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isPinnedExpanded.toggle()
+            }
+        }
+        .onHover { isPinnedHeaderHovered = $0 }
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
+        .listRowBackground(Color.clear)
+
+        // Pinned thread rows
+        if isPinnedExpanded {
+            ForEach(appState.pinnedThreads) { thread in
+                pinnedThreadRow(thread)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+                    .listRowBackground(Color.clear)
+                    .tag(thread.id)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func pinnedThreadRow(_ thread: ThreadModel) -> some View {
+        @Bindable var bindableState = appState
+
+        ThreadRow(
+            thread: thread,
+            isSelected: appState.selectedThreadID == thread.id,
+            isPinned: true,
+            onTogglePin: { thread in
+                appState.togglePin(threadID: thread.id)
+            }
+        )
+        .onTapGesture {
+            bindableState.selectedThreadID = thread.id
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("pinned.thread.row.\(thread.id)")
+        .contextMenu {
+            Button("Unpin Thread") {
+                appState.togglePin(threadID: thread.id)
+            }
+
+            if thread.status == .hidden {
+                Button("Reopen") {
+                    Task { await appState.reopenThread(threadID: thread.id) }
+                }
+            } else {
+                Button("Hide Thread") {
+                    Task { await appState.hideThread(threadID: thread.id) }
+                }
+            }
+
+            Button("Copy Branch Name") {
+                copyToPasteboard(thread.branch)
+            }
+
+            Button("Copy Worktree Path") {
+                copyToPasteboard(thread.worktreePath)
+            }
+
+            Button("Close Thread", role: .destructive) {
+                threadPendingClose = thread
+            }
+        }
+    }
+
+    private func copyToPasteboard(_ value: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
     }
 }
 

@@ -3,17 +3,23 @@ import SwiftUI
 struct ThreadRow: View {
     let thread: ThreadModel
     let isSelected: Bool
+    let isPinned: Bool
     let onCancelCreation: (ThreadModel) -> Void
+    let onTogglePin: (ThreadModel) -> Void
     @State private var isHovered = false
 
     init(
         thread: ThreadModel,
         isSelected: Bool = false,
-        onCancelCreation: @escaping (ThreadModel) -> Void = { _ in }
+        isPinned: Bool = false,
+        onCancelCreation: @escaping (ThreadModel) -> Void = { _ in },
+        onTogglePin: @escaping (ThreadModel) -> Void = { _ in }
     ) {
         self.thread = thread
         self.isSelected = isSelected
+        self.isPinned = isPinned
         self.onCancelCreation = onCancelCreation
+        self.onTogglePin = onTogglePin
     }
 
     private var showBranch: Bool {
@@ -22,6 +28,23 @@ struct ThreadRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 8) {
+            // Icon column — same 22pt width as project avatar for alignment
+            ZStack {
+                if isPinned || isHovered {
+                    Button {
+                        onTogglePin(thread)
+                    } label: {
+                        Image(systemName: isPinned ? "pin.fill" : "pin")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(isPinned ? .secondary : .tertiary)
+                            .rotationEffect(.degrees(45))
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
+                }
+            }
+            .frame(width: 22, height: 22)
+
             VStack(alignment: .leading, spacing: showBranch ? 2 : 0) {
                 Text(thread.name)
                     .font(.system(size: 13, weight: .medium))
@@ -58,7 +81,7 @@ struct ThreadRow: View {
             }
         }
         .padding(.vertical, 6)
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
