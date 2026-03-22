@@ -37,7 +37,7 @@ final class ThreadSessionTabsProviderSourceTests: XCTestCase {
         let older = ChatConversation(
             id: "conv-1",
             threadID: "thread-1",
-            opencodeSessionID: "ses-1",
+            agentSessionID: "ses-1",
             title: "",
             createdAt: Date(timeIntervalSince1970: 1),
             updatedAt: Date(timeIntervalSince1970: 1),
@@ -46,7 +46,7 @@ final class ThreadSessionTabsProviderSourceTests: XCTestCase {
         let newer = ChatConversation(
             id: "conv-2",
             threadID: "thread-1",
-            opencodeSessionID: "ses-2",
+            agentSessionID: "ses-2",
             title: "",
             createdAt: Date(timeIntervalSince1970: 2),
             updatedAt: Date(timeIntervalSince1970: 2),

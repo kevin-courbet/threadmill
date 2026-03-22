@@ -367,7 +367,8 @@ final class DatabaseManager {
             try db.create(table: "chatConversation") { table in
                 table.column("id", .text).notNull().primaryKey()
                 table.column("threadID", .text).notNull()
-                table.column("opencodeSessionID", .text)
+                table.column("agentSessionID", .text)
+                table.column("agentType", .text).notNull().defaults(to: "opencode")
                 table.column("title", .text).notNull().defaults(to: "")
                 table.column("createdAt", .double).notNull()
                 table.column("updatedAt", .double).notNull()
@@ -472,6 +473,72 @@ final class DatabaseManager {
             )
 
             try db.execute(sql: "CREATE UNIQUE INDEX IF NOT EXISTS idx_remotes_default_true ON remotes(is_default) WHERE is_default = 1")
+        }
+
+        migrator.registerMigration("v9_project_agents") { db in
+            let hasAgentsColumn = try Int.fetchOne(
+                db,
+                sql: "SELECT 1 FROM pragma_table_info('projects') WHERE name = 'agents_json' LIMIT 1"
+            ) != nil
+
+            if !hasAgentsColumn {
+                try db.alter(table: "projects") { table in
+                    table.add(column: "agents_json", .text).notNull().defaults(to: "[]")
+                }
+            }
+        }
+
+        migrator.registerMigration("v10_chat_conversation_agent_session") { db in
+            let hasLegacyColumn = try Int.fetchOne(
+                db,
+                sql: "SELECT 1 FROM pragma_table_info('chatConversation') WHERE name = 'opencodeSessionID' LIMIT 1"
+            ) != nil
+            let hasAgentSessionColumn = try Int.fetchOne(
+                db,
+                sql: "SELECT 1 FROM pragma_table_info('chatConversation') WHERE name = 'agentSessionID' LIMIT 1"
+            ) != nil
+            let hasAgentTypeColumn = try Int.fetchOne(
+                db,
+                sql: "SELECT 1 FROM pragma_table_info('chatConversation') WHERE name = 'agentType' LIMIT 1"
+            ) != nil
+
+            guard hasLegacyColumn || !hasAgentSessionColumn || !hasAgentTypeColumn else {
+                return
+            }
+
+            try db.execute(sql: "ALTER TABLE chatConversation RENAME TO chatConversation_old")
+
+            try db.create(table: "chatConversation") { table in
+                table.column("id", .text).notNull().primaryKey()
+                table.column("threadID", .text).notNull()
+                table.column("agentSessionID", .text)
+                table.column("agentType", .text).notNull().defaults(to: "opencode")
+                table.column("title", .text).notNull().defaults(to: "")
+                table.column("createdAt", .double).notNull()
+                table.column("updatedAt", .double).notNull()
+                table.column("isArchived", .boolean).notNull().defaults(to: false)
+            }
+
+            if hasLegacyColumn {
+                try db.execute(
+                    sql: """
+                    INSERT INTO chatConversation (id, threadID, agentSessionID, agentType, title, createdAt, updatedAt, isArchived)
+                    SELECT id, threadID, NULL, 'opencode', title, createdAt, updatedAt, isArchived
+                    FROM chatConversation_old
+                    """
+                )
+            } else {
+                try db.execute(
+                    sql: """
+                    INSERT INTO chatConversation (id, threadID, agentSessionID, agentType, title, createdAt, updatedAt, isArchived)
+                    SELECT id, threadID, agentSessionID, COALESCE(agentType, 'opencode'), title, createdAt, updatedAt, isArchived
+                    FROM chatConversation_old
+                    """
+                )
+            }
+
+            try db.drop(table: "chatConversation_old")
+            try db.create(index: "idx_chatConversation_threadID", on: "chatConversation", columns: ["threadID"])
         }
 
         try migrator.migrate(dbQueue)

@@ -18,6 +18,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
+        .package(url: "https://github.com/wiedymi/swift-acp", branch: "main"),
         .package(path: "Packages/CodeEditSourceEditor"),
         .package(path: "Packages/CodeEditLanguages"),
     ],
@@ -35,10 +36,15 @@ let package = Package(
             dependencies: [
                 "GhosttyKit",
                 .product(name: "GRDB", package: "GRDB.swift"),
+                .product(name: "ACP", package: "swift-acp"),
+                .product(name: "ACPModel", package: "swift-acp"),
                 "CodeEditSourceEditor",
                 "CodeEditLanguages",
             ],
             path: "Sources/Threadmill",
+            exclude: [
+                "_Fridge",
+            ],
             resources: [
                 .process("../../Resources/Assets.xcassets")
             ],

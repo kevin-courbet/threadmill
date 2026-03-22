@@ -77,6 +77,24 @@ final class MockSurfaceHost: SurfaceHosting {
 }
 
 @MainActor
+final class MockAgentManager: AgentManaging {
+    var startedAgents: [(projectID: String, agentName: String)] = []
+    var stoppedChannelIDs: [UInt16] = []
+    var startResult: Result<UInt16, Error> = .failure(TestError.missingStub)
+    var stopResult: Result<Void, Error> = .success(())
+
+    func startAgent(projectID: String, agentName: String) async throws -> UInt16 {
+        startedAgents.append((projectID, agentName))
+        return try startResult.get()
+    }
+
+    func stopAgent(channelID: UInt16) async throws {
+        stoppedChannelIDs.append(channelID)
+        _ = try stopResult.get()
+    }
+}
+
+@MainActor
 final class MockSyncService: SyncServicing {
     var syncCount = 0
     var syncHandler: (() async -> Void)?
@@ -260,15 +278,15 @@ final class MockChatConversationService: ChatConversationManaging {
     var updateTitleResult: Result<Void, Error> = .success(())
     var verifySessionResult: Result<Bool, Error> = .success(true)
 
-    private(set) var createdConversations: [(threadID: String, directory: String)] = []
+    private(set) var createdConversations: [(threadID: String, directory: String, agentType: String)] = []
     private(set) var listedThreadIDs: [String] = []
     private(set) var activeThreadIDs: [String] = []
     private(set) var archivedConversationIDs: [String] = []
     private(set) var updatedTitles: [(id: String, title: String)] = []
     private(set) var verifiedConversationIDs: [String] = []
 
-    func createConversation(threadID: String, directory: String) async throws -> ChatConversation {
-        createdConversations.append((threadID, directory))
+    func createConversation(threadID: String, directory: String, agentType: String) async throws -> ChatConversation {
+        createdConversations.append((threadID, directory, agentType))
         return try createConversationResult.get()
     }
 

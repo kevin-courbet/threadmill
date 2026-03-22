@@ -37,6 +37,18 @@ final class ChatModeActionsTests: XCTestCase {
         )
         appState.threads = [thread]
         appState.selectedThreadID = thread.id
+        appState.projects = [
+            Project(
+                id: "project-1",
+                name: "project",
+                remotePath: "/tmp/project",
+                defaultBranch: "main",
+                presets: [],
+                agents: [AgentConfig(name: "claude", command: "claude", cwd: nil)],
+                remoteId: nil,
+                repoId: nil
+            )
+        ]
 
         var createdConversation = ChatConversation(threadID: thread.id)
         createdConversation.id = "conversation-1"
@@ -68,6 +80,7 @@ final class ChatModeActionsTests: XCTestCase {
         XCTAssertTrue(didSelectConversation)
         XCTAssertEqual(chatConversationService.createdConversations.first?.threadID, "thread-1")
         XCTAssertEqual(chatConversationService.createdConversations.first?.directory, "/tmp/worktree")
+        XCTAssertEqual(chatConversationService.createdConversations.first?.agentType, "claude")
     }
 
     func testCreateChatConversationSurfacesErrorAndLeavesSelectionUnchanged() async {
@@ -385,7 +398,7 @@ final class ChatModeActionsTests: XCTestCase {
         let older = ChatConversation(
             id: "conversation-1",
             threadID: thread.id,
-            opencodeSessionID: "ses-1",
+            agentSessionID: "ses-1",
             title: "",
             createdAt: Date(timeIntervalSince1970: 1),
             updatedAt: Date(timeIntervalSince1970: 1),
@@ -394,7 +407,7 @@ final class ChatModeActionsTests: XCTestCase {
         let newer = ChatConversation(
             id: "conversation-2",
             threadID: thread.id,
-            opencodeSessionID: "ses-2",
+            agentSessionID: "ses-2",
             title: "",
             createdAt: Date(timeIntervalSince1970: 2),
             updatedAt: Date(timeIntervalSince1970: 2),

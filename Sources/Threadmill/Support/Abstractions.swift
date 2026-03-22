@@ -41,6 +41,12 @@ protocol FileBrowsing: AnyObject {
 }
 
 @MainActor
+protocol AgentManaging: AnyObject {
+    func startAgent(projectID: String, agentName: String) async throws -> UInt16
+    func stopAgent(channelID: UInt16) async throws
+}
+
+@MainActor
 protocol ConnectionManaging: AnyObject {
     var state: ConnectionStatus { get }
     var debugSnapshot: ConnectionDebugSnapshot { get }
@@ -82,7 +88,7 @@ protocol DatabaseManaging: AnyObject {
 
 @MainActor
 protocol ChatConversationManaging: AnyObject {
-    func createConversation(threadID: String, directory: String) async throws -> ChatConversation
+    func createConversation(threadID: String, directory: String, agentType: String) async throws -> ChatConversation
     func listConversations(threadID: String) async throws -> [ChatConversation]
     func activeConversations(threadID: String) async throws -> [ChatConversation]
     func archiveConversation(id: String) async throws

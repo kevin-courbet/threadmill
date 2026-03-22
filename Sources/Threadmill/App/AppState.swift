@@ -169,6 +169,7 @@ final class AppState {
     private(set) var openCodeClient: (any OpenCodeManaging)?
     private(set) var chatConversationService: (any ChatConversationManaging)?
     private(set) var fileService: (any FileBrowsing)?
+    private(set) var agentSessionManager: AgentSessionManager?
 
     private(set) var databaseManager: (any DatabaseManaging)?
     private var provisioningService: (any Provisioning)?
@@ -384,7 +385,8 @@ final class AppState {
         provisioningService: (any Provisioning)? = nil,
         openCodeClient: any OpenCodeManaging = OpenCodeClient(),
         chatConversationService: (any ChatConversationManaging)? = nil,
-        fileService: (any FileBrowsing)? = nil
+        fileService: (any FileBrowsing)? = nil,
+        agentSessionManager: AgentSessionManager? = nil
     ) {
         self.connectionPool = connectionPool
         self.databaseManager = databaseManager
@@ -393,6 +395,7 @@ final class AppState {
         self.multiplexer = multiplexer
         self.openCodeClient = openCodeClient
         self.chatConversationService = chatConversationService
+        self.agentSessionManager = agentSessionManager
         self.fileService = fileService ?? FileService(connectionProvider: { [weak self] in
             self?.connectionForSelectedThread() ?? self?.defaultConnectionManager()
         })
@@ -475,9 +478,25 @@ final class AppState {
              "state.delta",
              "preset.process_event":
             scheduleEventSync()
+        case "agent.status_changed":
+            handleAgentStatusChanged(params)
         default:
             break
         }
+    }
+
+    func startAgent(projectID: String, agentName: String) async throws -> UInt16 {
+        guard let connection = connectionForProject(id: projectID) as? AgentManaging else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+        return try await connection.startAgent(projectID: projectID, agentName: agentName)
+    }
+
+    func stopAgent(channelID: UInt16) async throws {
+        guard let connection = connectionManager as? AgentManaging else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+        try await connection.stopAgent(channelID: channelID)
     }
 
     func scheduleAttachSelectedPreset() {
@@ -1121,6 +1140,21 @@ final class AppState {
         }
     }
 
+    private func handleAgentStatusChanged(_ params: [String: Any]?) {
+        guard
+            let params,
+            let channelID = params["channel_id"],
+            let agentName = params["agent_name"] as? String,
+            let event = params["event"] as? String
+        else {
+            NSLog("threadmill-state: invalid agent.status_changed payload: %@", "\(params ?? [:])")
+            return
+        }
+
+        NSLog("threadmill-state: agent.status_changed channel=%@ agent=%@ event=%@", "\(channelID)", agentName, event)
+        scheduleEventSync()
+    }
+
     private func threadProgressIndicatesFailure(step: String, errorText: String?) -> Bool {
         if let errorText {
             let trimmedError = errorText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1380,6 +1414,7 @@ final class AppState {
                     remotePath: remotePath,
                     defaultBranch: defaultBranch,
                     presets: [],
+                    agents: [],
                     remoteId: remoteID,
                     repoId: repoID
                 )
@@ -1477,6 +1512,12 @@ final class AppState {
             return
         }
         repos.insert(.defaultWorkspace, at: 0)
+
+        do {
+            try databaseManager?.saveRepo(.defaultWorkspace)
+        } catch {
+            NSLog("threadmill-state: failed to persist default workspace repo: %@", "\(error)")
+        }
     }
 
     private func normalizeDefaultWorkspaceProjects() {
