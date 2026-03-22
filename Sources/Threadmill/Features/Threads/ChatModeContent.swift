@@ -160,18 +160,12 @@ enum ChatModeActions {
 
         Task {
             do {
-                let selectedHarness = harness ?? .openCodeServe
-                let selectedAgentName = appState.selectedProject?.agents.first?.name ?? "opencode"
-                let conversation: ChatConversation
-
-                switch selectedHarness {
-                case .openCodeServe:
-                    conversation = try await chatConversationService.createConversation(
-                        threadID: threadID,
-                        directory: directory,
-                        agentType: selectedAgentName
-                    )
-                }
+                let selectedHarness = harness ?? .opencode
+                let conversation = try await chatConversationService.createConversation(
+                    threadID: threadID,
+                    directory: directory,
+                    agentType: selectedHarness.agentType
+                )
 
                 await MainActor.run {
                     errorMessageBinding.wrappedValue = nil
@@ -267,10 +261,7 @@ enum ChatModeActions {
         if !title.isEmpty {
             return title
         }
-        if index == totalCount - 1 {
-            return "New session"
-        }
-        return "Session \(index + 1)"
+        return AgentConfig.displayName(for: conversation.agentType)
     }
 
     private static func sortConversationsChronologically(_ conversations: [ChatConversation]) -> [ChatConversation] {

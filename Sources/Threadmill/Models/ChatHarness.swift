@@ -1,7 +1,10 @@
 import Foundation
 
 enum ChatHarness: String, CaseIterable, Identifiable {
-    case openCodeServe = "opencode-serve"
+    case opencode = "opencode"
+    case claude = "claude"
+    case codex = "codex"
+    case gemini = "gemini"
 
     var id: String {
         rawValue
@@ -9,8 +12,19 @@ enum ChatHarness: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .openCodeServe:
-            return "OpenCode Serve"
+        case .opencode:
+            return "OpenCode"
+        case .claude:
+            return "Claude"
+        case .codex:
+            return "Codex"
+        case .gemini:
+            return "Gemini"
         }
+    }
+
+    /// The agent type stored in ChatConversation.agentType
+    var agentType: String {
+        rawValue
     }
 }

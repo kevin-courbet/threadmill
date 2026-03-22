@@ -28,7 +28,6 @@ struct ChatInputBar: View {
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                agentSelector
                 modelSelector
 
                 if !viewModel.availableModes.isEmpty {
@@ -88,24 +87,6 @@ struct ChatInputBar: View {
             .keyboardShortcut("m", modifiers: [.command, .shift])
             .hidden()
         }
-    }
-
-    private var agentSelector: some View {
-        Menu {
-            ForEach(viewModel.availableAgents) { agent in
-                Button(agent.displayName) {
-                    Task {
-                        await viewModel.selectAgent(named: agent.name)
-                    }
-                }
-            }
-        } label: {
-            Text(AgentConfig.displayName(for: viewModel.selectedAgentName))
-                .font(.subheadline.weight(.medium))
-                .lineLimit(1)
-        }
-        .menuStyle(.borderlessButton)
-        .disabled(viewModel.isStreaming)
     }
 
     private var modelSelector: some View {

@@ -29,8 +29,8 @@ final class ThreadSessionTabsProviderSourceTests: XCTestCase {
         provider.addMenuItems.forEach { $0.action() }
 
         XCTAssertEqual(provider.addButtonHelpText, "New coding session (click) or choose harness (hold)")
-        XCTAssertEqual(provider.addMenuItems.map(\.title), ["OpenCode Serve"])
-        XCTAssertEqual(requestedHarnesses, [nil, .openCodeServe])
+        XCTAssertEqual(provider.addMenuItems.map(\.title), ["OpenCode", "Claude", "Codex", "Gemini"])
+        XCTAssertEqual(requestedHarnesses, [nil, .opencode, .claude, .codex, .gemini])
     }
 
     func testChatSessionTabsLabelNewestUntitledConversationAsNewSession() {
@@ -72,7 +72,7 @@ final class ThreadSessionTabsProviderSourceTests: XCTestCase {
             isAddDefaultEnabled: true
         )
 
-        XCTAssertEqual(provider.sessionTabs.map(\.title), ["Session 1", "New session"])
+        XCTAssertEqual(provider.sessionTabs.map(\.title), ["OpenCode", "OpenCode"])
     }
 
     func testTerminalTabsDisableAddWhenAllPresetsAlreadyOpen() {

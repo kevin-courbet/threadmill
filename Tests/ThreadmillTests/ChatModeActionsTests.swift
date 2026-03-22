@@ -70,7 +70,7 @@ final class ChatModeActionsTests: XCTestCase {
                 set: { reloadToken = $0 }
             ),
             tabStateManager: tabStateManager,
-            harness: .openCodeServe
+            harness: .opencode
         )
 
         let didSelectConversation = await waitForCondition {
@@ -80,7 +80,7 @@ final class ChatModeActionsTests: XCTestCase {
         XCTAssertTrue(didSelectConversation)
         XCTAssertEqual(chatConversationService.createdConversations.first?.threadID, "thread-1")
         XCTAssertEqual(chatConversationService.createdConversations.first?.directory, "/tmp/worktree")
-        XCTAssertEqual(chatConversationService.createdConversations.first?.agentType, "claude")
+        XCTAssertEqual(chatConversationService.createdConversations.first?.agentType, "opencode")
     }
 
     func testCreateChatConversationSurfacesErrorAndLeavesSelectionUnchanged() async {
@@ -139,7 +139,7 @@ final class ChatModeActionsTests: XCTestCase {
                 get: { errorMessage },
                 set: { errorMessage = $0 }
             ),
-            harness: .openCodeServe
+            harness: .opencode
         )
 
         let didSurfaceError = await waitForCondition {
@@ -280,7 +280,7 @@ final class ChatModeActionsTests: XCTestCase {
                 set: { reloadToken = $0 }
             ),
             tabStateManager: tabStateManager,
-            harness: .openCodeServe
+            harness: .opencode
         )
 
         let didSelectConversation = await waitForCondition {
