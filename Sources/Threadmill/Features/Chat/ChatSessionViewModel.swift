@@ -12,6 +12,8 @@ final class ChatSessionViewModel {
     var currentThought = ""
     var currentMode: String?
     var availableModes: [ModeInfo]
+    var currentModelID: String?
+    var availableModels: [ModelInfo] = []
     var selectedAgentName: String
     var availableAgents: [AgentConfig]
     var sessionTitle: String?
@@ -55,6 +57,10 @@ final class ChatSessionViewModel {
             }
             self.handleSessionUpdate(update)
         }
+
+        if let sessionID, let agentSessionManager, agentSessionManager.hasSession(sessionID: sessionID) {
+            applyCapabilities(from: agentSessionManager, sessionID: sessionID)
+        }
     }
 
     func selectAgent(named name: String) async {
@@ -70,12 +76,16 @@ final class ChatSessionViewModel {
         if let sessionID, let agentSessionManager {
             do {
                 _ = try await agentSessionManager.switchAgent(sessionID: sessionID, agentConfig: selectedAgent)
+                applyCapabilities(from: agentSessionManager, sessionID: sessionID)
             } catch {
                 return
             }
         } else if let threadID, let agentSessionManager {
             do {
                 sessionID = try await agentSessionManager.startSession(agentConfig: selectedAgent, threadID: threadID)
+                if let sessionID {
+                    applyCapabilities(from: agentSessionManager, sessionID: sessionID)
+                }
             } catch {
                 return
             }
@@ -85,7 +95,12 @@ final class ChatSessionViewModel {
     }
 
     func setMode(_ modeID: String) async {
-        guard let sessionID, let agentSessionManager else {
+        guard let agentSessionManager else {
+            currentMode = modeID
+            return
+        }
+
+        guard let sessionID = await ensureSessionReady() else {
             currentMode = modeID
             return
         }
@@ -93,6 +108,25 @@ final class ChatSessionViewModel {
         do {
             try await agentSessionManager.setMode(sessionID: sessionID, modeID: modeID)
             currentMode = modeID
+        } catch {
+            return
+        }
+    }
+
+    func setModel(_ modelID: String) async {
+        guard let agentSessionManager else {
+            currentModelID = modelID
+            return
+        }
+
+        guard let sessionID = await ensureSessionReady() else {
+            currentModelID = modelID
+            return
+        }
+
+        do {
+            try await agentSessionManager.setModel(sessionID: sessionID, modelID: modelID)
+            currentModelID = modelID
         } catch {
             return
         }
@@ -121,7 +155,11 @@ final class ChatSessionViewModel {
 
     func sendPrompt(text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let sessionID, let agentSessionManager else {
+        guard !trimmed.isEmpty, let agentSessionManager else {
+            return
+        }
+
+        guard let sessionID = await ensureSessionReady() else {
             return
         }
 
@@ -138,7 +176,11 @@ final class ChatSessionViewModel {
     }
 
     func cancelCurrentPrompt() async {
-        guard let sessionID, let agentSessionManager else {
+        guard let agentSessionManager else {
+            return
+        }
+
+        guard let sessionID = await ensureSessionReady() else {
             return
         }
 
@@ -537,6 +579,51 @@ final class ChatSessionViewModel {
         pendingStreamingRebuild = false
         if shouldRebuild {
             rebuildTimelineWithGrouping(isStreaming: false)
+        }
+    }
+
+    private func ensureSessionReady() async -> String? {
+        guard let agentSessionManager, let threadID else {
+            return sessionID
+        }
+
+        if let sessionID, agentSessionManager.hasSession(sessionID: sessionID) {
+            return sessionID
+        }
+
+        guard let agentConfig = resolvedAgentConfig() else {
+            return nil
+        }
+
+        do {
+            let startedSessionID = try await agentSessionManager.startSession(agentConfig: agentConfig, threadID: threadID)
+            sessionID = startedSessionID
+            applyCapabilities(from: agentSessionManager, sessionID: startedSessionID)
+            return startedSessionID
+        } catch {
+            return nil
+        }
+    }
+
+    private func resolvedAgentConfig() -> AgentConfig? {
+        if let exact = availableAgents.first(where: { $0.name == selectedAgentName }) {
+            return exact
+        }
+        if let first = availableAgents.first {
+            return first
+        }
+        return nil
+    }
+
+    private func applyCapabilities(from manager: AgentSessionManager, sessionID: String) {
+        let capabilities = manager.capabilities(for: sessionID)
+        availableModes = capabilities.availableModes
+        if let modeID = capabilities.currentModeID {
+            currentMode = modeID
+        }
+        availableModels = capabilities.availableModels
+        if let modelID = capabilities.currentModelID {
+            currentModelID = modelID
         }
     }
 }

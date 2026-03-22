@@ -29,6 +29,7 @@ struct ChatInputBar: View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 agentSelector
+                modelSelector
 
                 if !viewModel.availableModes.isEmpty {
                     modeSelector
@@ -92,19 +93,54 @@ struct ChatInputBar: View {
     private var agentSelector: some View {
         Menu {
             ForEach(viewModel.availableAgents) { agent in
-                Button(agent.name) {
+                Button(agent.displayName) {
                     Task {
                         await viewModel.selectAgent(named: agent.name)
                     }
                 }
             }
         } label: {
-            Text(viewModel.selectedAgentName)
+            Text(AgentConfig.displayName(for: viewModel.selectedAgentName))
                 .font(.subheadline.weight(.medium))
                 .lineLimit(1)
         }
         .menuStyle(.borderlessButton)
         .disabled(viewModel.isStreaming)
+    }
+
+    private var modelSelector: some View {
+        Menu {
+            if viewModel.availableModels.isEmpty {
+                Text("No models available")
+            } else {
+                ForEach(viewModel.availableModels, id: \.modelId) { model in
+                    Button(model.name) {
+                        Task {
+                            await viewModel.setModel(model.modelId)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Text(selectedModelLabel)
+                .font(.subheadline.weight(.medium))
+                .lineLimit(1)
+                .foregroundStyle(viewModel.availableModels.isEmpty ? .secondary : .primary)
+        }
+        .menuStyle(.borderlessButton)
+        .disabled(viewModel.isStreaming || viewModel.availableModels.isEmpty)
+    }
+
+    private var selectedModelLabel: String {
+        guard !viewModel.availableModels.isEmpty else {
+            return "Model"
+        }
+        if let currentModelID = viewModel.currentModelID,
+           let currentModel = viewModel.availableModels.first(where: { $0.modelId == currentModelID })
+        {
+            return currentModel.name
+        }
+        return viewModel.availableModels.first?.name ?? "Model"
     }
 
     private var modeSelector: some View {

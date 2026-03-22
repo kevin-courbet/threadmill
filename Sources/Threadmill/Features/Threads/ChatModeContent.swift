@@ -15,6 +15,9 @@ struct ChatModeContent: View {
         if let chatConversationService = appState.chatConversationService {
             let selectedConversation = selectedConversation
             let selectedProjectAgents = appState.selectedProject?.agents ?? []
+            let availableAgents = selectedProjectAgents.isEmpty
+                ? [AgentConfig(name: "opencode", command: "opencode", cwd: nil)]
+                : selectedProjectAgents
             let viewModel = viewModelCache.resolve(
                 conversationID: selectedConversation?.id,
                 create: {
@@ -23,8 +26,8 @@ struct ChatModeContent: View {
                         sessionID: selectedConversation?.agentSessionID,
                         threadID: thread.id,
                         availableModes: [],
-                        selectedAgentName: selectedConversation?.agentType ?? selectedProjectAgents.first?.name ?? "opencode",
-                        availableAgents: selectedProjectAgents
+                        selectedAgentName: selectedConversation?.agentType ?? availableAgents.first?.name ?? "opencode",
+                        availableAgents: availableAgents
                     )
                 }
             )

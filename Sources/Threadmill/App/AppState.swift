@@ -1512,6 +1512,12 @@ final class AppState {
             return
         }
         repos.insert(.defaultWorkspace, at: 0)
+
+        do {
+            try databaseManager?.saveRepo(.defaultWorkspace)
+        } catch {
+            NSLog("threadmill-state: failed to persist default workspace repo: %@", "\(error)")
+        }
     }
 
     private func normalizeDefaultWorkspaceProjects() {

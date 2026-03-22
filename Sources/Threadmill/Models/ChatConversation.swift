@@ -60,7 +60,6 @@ extension ChatConversation {
     static func listForThread(_ threadID: String, in db: Database) throws -> [ChatConversation] {
         try ChatConversation
             .filter(Columns.threadID == threadID)
-            .filter(Columns.agentSessionID != nil)
             .order(Columns.updatedAt.desc)
             .fetchAll(db)
     }
@@ -69,7 +68,6 @@ extension ChatConversation {
         try ChatConversation
             .filter(Columns.threadID == threadID)
             .filter(Columns.isArchived == false)
-            .filter(Columns.agentSessionID != nil)
             .order(Columns.updatedAt.desc)
             .fetchAll(db)
     }

@@ -34,6 +34,20 @@ enum AgentSessionManagerError: LocalizedError {
 @MainActor
 @Observable
 final class AgentSessionManager {
+    struct SessionCapabilities {
+        var availableModes: [ModeInfo]
+        var currentModeID: String?
+        var availableModels: [ModelInfo]
+        var currentModelID: String?
+
+        static let empty = SessionCapabilities(
+            availableModes: [],
+            currentModeID: nil,
+            availableModels: [],
+            currentModelID: nil
+        )
+    }
+
     private struct SessionContext: Hashable {
         let id: String
         let threadID: String
@@ -53,6 +67,7 @@ final class AgentSessionManager {
     private let projectIDResolver: @MainActor (String) -> String?
 
     private var sessionsByID: [String: SessionContext] = [:]
+    private var sessionCapabilitiesByID: [String: SessionCapabilities] = [:]
     private var sessionIDByChannel: [UInt16: String] = [:]
     private var incomingBuffers: [UInt16: Data] = [:]
     private var nextRequestIDByChannel: [UInt16: Int] = [:]
@@ -163,6 +178,14 @@ final class AgentSessionManager {
         )
     }
 
+    func hasSession(sessionID: String) -> Bool {
+        sessionsByID[sessionID] != nil
+    }
+
+    func capabilities(for sessionID: String) -> SessionCapabilities {
+        sessionCapabilitiesByID[sessionID] ?? .empty
+    }
+
     func cancelPrompt(sessionID: String) async throws {
         guard let context = sessionsByID[sessionID] else {
             throw AgentSessionManagerError.unknownSession(sessionID)
@@ -194,6 +217,10 @@ final class AgentSessionManager {
             channelID: channelID,
             timeout: 20
         )
+
+        var capabilities = sessionCapabilitiesByID[sessionID] ?? .empty
+        capabilities.currentModeID = modeID
+        sessionCapabilitiesByID[sessionID] = capabilities
     }
 
     func setModel(sessionID: String, modelID: String) async throws {
@@ -211,6 +238,10 @@ final class AgentSessionManager {
             channelID: channelID,
             timeout: 20
         )
+
+        var capabilities = sessionCapabilitiesByID[sessionID] ?? .empty
+        capabilities.currentModelID = modelID
+        sessionCapabilitiesByID[sessionID] = capabilities
     }
 
     func setConfigOption(sessionID: String, key: String, value: SessionConfigOptionValue) async throws {
@@ -537,6 +568,11 @@ final class AgentSessionManager {
             let data = try JSONEncoder().encode(params)
             let update = try JSONDecoder().decode(SessionUpdateNotification.self, from: data)
             updatesBySessionID[sessionID, default: []].append(update)
+            if case let .currentModeUpdate(modeID) = update.update {
+                var capabilities = sessionCapabilitiesByID[sessionID] ?? .empty
+                capabilities.currentModeID = modeID
+                sessionCapabilitiesByID[sessionID] = capabilities
+            }
             onSessionUpdate?(sessionID, update)
         } catch {
             NSLog("threadmill-agent: failed to decode session/update on channel %hu: %@", channelID, "\(error)")
@@ -565,6 +601,7 @@ final class AgentSessionManager {
         if let channelID = context.channelID {
             cleanupChannel(channelID: channelID, pendingError: AgentSessionManagerError.unknownSession(sessionID))
         }
+        sessionCapabilitiesByID.removeValue(forKey: sessionID)
         updatesBySessionID.removeValue(forKey: sessionID)
     }
 
@@ -596,6 +633,12 @@ final class AgentSessionManager {
                 timeout: 20
             )
             context.acpSessionID = newSession.sessionId.value
+            sessionCapabilitiesByID[context.id] = SessionCapabilities(
+                availableModes: newSession.modes?.availableModes ?? [],
+                currentModeID: newSession.modes?.currentModeId,
+                availableModels: newSession.models?.availableModels ?? [],
+                currentModelID: newSession.models?.currentModelId
+            )
         } catch {
             cleanupChannel(channelID: channelID, pendingError: error)
             context.channelID = nil

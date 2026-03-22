@@ -132,9 +132,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         connection.onConnected = { [weak self] in
             Task { @MainActor [weak self] in
-                await self?.agentSessionManager?.handleConnectionReconnected(on: connection)
                 await self?.multiplexer?.reattachAll()
                 await self?.syncService?.syncFromDaemon()
+                await self?.agentSessionManager?.handleConnectionReconnected(on: connection)
             }
         }
 
