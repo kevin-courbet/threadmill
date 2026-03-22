@@ -58,6 +58,7 @@ macOS (Threadmill)                              beast / WSL2 (Spindle)
 SwiftUI + AppKit                                Rust daemon (tokio)
 GRDB cache                                      state_store (threads.json)
 GhosttyKit terminal surface                     git + tmux orchestration
+ACP agent session manager                       agent process relay (stdin/stdout)
 WKWebView browser                               file service (list/read/git_status)
 WebSocket client                                WebSocket server
 
@@ -71,7 +72,7 @@ All JSON-RPC requests, daemon events, and terminal binary frames share this sing
 ### Mode Switcher
 
 Segmented `Picker` in toolbar with four modes:
-- **Chat**: opencode serve conversations via HTTP API
+- **Chat**: ACP agent conversations via binary WebSocket relay
 - **Terminal**: remote terminals via Spindle pipe-pane relay
 - **Files**: remote file browser via Spindle file.list/read/git_status RPCs
 - **Browser**: WKWebView tabs for dev servers (localhost + port offset)
@@ -88,7 +89,7 @@ All terminal sessions kept alive in ZStack with opacity/allowsHitTesting toggle.
 
 ### Chat Multi-Session
 
-`ChatConversation` records persisted in GRDB per thread. Each conversation maps to an opencode serve session. Multiple conversations shown as session tabs.
+`ChatConversation` records persisted in GRDB per thread. Each conversation maps to an ACP agent session (via `agentSessionID` + `agentType`). Multiple conversations shown as session tabs. `ChatSessionViewModel` subscribes to `AgentSessionManager` notifications and builds a structured timeline (messages, tool calls, tool call groups, turn summaries).
 
 ### Browser
 
@@ -125,6 +126,7 @@ JSON-RPC 2.0 methods currently routed by `rpc_router.rs`:
 - `thread.create`, `thread.list`, `thread.close`, `thread.reopen`, `thread.hide`
 - `terminal.attach`, `terminal.detach`, `terminal.resize`
 - `preset.start`, `preset.stop`, `preset.restart`
+- `agent.start`, `agent.stop`
 - `file.list`, `file.read`, `file.git_status`
 
 Daemon events currently emitted:
@@ -136,6 +138,7 @@ Daemon events currently emitted:
 - `project.removed`
 - `state.delta`
 - `preset.process_event`
+- `agent.status_changed`
 - `project.clone_progress`
 
 Defined but not currently emitted by daemon:
@@ -198,11 +201,19 @@ Preset entries contain:
 - `status`, `sourceType`, `createdAt`, `tmuxSession`
 - `portOffset` (`port_offset` column)
 
+### AgentConfig model
+
+`Sources/Threadmill/Models/AgentConfig.swift`:
+
+- `name`, `command`, `cwd` (optional)
+- Parsed from `.threadmill.yml` `agents` section
+- Returned in `project.list` response
+
 ### ChatConversation model
 
 `Sources/Threadmill/Models/ChatConversation.swift`:
 
-- `id` (UUID), `threadID`, `opencodeSessionID`
+- `id` (UUID), `threadID`, `agentSessionID` (nullable), `agentType`
 - `title`, `createdAt`, `updatedAt`
 - `isArchived`
 
@@ -221,6 +232,11 @@ Preset entries contain:
 - v3: port_offset column
 - v4: chat_conversation table
 - v5: browser_session table
+- v6: remote model (remotes table + project.remote_id FK)
+- v7: repo model (repos table + project.repo_id FK)
+- v8: remote default flag (is_default unique constraint)
+- v9: project agents column (agents_json)
+- v10: chat_conversation agent session (opencodeSessionID -> agentSessionID + agentType)
 
 ## Project Config (`.threadmill.yml`)
 
@@ -245,6 +261,11 @@ ports:
 presets:
   dev-server:
     command: task dev:worktree
+    cwd: .
+
+agents:
+  opencode:
+    command: opencode
     cwd: .
 ```
 
@@ -304,7 +325,7 @@ Default endpoint is `ws://127.0.0.1:19990` and can be overridden with `THREADMIL
 | Mac cache | GRDB / SQLite |
 | Terminal rendering | GhosttyKit (libghostty) |
 | Browser rendering | WKWebView |
-| Syntax highlighting | Regex-based NSAttributedString (Catppuccin palette) |
+| Syntax highlighting | tree-sitter via CodeEditSourceEditor (files + chat code blocks) |
 | Transport | SSH tunnel + WebSocket |
 | Protocol | JSON-RPC 2.0 + binary frames |
 | Daemon runtime | Rust + tokio + tokio-tungstenite |
@@ -372,6 +393,16 @@ Default endpoint is `ws://127.0.0.1:19990` and can be overridden with `THREADMIL
 - [x] SourceEditor gutter line numbers
 - [x] File type icons (SF Symbol-based)
 - [x] Git status coloring in file tree
+
+### M6: ACP Agent Chat
+- [x] ACP transport layer (`AgentSessionManager`, binary frame relay)
+- [x] `agent.start` / `agent.stop` RPC + `agent.status_changed` event
+- [x] `.threadmill.yml` agents section + `AgentConfig` in project model
+- [x] `ChatSessionViewModel` with ACP streaming + timeline building
+- [x] Rich chat UI: tool call accordions, grouped tools, turn summaries, markdown, code blocks
+- [x] Animated gradient border, shimmer thinking, streaming perf coalescing
+- [x] Agent/mode/model selectors in chat input bar
+- [x] Reconnect-safe agent session lifecycle
 
 ### Planned (Post-MVP)
 - [ ] Menu bar quick actions

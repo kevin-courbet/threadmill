@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-02
+updated: 2026-03-22
 ---
 
 # Communication Protocol
@@ -146,9 +146,14 @@ Server notification (event):
 {"name":"editor","command":"nvim","cwd":"relative/subdir"}
 ```
 
+`AgentConfig`
+```json
+{"name":"opencode","command":"opencode","cwd":"."}
+```
+
 `Project`
 ```json
-{"id":"<uuid>","name":"repo","path":"/home/wsl/dev/repo","default_branch":"main","presets":[PresetConfig]}
+{"id":"<uuid>","name":"repo","path":"/home/wsl/dev/repo","default_branch":"main","presets":[PresetConfig],"agents":[AgentConfig]}
 ```
 
 `Thread`
@@ -166,6 +171,11 @@ Server notification (event):
 {"thread_id":"<uuid>","preset":"terminal","event":"started|exited|crashed","exit_code":1}
 ```
 
+`AgentStatusChanged`
+```json
+{"channel_id":<u16>,"project_id":"<uuid>","agent_name":"opencode","event":"started|exited|crashed","exit_code":0}
+```
+
 `FileBrowserEntry`
 ```json
 {"name":"foo.rs","path":"/full/path/foo.rs","isDirectory":false,"size":1234}
@@ -181,7 +191,7 @@ Server notification (event):
 {"entries":{"src/main.rs":"modified","new_file.txt":"untracked"}}
 ```
 
-## RPC Methods (exactly dispatched in `rpc_router.rs`)
+## RPC Methods (dispatched in `rpc_router.rs`)
 
 `ping`
 - Params: omitted, `null`, or `{}`
@@ -259,6 +269,16 @@ Server notification (event):
 - Params: `{"thread_id":"<uuid>","preset":"<name>"}`
 - Result: `{"ok":true}`
 
+`agent.start`
+- Params: `{"project_id":"<uuid>","agent_name":"<name>"}`
+- Result: `{"channel_id":<u16 1..65535>}`
+- Spawns the configured ACP agent process and returns a channel for binary frame relay
+
+`agent.stop`
+- Params: `{"channel_id":<u16>}`
+- Result: `{}`
+- Terminates the agent process and releases the channel
+
 `file.list`
 - Params: `{"path":"<absolute path>"}`
 - Result: `{"entries":[FileBrowserEntry]}`
@@ -304,6 +324,9 @@ Server notification (event):
 `preset.process_event`
 - Params: `PresetProcessEvent`
 
+`agent.status_changed`
+- Params: `AgentStatusChanged`
+
 `state.delta`
 - Params:
 ```json
@@ -323,11 +346,21 @@ Server notification (event):
 ## Binary Frame Format
 
 - Bytes: `[channel_id_be_u16][payload_bytes...]`
+- Channel IDs are ephemeral per WebSocket connection and must be reacquired after reconnect.
+- The same binary frame format is shared by **terminal** and **agent** channels.
+
+### Terminal binary frames
 - Client -> daemon: relay input payload for attached tmux pane via pipe-pane -I.
 - Daemon -> client: tmux pane output payload via pipe-pane -O.
-- Channel IDs are ephemeral per WebSocket connection and must be reacquired after reconnect via `terminal.attach`.
+- Acquired via `terminal.attach`, reacquired on reconnect.
 - Pre-registration buffering: binary frames arriving before `terminal.attach` response are buffered by `TerminalMultiplexer` and flushed when the endpoint is registered.
 - Scrollback replay: on attach, Spindle sends `tmux capture-pane` output with CRLF line endings (bare LF converted to CRLF for correct terminal rendering).
+
+### Agent binary frames (ACP)
+- Client <-> daemon: relay agent process stdin/stdout as raw bytes.
+- Acquired via `agent.start`, which spawns the agent and returns `channel_id`.
+- Payload contains newline-delimited JSON-RPC (ACP protocol) between agent and client.
+- `AgentSessionManager` on the Mac side deframes bytes into ACP messages and manages session lifecycle (handshake, prompt, cancel, stop).
 
 ## Error Codes and Behavior
 
@@ -358,6 +391,7 @@ Server notification (event):
 - `thread.status_changed`: update local thread status, attach/detach behavior by status.
 - `thread.progress`: log and mark failed when progress indicates failure.
 - `project.clone_progress`: log clone progress.
+- `agent.status_changed`: forwarded to `AgentSessionManager` for session lifecycle updates.
 - `thread.created`, `thread.removed`, `project.added`, `project.removed`, `state.delta`, `preset.process_event`: schedule full sync.
 
 Unknown events are ignored.

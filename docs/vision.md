@@ -106,14 +106,18 @@ ports:
 - [x] Mouse wheel vertical→horizontal scroll conversion
 - [x] Thread-scoped preset APIs (race-safe across thread switches)
 
-### 10) Chat (opencode serve)
+### 10) Chat (ACP Agent Protocol)
 
 - [x] Multi-conversation per thread (GRDB-persisted)
-- [x] opencode serve HTTP API integration
-- [x] Thinking/COT display
+- [x] ACP binary frame relay via AgentSessionManager
+- [x] Agent spawning via `agent.start` / `agent.stop` RPC
+- [x] Structured timeline: messages, tool calls, tool call groups, turn summaries
+- [x] Rich rendering: markdown, code blocks (tree-sitter), inline diffs, tool call accordions
+- [x] Animated gradient border (streaming/plan/idle), shimmer thinking indicator
+- [x] Agent/mode/model selectors in input bar
 - [x] Enter=send, Shift+Enter=newline
 - [x] Session tabs for multiple conversations
-- [x] Stale session guards on thread switch
+- [x] Reconnect-safe agent session lifecycle
 
 ### 11) Browser
 
@@ -190,6 +194,12 @@ ports:
 - [x] File browser (Spindle RPCs + tree + syntax highlighting)
 - [x] file.list / file.read / file.git_status RPCs
 - [x] Git status coloring in file tree
+
+### M6
+- [x] ACP agent chat (binary frame relay, structured timeline, rich rendering)
+- [x] agent.start / agent.stop RPC + agent.status_changed event
+- [x] `.threadmill.yml` agents section
+- [x] Agent/mode/model selectors
 
 ## Non-Goals
 

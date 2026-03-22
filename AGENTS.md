@@ -54,7 +54,7 @@ Threadmill.app (SwiftUI)   ◄─ SSH tunnel + WS ─►   Spindle daemon (Rust/
 ## UI Architecture
 
 The detail view uses a **mode switcher** (segmented picker) with four modes:
-- **Chat** — opencode serve conversations, multi-session tabs, GRDB-persisted
+- **Chat** — ACP agent conversations, multi-session tabs, GRDB-persisted
 - **Terminal** — remote terminals via Spindle, multi-session ZStack (kept alive), preset-based
 - **Files** — remote file browser via Spindle RPCs, tree + content viewer with syntax highlighting
 - **Browser** — WKWebView tabs, GRDB-persisted, default URL = localhost + port offset
@@ -80,11 +80,12 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 | `Connection/SSHTunnelManager.swift` | SSH tunnel child process lifecycle |
 | `Transport/ConnectionManager.swift` | Connection state machine, reconnect with backoff, DI-friendly |
 | `Transport/TerminalMultiplexer.swift` | channel_id → RelayEndpoint dispatch + preRegistrationBuffer |
+| `Transport/AgentSessionManager.swift` | ACP binary frame relay, per-channel deframing, session lifecycle |
 | `Transport/RelayEndpoint.swift` | Per-terminal Unix socket + bounded frame buffer |
 | `Terminal/GhosttySurfaceHost.swift` | ghostty_app lifecycle, surface registry, callbacks |
 | `Terminal/GhosttyTerminalView.swift` | NSViewRepresentable, endpoint swap on thread switch |
 | `Terminal/GhosttyNSView.swift` | Raw NSView for Metal surface hosting |
-| `Database/DatabaseManager.swift` | GRDB setup + migrations (v1 base → v5 browser_session) |
+| `Database/DatabaseManager.swift` | GRDB setup + migrations (v1 base → v10 chat_conversation_agent_session) |
 | `Database/SyncService.swift` | project.list + thread.list sync from daemon |
 | `Database/ChatConversationService.swift` | GRDB CRUD for chat conversations per thread |
 | `Models/Project.swift` | Project + PresetConfig (includes presets from daemon) |
@@ -92,7 +93,10 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 | `Models/Preset.swift` | Preset enum + defaults |
 | `Models/ThreadStatus.swift` | Status enum (creating/active/closing/closed/hidden/failed) |
 | `Models/TabItem.swift` | Mode switcher tabs (chat/terminal/files/browser) with icons |
-| `Models/ChatConversation.swift` | GRDB record for chat sessions per thread |
+| `Models/AgentConfig.swift` | Agent config (name, command, cwd) from .threadmill.yml |
+| `Models/TimelineItem.swift` | Timeline model: message, tool call, tool call group, turn summary |
+| `Models/ToolCallGroup.swift` | Tool call grouping + ExplorationCluster for read/search/grep runs |
+| `Models/ChatConversation.swift` | GRDB record for chat sessions per thread (agentSessionID + agentType) |
 | `Models/BrowserSession.swift` | GRDB record for browser tabs per thread |
 | `Support/Abstractions.swift` | DI protocols: ConnectionManaging, DatabaseManaging, FileBrowsing, etc. |
 | `Features/Projects/SidebarView.swift` | Sidebar with project sections |
@@ -103,9 +107,15 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 | `Features/Threads/ThreadRow.swift` | Sidebar row with status + branch |
 | `Features/Threads/NewThreadSheet.swift` | Create thread with project preselection |
 | `Features/Threads/ThreadTabStateManager.swift` | Persists selected mode + session IDs per thread (@AppStorage JSON) |
-| `Features/Chat/ChatView.swift` | Chat conversation UI with opencode serve integration |
-| `Features/Chat/ChatViewModel.swift` | Chat VM — messages, tool calls, thinking display |
-| `Features/Chat/ChatInputView.swift` | Composer (Enter=send, Shift+Enter=newline) |
+| `Features/Chat/ChatSessionView.swift` | Chat session container — ACP-backed timeline rendering |
+| `Features/Chat/ChatSessionViewModel.swift` | Chat VM — ACP streaming, timeline building, tool call grouping |
+| `Features/Chat/ChatInputBar.swift` | NSTextView composer (Enter=send, Shift+Enter=newline, agent/mode selector) |
+| `Features/Chat/ChatMessageList.swift` | LazyVStack timeline with virtual window and load-more |
+| `Features/Chat/MessageBubbleView.swift` | User/agent message bubbles (right-aligned user, full-width agent) |
+| `Features/Chat/ToolCallView.swift` | Expandable tool call accordion with status dot + syntax highlighting |
+| `Features/Chat/ToolCallGroupView.swift` | Collapsible group of tool calls with exploration cluster summaries |
+| `Features/Chat/TurnSummaryView.swift` | Inter-turn divider with tool count and duration |
+| `Features/Chat/ChatProcessingIndicator.swift` | Spinning arc + shimmer thought text during agent processing |
 | `Features/Browser/BrowserView.swift` | Browser with internal tab bar, WKWebView |
 | `Features/Browser/BrowserControlBar.swift` | URL field, back/forward/reload, progress bar |
 | `Features/Browser/BrowserSessionManager.swift` | GRDB-backed browser session management |
@@ -122,6 +132,9 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 | `Views/Components/TabLabel.swift` | Tab label with icon + title slots |
 | `Views/Components/TabCloseButton.swift` | xmark close button with hover states |
 | `Views/Components/FileIconView.swift` | SF Symbol file type icons by extension |
+| `Views/Components/AnimatedGradientBorder.swift` | Conic gradient rotation border for streaming/plan/idle states |
+| `Views/Components/ScrollBottomObserver.swift` | NSScrollView KVO observer with hysteresis + jump-to-bottom |
+| `Views/Components/ShimmerEffect.swift` | CAGradientLayer sweep animation for thinking text |
 | `Views/Components/ConnectionStatusView.swift` | Reusable connection status dot view |
 | **Sources/threadmill-relay/** | |
 | `main.c` | ~30-line C PTY bridge: stdin/stdout ↔ Unix socket |
@@ -130,7 +143,7 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 
 ### Spindle (on beast) — Rust daemon
 
-Access via `ssh beast`. Code at `/home/wsl/dev/spindle/`.
+Beast's `/home/wsl/dev` is NFS-mounted at `/Volumes/wsl-dev`. **Edit Spindle files locally** at `spindle/` (symlink → `/Volumes/wsl-dev/spindle/`, gitignored) — no SSH needed for reads/writes. Use SSH only for commands (`cargo build`, `systemctl`, etc.).
 
 | Path | Purpose |
 |---|---|
@@ -192,9 +205,9 @@ Binary frames: `[u16be channel_id][raw terminal bytes]`. Not JSON. See `docs/age
 
 ## Protocol Quick Reference
 
-**RPC methods** (Mac → Spindle): `ping`, `project.{list,add,clone,remove,branches}`, `thread.{create,list,close,hide,reopen}`, `terminal.{attach,detach,resize}`, `preset.{start,stop,restart}`, `file.{list,read,git_status}`, `state.snapshot`
+**RPC methods** (Mac → Spindle): `ping`, `project.{list,add,clone,remove,branches}`, `thread.{create,list,close,hide,reopen}`, `terminal.{attach,detach,resize}`, `preset.{start,stop,restart}`, `agent.{start,stop}`, `file.{list,read,git_status}`, `state.snapshot`
 
-**Events** (Spindle → Mac): `thread.progress`, `thread.status_changed`, `thread.created`, `preset.process_event`, `project.added`, `project.removed`, `project.clone_progress`, `state.delta`
+**Events** (Spindle → Mac): `thread.progress`, `thread.status_changed`, `thread.created`, `preset.process_event`, `agent.status_changed`, `project.added`, `project.removed`, `project.clone_progress`, `state.delta`
 
 Full protocol reference: `docs/agents/communication-protocol.md`
 JSON schema: `protocol/threadmill-rpc.schema.json`
