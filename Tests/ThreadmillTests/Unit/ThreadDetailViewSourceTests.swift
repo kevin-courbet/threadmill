@@ -7,7 +7,8 @@ final class ThreadDetailViewSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertFalse(source.contains("Button(\"Hide\")"))
@@ -19,7 +20,8 @@ final class ThreadDetailViewSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertFalse(source.contains("projectName"))
@@ -31,7 +33,8 @@ final class ThreadDetailViewSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertTrue(source.contains("Set(appState.presets.map(\\.name))"))
@@ -43,7 +46,8 @@ final class ThreadDetailViewSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertTrue(source.contains("FileBrowserView(rootPath: thread.worktreePath, fileService: fileService, connectionStatus: appState.connectionStatus)"))
@@ -54,7 +58,8 @@ final class ThreadDetailViewSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertTrue(source.contains(".toolbar {"))
@@ -67,7 +72,8 @@ final class ThreadDetailViewSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertFalse(source.contains("NavigationStack {"))
@@ -82,7 +88,8 @@ final class ThreadDetailViewSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Views/ContentView.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Views/ContentView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertFalse(source.contains(".toolbar {}"))
@@ -93,7 +100,8 @@ final class ThreadDetailViewSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertTrue(source.contains("Picker(\"Mode\", selection: $selectedTab)"))
@@ -106,7 +114,8 @@ final class ThreadDetailViewSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/ThreadDetailView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertTrue(source.contains("accessibilityIdentifier(\"mode.tab.\\(tab.id)\")"))

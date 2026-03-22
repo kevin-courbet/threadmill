@@ -18,7 +18,8 @@ final class AppDelegateBootstrapSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent(relativePath)
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent(relativePath)
         return try String(contentsOf: sourcePath, encoding: .utf8)
     }
 }

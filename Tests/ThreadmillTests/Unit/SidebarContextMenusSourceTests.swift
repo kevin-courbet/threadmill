@@ -7,8 +7,8 @@ final class SidebarContextMenusSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-
-        let repoSectionSource = try String(
+            .deletingLastPathComponent()
+            let repoSectionSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Repos/RepoSection.swift"),
             encoding: .utf8
         )

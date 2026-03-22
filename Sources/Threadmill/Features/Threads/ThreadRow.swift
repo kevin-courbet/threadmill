@@ -2,24 +2,36 @@ import SwiftUI
 
 struct ThreadRow: View {
     let thread: ThreadModel
+    let isSelected: Bool
     let onCancelCreation: (ThreadModel) -> Void
     @State private var isHovered = false
 
-    init(thread: ThreadModel, onCancelCreation: @escaping (ThreadModel) -> Void = { _ in }) {
+    init(
+        thread: ThreadModel,
+        isSelected: Bool = false,
+        onCancelCreation: @escaping (ThreadModel) -> Void = { _ in }
+    ) {
         self.thread = thread
+        self.isSelected = isSelected
         self.onCancelCreation = onCancelCreation
     }
 
+    private var showBranch: Bool {
+        thread.branch != thread.name
+    }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: showBranch ? 2 : 0) {
                 Text(thread.name)
                     .font(.system(size: 13, weight: .medium))
                     .lineLimit(1)
-                Text(thread.branch)
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(.secondary.opacity(0.9))
-                    .lineLimit(1)
+                if showBranch {
+                    Text(thread.branch)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.secondary.opacity(0.7))
+                        .lineLimit(1)
+                }
             }
 
             Spacer(minLength: 0)
@@ -45,13 +57,18 @@ struct ThreadRow: View {
                 .accessibilityIdentifier("thread.cancel.\(thread.id)")
             }
         }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 2)
-        .background(isHovered ? Color.white.opacity(0.04) : .clear)
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .onHover { hovered in
-            isHovered = hovered
-        }
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(isSelected
+                    ? Color.white.opacity(0.1)
+                    : isHovered ? Color.white.opacity(0.05) : .clear)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .onHover { hovered in isHovered = hovered }
     }
 
     private var statusLabel: String? {

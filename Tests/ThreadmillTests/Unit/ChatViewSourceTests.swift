@@ -7,7 +7,8 @@ final class ChatViewSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Chat/ChatSessionView.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Chat/ChatSessionView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertTrue(source.contains("VStack(spacing: 0)"))

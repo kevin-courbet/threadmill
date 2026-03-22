@@ -7,7 +7,8 @@ final class NewThreadSheetSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/NewThreadSheet.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Threads/NewThreadSheet.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         guard

@@ -54,6 +54,19 @@ tasks:
     cmds:
       - swift test
 
+  test:integration:
+    desc: Run real Spindle integration tests (requires beast + SSH tunnel)
+    cmds:
+      - task: build:spindle
+      - ssh beast "systemctl --user is-active spindle" || task spindle:restart
+      - |
+        if ! nc -z 127.0.0.1 19990 2>/dev/null; then
+          echo "Starting SSH tunnel..."
+          ssh -N -f -L 127.0.0.1:19990:127.0.0.1:19990 beast
+          sleep 1
+        fi
+      - swift test --filter IntegrationTests
+
   test:spindle:
     desc: Run Spindle integration tests on beast
     cmds:

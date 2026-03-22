@@ -22,7 +22,8 @@ Native macOS visor app (Swift/SwiftUI) managing dev "threads" (git worktrees + t
 | Command | What it does |
 |---|---|
 | `task test:swift` | Swift unit tests (must pass after every Green/Refactor) |
-| `task test:spindle` | Spindle integration tests on beast via SSH |
+| `task test:integration` | Real Spindle integration tests (requires beast + SSH tunnel) |
+| `task test:spindle` | Spindle Rust tests on beast via SSH |
 | `task test:ui` | UI e2e tests (opt-in, requires Accessibility) |
 | `task validate` | Full gate: `build:all` + `test` |
 | `task run` | Build + restart Spindle + launch app |
@@ -138,7 +139,12 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 | `Views/Components/ConnectionStatusView.swift` | Reusable connection status dot view |
 | **Sources/threadmill-relay/** | |
 | `main.c` | ~30-line C PTY bridge: stdin/stdout ↔ Unix socket |
-| **Tests/ThreadmillTests/** | ~100 unit tests with mock doubles |
+| **Tests/ThreadmillTests/Shared/** | TestDoubles.swift — mock doubles shared by unit + integration |
+| **Tests/ThreadmillTests/Unit/** | ~186 unit tests with mock doubles |
+| **Tests/ThreadmillTests/Integration/** | Real Spindle integration tests (beast + SSH tunnel) |
+| `Integration/SpindleConnection.swift` | Lightweight WebSocket client for test harness |
+| `Integration/IntegrationTestCase.swift` | Base class: setUp sweep, tearDown cleanup, shared helpers |
+| `Integration/{Project,Thread,Terminal,Preset,Chat}IntegrationTests.swift` | One file per domain |
 | **UITests/ThreadmillUITests/** | XCUITest e2e harness with MockSpindleServer (opt-in) |
 
 ### Spindle (on beast) — Rust daemon

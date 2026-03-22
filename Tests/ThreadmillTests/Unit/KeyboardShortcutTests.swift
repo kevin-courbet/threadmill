@@ -8,7 +8,8 @@ final class KeyboardShortcutTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Views/ContentView.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Views/ContentView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertTrue(source.contains("await appState.startPreset(named: \"terminal\")"))

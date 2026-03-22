@@ -179,22 +179,18 @@ struct ProjectSection: View {
 
     @ViewBuilder
     private func threadRow(_ thread: ThreadModel) -> some View {
-        let isSelected = selectedThreadID == thread.id
-
-        ThreadRow(thread: thread, onCancelCreation: onCancelThreadCreation)
-            .padding(.vertical, 5)
-            .padding(.horizontal, 10)
-            .padding(.leading, 24)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                selectedThreadID = thread.id
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("thread.row.\(thread.id)")
-            .background(isSelected ? Color.white.opacity(0.1) : .clear)
-            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .contextMenu {
+        ThreadRow(
+            thread: thread,
+            isSelected: selectedThreadID == thread.id,
+            onCancelCreation: onCancelThreadCreation
+        )
+        .padding(.leading, 24)
+        .onTapGesture {
+            selectedThreadID = thread.id
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("thread.row.\(thread.id)")
+        .contextMenu {
                 if thread.status == .hidden {
                     Button("Reopen") {
                         onReopenThread(thread)

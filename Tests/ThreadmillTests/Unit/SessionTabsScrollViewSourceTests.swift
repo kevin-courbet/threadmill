@@ -7,7 +7,8 @@ final class SessionTabsScrollViewSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Views/Components/SessionTabsScrollView.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Views/Components/SessionTabsScrollView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertTrue(source.contains("Image(systemName: \"plus\")"))
@@ -20,7 +21,8 @@ final class SessionTabsScrollViewSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Views/Components/SessionTabsScrollView.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Views/Components/SessionTabsScrollView.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertTrue(source.contains(".onTapGesture(perform: action)"))

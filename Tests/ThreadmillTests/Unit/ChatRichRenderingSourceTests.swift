@@ -7,7 +7,8 @@ final class ChatRichRenderingSourceTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Chat/ChatMessageList.swift")
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent("Sources/Threadmill/Features/Chat/ChatMessageList.swift")
         let source = try String(contentsOf: sourcePath, encoding: .utf8)
 
         XCTAssertTrue(source.contains("ToolCallView"))

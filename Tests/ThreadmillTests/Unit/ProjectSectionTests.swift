@@ -26,12 +26,20 @@ final class ProjectSectionTests: XCTestCase {
         XCTAssertTrue(source.contains("canCreateThread: !appState.remotes.isEmpty"))
     }
 
+    func testProjectHeaderClickTogglesExpansion() throws {
+        let source = try loadSource(at: "Sources/Threadmill/Features/Projects/ProjectSection.swift")
+
+        // The header row itself (excluding buttons) should toggle expand/collapse on tap
+        XCTAssertTrue(source.contains(".onTapGesture"), "Header must have onTapGesture to toggle expand/collapse")
+    }
+
     private func loadSource(at relativePath: String) throws -> String {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let sourcePath = repositoryRoot.appendingPathComponent(relativePath)
+            .deletingLastPathComponent()
+            let sourcePath = repositoryRoot.appendingPathComponent(relativePath)
         return try String(contentsOf: sourcePath, encoding: .utf8)
     }
 }
