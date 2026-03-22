@@ -149,6 +149,11 @@ struct ProjectSection: View {
         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         .contentShape(Rectangle())
         .accessibilityElement(children: .contain)
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isExpanded.toggle()
+            }
+        }
         .onHover { isHovered in
             isHeaderHovered = isHovered
         }
