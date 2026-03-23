@@ -13,15 +13,15 @@ import XCTest
 final class TerminalPromptTests: XCTestCase {
     private var harness: RealSpindleUITestHarness?
 
-    override func setUp() async throws {
-        try await super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         harness = try RealSpindleUITestHarness.launch()
     }
 
-    override func tearDown() async throws {
+    override func tearDownWithError() throws {
         harness?.tearDown()
         harness = nil
-        try await super.tearDown()
+        try super.tearDownWithError()
     }
 
     func testNewTerminalShowsPromptWithoutEnterPress() throws {
@@ -29,13 +29,19 @@ final class TerminalPromptTests: XCTestCase {
             throw XCTSkip("Harness not available")
         }
 
-        // Select the thread in the sidebar
-        _ = try harness.waitForElement(identifier: "thread.row", timeout: 15)
+        // Thread was created before app launch (in RealSpindleUITestHarness.launch).
+        // App synced on connect — thread should be in sidebar.
         let threadRow = harness.app.outlines.buttons.matching(
             NSPredicate(format: "identifier BEGINSWITH 'thread.row.'")
         ).firstMatch
-        guard threadRow.waitForExistence(timeout: 10) else {
-            XCTFail("No thread row found in sidebar")
+        guard threadRow.waitForExistence(timeout: 30) else {
+            // Take screenshot for debugging
+            let screenshot = harness.app.windows.firstMatch.screenshot()
+            let attachment = XCTAttachment(screenshot: screenshot)
+            attachment.name = "sidebar-no-thread"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            XCTFail("No thread row found in sidebar after creating test thread")
             return
         }
         threadRow.click()
@@ -88,25 +94,17 @@ final class TerminalPromptTests: XCTestCase {
 
 /// Launches the real Threadmill app against real Spindle on beast.
 /// Requires SSH tunnel to be up (port 19990).
-@MainActor
-struct RealSpindleUITestHarness {
+final class RealSpindleUITestHarness: @unchecked Sendable {
     let app: XCUIApplication
-    private let appProcess: Process
     private let tempDirectory: URL
 
-    static func launch() throws -> RealSpindleUITestHarness {
-        // Verify tunnel is up
-        let checkProcess = Process()
-        checkProcess.executableURL = URL(fileURLWithPath: "/usr/bin/nc")
-        checkProcess.arguments = ["-z", "127.0.0.1", "19990"]
-        checkProcess.standardOutput = FileHandle.nullDevice
-        checkProcess.standardError = FileHandle.nullDevice
-        try checkProcess.run()
-        checkProcess.waitUntilExit()
-        guard checkProcess.terminationStatus == 0 else {
-            throw UITestError("SSH tunnel not up on port 19990. Run: ssh -N -f -L 127.0.0.1:19990:127.0.0.1:19990 beast")
-        }
+    init(app: XCUIApplication, tempDirectory: URL) {
+        self.app = app
+        self.tempDirectory = tempDirectory
+    }
 
+    @MainActor
+    static func launch() throws -> RealSpindleUITestHarness {
         let tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("threadmill-uitest-real-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
@@ -117,47 +115,96 @@ struct RealSpindleUITestHarness {
         try FileManager.default.createDirectory(at: configDirectory, withIntermediateDirectories: true)
 
         let databasePath = tempDirectory.appendingPathComponent("threadmill.db").path
+        // Add fixture project and create thread BEFORE app launch —
+        // the app syncs on connect and needs the project already in Spindle.
+        let threadID = try createThreadBeforeLaunch()
 
         let appBundle = try locateAppBundle()
-        let process = Process()
-        process.executableURL = appBundle.appendingPathComponent("Contents/MacOS/Threadmill")
-        process.currentDirectoryURL = repositoryRoot()
-
-        var environment = ProcessInfo.processInfo.environment
-        environment["THREADMILL_DISABLE_SSH_TUNNEL"] = "1"
-        environment["THREADMILL_HOST"] = "127.0.0.1"
-        environment["THREADMILL_DAEMON_PORT"] = "19990"
-        environment["THREADMILL_DB_PATH"] = databasePath
-        // Do NOT set THREADMILL_USE_MOCK_TERMINAL — we need real ghostty rendering
-        environment["HOME"] = homeDirectory.path
-        environment["CFFIXED_USER_HOME"] = homeDirectory.path
-        environment["XDG_CONFIG_HOME"] = configDirectory.path
-        process.environment = environment
-
-        try process.run()
-        try waitForLaunchedApplication(processIdentifier: process.processIdentifier)
-
-        let app = XCUIApplication(bundleIdentifier: "dev.threadmill.app")
-        NSRunningApplication(processIdentifier: process.processIdentifier)?
-            .activate(options: [.activateIgnoringOtherApps])
+        let app = XCUIApplication(url: appBundle)
+        app.launchEnvironment = [
+            "THREADMILL_DISABLE_SSH_TUNNEL": "1",
+            "THREADMILL_HOST": "127.0.0.1",
+            "THREADMILL_DAEMON_PORT": "19990",
+            "THREADMILL_DB_PATH": databasePath,
+        ]
+        app.launch()
 
         guard app.windows.firstMatch.waitForExistence(timeout: 15) else {
-            process.terminate()
+            app.terminate()
             throw UITestError("Threadmill window did not appear")
         }
 
-        // Wait for the app to connect and sync
+        // Wait for connect + sync
         Thread.sleep(forTimeInterval: 3)
 
-        return RealSpindleUITestHarness(app: app, appProcess: process, tempDirectory: tempDirectory)
+        let harness = RealSpindleUITestHarness(app: app, tempDirectory: tempDirectory)
+        harness.createdThreadID = threadID
+        return harness
     }
 
+    private(set) var createdThreadID: String?
+
     func tearDown() {
-        if appProcess.isRunning {
-            appProcess.terminate()
-            appProcess.waitUntilExit()
+        // Clean up test thread via Spindle RPC
+        if let threadID = createdThreadID {
+            let sem = DispatchSemaphore(value: 0)
+            Task.detached {
+                let conn = try? await SimpleSpindleClient.connect()
+                _ = try? await conn?.rpc("thread.close", params: ["thread_id": threadID, "mode": "close"])
+                conn?.disconnect()
+                sem.signal()
+            }
+            _ = sem.wait(timeout: .now() + 10)
         }
+        app.terminate()
         try? FileManager.default.removeItem(at: tempDirectory)
+    }
+
+    /// Creates fixture project + thread via Spindle RPC BEFORE app launch.
+    private static func createThreadBeforeLaunch() throws -> String {
+        let sem = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var error: Error?
+        nonisolated(unsafe) var threadID: String?
+
+        Task.detached { @Sendable in
+            do {
+                let conn = try await SimpleSpindleClient.connect()
+                _ = try await conn.rpc("project.add", params: ["path": "/home/wsl/dev/threadmill-test-fixture"])
+                let projects = try await conn.rpc("project.list", params: nil) as? [[String: Any]] ?? []
+                guard let project = projects.first(where: { ($0["path"] as? String)?.contains("test-fixture") == true }),
+                      let projectID = project["id"] as? String else {
+                    error = UITestError("Fixture project not found")
+                    sem.signal()
+                    return
+                }
+
+                let name = "test-xcui-\(UUID().uuidString.prefix(8))"
+                let result = try await conn.rpc("thread.create", params: [
+                    "project_id": projectID, "name": name, "source_type": "new_feature"
+                ], timeout: 30) as? [String: Any]
+                threadID = result?["id"] as? String
+
+                // Wait for thread to become active
+                let deadline = Date().addingTimeInterval(30)
+                while Date() < deadline {
+                    if let event = try? await conn.waitForEvent("thread.status_changed", timeout: 5),
+                       (event["thread_id"] as? String) == threadID,
+                       (event["new"] as? String) == "active" {
+                        break
+                    }
+                }
+
+                conn.disconnect()
+            } catch let e {
+                error = e
+            }
+            sem.signal()
+        }
+
+        _ = sem.wait(timeout: .now() + 45)
+        if let error { throw error }
+        guard let id = threadID else { throw UITestError("Failed to create test thread") }
+        return id
     }
 
     func waitForElement(identifier: String, timeout: TimeInterval = 15) throws -> XCUIElement {
@@ -202,14 +249,5 @@ struct RealSpindleUITestHarness {
             .deletingLastPathComponent()
     }
 
-    private static func waitForLaunchedApplication(processIdentifier: Int32) throws {
-        let deadline = Date().addingTimeInterval(15)
-        while Date() < deadline {
-            if NSRunningApplication(processIdentifier: processIdentifier) != nil {
-                return
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-        }
-        throw UITestError("Threadmill process did not register with Launch Services")
-    }
+
 }
