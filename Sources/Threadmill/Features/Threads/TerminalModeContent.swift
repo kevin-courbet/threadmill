@@ -64,6 +64,7 @@ struct TerminalModeContent: View {
                     .accessibilityIdentifier("terminal.mock.text")
             } else {
                 GhosttyTerminalView(endpoint: endpoint)
+                    .accessibilityIdentifier("terminal.surface")
             }
         } else {
             VStack(spacing: 8) {

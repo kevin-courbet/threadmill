@@ -3,11 +3,8 @@ import XCTest
 
 /// Regression test: new terminal must show the shell prompt without pressing Enter.
 ///
-/// Launches the real app against real Spindle on beast. Seeds GRDB with a
-/// Remote so the app knows where to connect. On connect, the app syncs
-/// projects and threads from Spindle — the fixture project appears in the
-/// sidebar. The test then creates a thread via UI (New Thread sheet),
-/// navigates to Terminal mode, and asserts the prompt renders.
+/// Requires: real Spindle on beast, SSH tunnel, fixture thread created by
+/// Scripts/setup_xcui_fixture.swift (run via `task test:ui`).
 @MainActor
 final class TerminalPromptTests: XCTestCase {
     private var harness: RealSpindleUITestHarness?
@@ -28,54 +25,36 @@ final class TerminalPromptTests: XCTestCase {
             throw XCTSkip("Harness not available")
         }
 
-        // The fixture project should appear after sync. Look for it in sidebar.
-        let projectElement = harness.app.outlines.staticTexts["threadmill-test-fixture"].firstMatch
-        guard projectElement.waitForExistence(timeout: 15) else {
-            let screenshot = harness.app.windows.firstMatch.screenshot()
-            add(XCTAttachment(screenshot: screenshot))
-            XCTFail("Fixture project did not appear in sidebar after sync")
-            return
+        // Wait for thread row — try multiple query strategies since SwiftUI
+        // List/NavigationSplitView renders different element types depending
+        // on the accessibility tree.
+        let threadQueries = [
+            harness.app.outlines.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'thread.row.'")),
+            harness.app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'thread.row.'")),
+            harness.app.cells.matching(NSPredicate(format: "identifier BEGINSWITH 'thread.row.'")),
+            harness.app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'thread.row.'")),
+        ]
+        var threadRow: XCUIElement?
+        let deadline = Date().addingTimeInterval(30)
+        while Date() < deadline {
+            for query in threadQueries {
+                let match = query.firstMatch
+                if match.exists {
+                    threadRow = match
+                    break
+                }
+            }
+            if threadRow != nil { break }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
-
-        // Create a new thread via the UI
-        // Click the + button next to the project
-        let addButton = harness.app.buttons.matching(
-            NSPredicate(format: "identifier == 'thread.new' OR label == 'New Thread'")
-        ).firstMatch
-        if addButton.waitForExistence(timeout: 5) {
-            addButton.click()
-        } else {
-            // Try keyboard shortcut
-            harness.app.typeKey("n", modifierFlags: [.command])
-        }
-
-        // Fill in thread name in the sheet
-        let nameField = harness.app.textFields.firstMatch
-        guard nameField.waitForExistence(timeout: 5) else {
-            let screenshot = harness.app.windows.firstMatch.screenshot()
-            add(XCTAttachment(screenshot: screenshot))
-            XCTFail("New Thread sheet did not appear")
-            return
-        }
-        nameField.click()
-        nameField.typeText("test-xcui-prompt-\(UUID().uuidString.prefix(6))")
-
-        // Submit the sheet (click Create or press Enter)
-        let createButton = harness.app.buttons["Create"].firstMatch
-        if createButton.waitForExistence(timeout: 3) {
-            createButton.click()
-        } else {
-            nameField.typeKey(.return, modifierFlags: [])
-        }
-
-        // Wait for thread to appear and be selected
-        let threadRow = harness.app.outlines.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH 'thread.row.'")
-        ).firstMatch
-        guard threadRow.waitForExistence(timeout: 30) else {
-            let screenshot = harness.app.windows.firstMatch.screenshot()
-            add(XCTAttachment(screenshot: screenshot))
-            XCTFail("Thread row did not appear after creation")
+        guard let threadRow else {
+            let all = harness.app.descendants(matching: .any).allElementsBoundByIndex
+            let identifiedElements = all.compactMap { elem -> String? in
+                let id = elem.identifier
+                guard !id.isEmpty else { return nil }
+                return "\(elem.elementType.rawValue) [\(id)] '\(elem.label)'"
+            }
+            XCTFail("No thread row found.\nIdentified elements:\n\(identifiedElements.joined(separator: "\n"))")
             return
         }
         threadRow.click()
@@ -90,10 +69,17 @@ final class TerminalPromptTests: XCTestCase {
         let terminalView = harness.app.descendants(matching: .any)
             .matching(identifier: "terminal.surface")
             .firstMatch
-        guard terminalView.waitForExistence(timeout: 15) else {
+        guard terminalView.waitForExistence(timeout: 20) else {
             let screenshot = harness.app.windows.firstMatch.screenshot()
             add(XCTAttachment(screenshot: screenshot))
-            XCTFail("Terminal surface did not appear")
+            // Dump detail view elements
+            let all = harness.app.descendants(matching: .any).allElementsBoundByIndex
+            let ids = all.compactMap { e -> String? in
+                let id = e.identifier
+                guard !id.isEmpty, !id.hasPrefix("_XCUI") else { return nil }
+                return "[\(id)] '\(e.label)'"
+            }
+            XCTFail("Terminal surface did not appear.\nElements:\n\(ids.joined(separator: "\n"))")
             return
         }
 
@@ -121,61 +107,40 @@ final class TerminalPromptTests: XCTestCase {
 
 // MARK: - Real Spindle UI Test Harness
 
-/// Launches Threadmill against real Spindle on beast.
-/// Seeds GRDB with a Remote pointing at localhost:19990 (SSH tunnel).
-/// The app syncs projects/threads from Spindle on connect.
+/// Launches Threadmill against real Spindle.
+/// No GRDB seeding — the app syncs everything from Spindle on connect.
+/// Fixture thread must be pre-created by Scripts/setup_xcui_fixture.swift.
 @MainActor
 struct RealSpindleUITestHarness {
     let app: XCUIApplication
-
     private let tempDirectory: URL
 
     static func launch() throws -> RealSpindleUITestHarness {
         let tempDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("threadmill-uitest-real-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("threadmill-uitest-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
-        let homeDirectory = tempDirectory.appendingPathComponent("home", isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: homeDirectory.appendingPathComponent("Library/Preferences"),
-            withIntermediateDirectories: true
-        )
-        try FileManager.default.createDirectory(
-            at: homeDirectory.appendingPathComponent(".config"),
-            withIntermediateDirectories: true
-        )
 
         let databasePath = tempDirectory.appendingPathComponent("threadmill.db").path
-
-        // DatabaseManager creates a default "beast" remote on init.
-        // Update it to point at the real tunneled Spindle (127.0.0.1, no SSH tunnel).
-        let database = try DatabaseManager(databasePath: databasePath)
-        var remote = try database.ensureDefaultRemoteExists()
-        remote.host = "127.0.0.1"
-        remote.useSSHTunnel = false
-        try database.saveRemote(remote)
-
-        // Use NSWorkspace to launch the app — this registers it properly
-        // with the window server so XCUIApplication can find it.
         let appBundle = try locateAppBundle()
 
         let config = NSWorkspace.OpenConfiguration()
-        config.environment = [
-            "THREADMILL_DISABLE_SSH_TUNNEL": "1",
-            "THREADMILL_HOST": "127.0.0.1",
-            "THREADMILL_DAEMON_PORT": "19990",
-            "THREADMILL_DB_PATH": databasePath,
-        ]
+        var env = ProcessInfo.processInfo.environment
+        env["THREADMILL_DISABLE_SSH_TUNNEL"] = "1"
+        env["THREADMILL_HOST"] = "127.0.0.1"
+        env["THREADMILL_DAEMON_PORT"] = "19990"
+        // Use the default DB — the app already has the Remote configured.
+        // THREADMILL_DB_PATH override creates an empty DB that breaks sync.
+        config.environment = env
         config.activates = true
 
         var launchedApp: NSRunningApplication?
         let sem = DispatchSemaphore(value: 0)
-        NSWorkspace.shared.openApplication(at: appBundle, configuration: config) { app, error in
+        NSWorkspace.shared.openApplication(at: appBundle, configuration: config) { app, _ in
             launchedApp = app
-            if let error { NSLog("Launch error: %@", "\(error)") }
             sem.signal()
         }
         guard sem.wait(timeout: .now() + 15) == .success, launchedApp != nil else {
-            throw UITestError("Failed to launch Threadmill via NSWorkspace")
+            throw UITestError("Failed to launch Threadmill")
         }
 
         let app = XCUIApplication(bundleIdentifier: "dev.threadmill.app")
@@ -187,8 +152,8 @@ struct RealSpindleUITestHarness {
             throw UITestError("Threadmill window did not appear")
         }
 
-        // Wait for connect + project sync
-        Thread.sleep(forTimeInterval: 3)
+        // Wait for Spindle connect + sync
+        Thread.sleep(forTimeInterval: 5)
 
         return RealSpindleUITestHarness(app: app, tempDirectory: tempDirectory)
     }
@@ -200,16 +165,13 @@ struct RealSpindleUITestHarness {
 
     private static func locateAppBundle() throws -> URL {
         let root = repositoryRoot()
-        for path in [
-            ".build/debug/Threadmill.app",
-            ".build/arm64-apple-macosx/debug/Threadmill.app",
-        ] {
+        for path in [".build/debug/Threadmill.app", ".build/arm64-apple-macosx/debug/Threadmill.app"] {
             let candidate = root.appendingPathComponent(path, isDirectory: true)
             if FileManager.default.fileExists(atPath: candidate.appendingPathComponent("Contents/MacOS/Threadmill").path) {
                 return candidate
             }
         }
-        throw UITestError("Threadmill.app not found. Run `swift build --product Threadmill && bash Scripts/package_app.sh`.")
+        throw UITestError("Threadmill.app not found. Run: swift build --product Threadmill && bash Scripts/package_app.sh")
     }
 
     private static func repositoryRoot() -> URL {

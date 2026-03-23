@@ -73,12 +73,20 @@ tasks:
       - ssh beast "cd /home/wsl/dev/spindle && ~/.cargo/bin/cargo test"
 
   test:ui:
-    desc: Run UI e2e tests (requires Accessibility permission)
+    desc: Run UI e2e tests (requires beast + SSH tunnel + Accessibility permission)
     env:
       THREADMILL_RUN_UI_E2E: "1"
     cmds:
       - swift build --product Threadmill
       - bash Scripts/package_app.sh
+      - bash Scripts/sync_xcodeproj.sh
+      - |
+        if ! nc -z 127.0.0.1 19990 2>/dev/null; then
+          echo "Starting SSH tunnel..."
+          ssh -N -f -L 127.0.0.1:19990:127.0.0.1:19990 beast
+          sleep 1
+        fi
+      - swift Scripts/setup_xcui_fixture.swift
       - xcodebuild test -project UITests/ThreadmillUITests.xcodeproj -scheme ThreadmillUITests -destination 'platform=macOS'
 
   build:
