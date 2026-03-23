@@ -163,7 +163,6 @@ enum ChatModeActions {
                 let selectedHarness = harness ?? .opencode
                 let conversation = try await chatConversationService.createConversation(
                     threadID: threadID,
-                    directory: directory,
                     agentType: selectedHarness.agentType
                 )
 

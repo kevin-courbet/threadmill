@@ -4,3 +4,4 @@
 .swiftpm/
 .sisyphus/
 spindle/
+.sisyphus-handoff-*

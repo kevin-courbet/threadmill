@@ -41,8 +41,7 @@ final class TerminalPromptTests: IntegrationTestCase {
         let hasPrompt = allOutput.contains("❯")
             || allOutput.contains("$")
             || allOutput.contains("%")
-            || allOutput.contains("via")
-            || allOutput.contains("at ")
+            || allOutput.contains("via ")
 
         XCTAssertTrue(
             hasPrompt,

@@ -22,7 +22,7 @@ final class ChatConversationService: ChatConversationManaging {
         self.databaseManager = databaseManager
     }
 
-    func createConversation(threadID: String, directory _: String, agentType: String = "opencode") async throws -> ChatConversation {
+    func createConversation(threadID: String, agentType: String = "opencode") async throws -> ChatConversation {
         var conversation = ChatConversation(threadID: threadID)
         conversation.agentType = agentType
         try databaseManager.saveConversation(conversation)

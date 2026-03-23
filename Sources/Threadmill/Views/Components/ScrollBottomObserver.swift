@@ -25,7 +25,8 @@ struct ScrollBottomObserver: NSViewRepresentable {
         coordinator.detach()
     }
 
-    final class Coordinator: @unchecked Sendable {
+    @MainActor
+    final class Coordinator {
         var onNearBottomChange: (Bool) -> Void
         var onUserScrolledUpChange: (Bool) -> Void
 

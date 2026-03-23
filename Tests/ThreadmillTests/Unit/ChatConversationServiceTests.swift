@@ -10,7 +10,7 @@ final class ChatConversationServiceTests: XCTestCase {
 
         let conversation = try await service.createConversation(
             threadID: "thread_1",
-            directory: "/home/wsl/dev/project",
+            
             agentType: "claude"
         )
 
@@ -28,7 +28,7 @@ final class ChatConversationServiceTests: XCTestCase {
 
         let conversation = try await service.createConversation(
             threadID: "thread_1",
-            directory: "/home/wsl/dev/project",
+            
             agentType: "opencode"
         )
 

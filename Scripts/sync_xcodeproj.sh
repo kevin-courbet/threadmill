@@ -15,22 +15,27 @@ if [ ! -f "$PBXPROJ" ]; then
 fi
 
 # Collect all Swift source files (exclude _Fridge and threadmill-relay)
-SOURCE_FILES=$(find "$REPO_ROOT/Sources/Threadmill" -name '*.swift' \
+# Uses null-delimited find for space-safe paths.
+mapfile -d '' SOURCE_FILES < <(find "$REPO_ROOT/Sources/Threadmill" -name '*.swift' \
     -not -path '*/_Fridge/*' \
-    | sort)
+    -print0 | sort -z)
 
-# Generate deterministic UUIDs from file paths (md5 hash truncated to 24 hex chars)
+# macOS only — md5 is BSD md5, not md5sum
 uuid_for_file() {
     echo -n "$1" | md5 | head -c 24 | tr '[:lower:]' '[:upper:]'
 }
 
-# Build PBXBuildFile entries (B1 prefix pattern)
+# Write to temp file, atomically replace on success
+TMPFILE=$(mktemp)
+trap 'rm -f "$TMPFILE"' EXIT
+
+# Build PBXBuildFile entries
 BUILD_FILE_ENTRIES=""
 FILE_REF_ENTRIES=""
 SOURCE_BUILD_REFS=""
 FILE_GROUP_REFS=""
 
-for filepath in $SOURCE_FILES; do
+for filepath in "${SOURCE_FILES[@]}"; do
     relpath="${filepath#$REPO_ROOT/}"  # e.g., Sources/Threadmill/App/AppDelegate.swift
     filename=$(basename "$filepath")
     
@@ -60,7 +65,7 @@ done
 # Read the template sections we need to preserve (everything that isn't source files)
 # We'll regenerate the entire pbxproj from a template
 
-cat > "$PBXPROJ" << 'HEADER'
+cat > "$TMPFILE" << 'HEADER'
 // !$*UTF8*$!
 {
 	archiveVersion = 1;
@@ -73,10 +78,10 @@ cat > "$PBXPROJ" << 'HEADER'
 HEADER
 
 # Write build file entries
-echo -ne "$BUILD_FILE_ENTRIES" >> "$PBXPROJ"
+echo -ne "$BUILD_FILE_ENTRIES" >> "$TMPFILE"
 
 # Framework build files (static)
-cat >> "$PBXPROJ" << 'FRAMEWORKS_BUILD'
+cat >> "$TMPFILE" << 'FRAMEWORKS_BUILD'
 		A10000000000000000000004 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* XCTest.framework */; };
 		A1000000000000000000000D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000001 /* GRDB */; };
 		A1000000000000000000000F /* GhosttyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* GhosttyKit.xcframework */; };
@@ -90,10 +95,10 @@ cat >> "$PBXPROJ" << 'FRAMEWORKS_BUILD'
 FRAMEWORKS_BUILD
 
 # Write file reference entries
-echo -ne "$FILE_REF_ENTRIES" >> "$PBXPROJ"
+echo -ne "$FILE_REF_ENTRIES" >> "$TMPFILE"
 
 # Static file references
-cat >> "$PBXPROJ" << 'STATIC_REFS'
+cat >> "$TMPFILE" << 'STATIC_REFS'
 		A20000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000005 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A20000000000000000000006 /* ThreadmillUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ThreadmillUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -125,7 +130,7 @@ for filepath in $SOURCE_FILES; do
     THREADMILL_FILE_REFS+="				${ref_uuid} /* ${filename} */,\n"
 done
 
-cat >> "$PBXPROJ" << GROUPS
+cat >> "$TMPFILE" << GROUPS
 /* Begin PBXFrameworksBuildPhase section */
 		A30000000000000000000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
@@ -259,7 +264,7 @@ GROUPS
 
 # Read existing build settings from the original file
 # These are stable and don't change with file additions
-cat >> "$PBXPROJ" << 'BUILD_SETTINGS'
+cat >> "$TMPFILE" << 'BUILD_SETTINGS'
 /* Begin XCBuildConfiguration section */
 		A70000000000000000000004 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -469,4 +474,8 @@ cat >> "$PBXPROJ" << 'BUILD_SETTINGS'
 }
 BUILD_SETTINGS
 
-echo "Synced $(echo "$SOURCE_FILES" | wc -l | tr -d ' ') Threadmill source files to $PBXPROJ"
+# Atomic replace — only overwrites if generation succeeded
+mv "$TMPFILE" "$PBXPROJ"
+trap - EXIT
+
+echo "Synced ${#SOURCE_FILES[@]} Threadmill source files to $PBXPROJ"

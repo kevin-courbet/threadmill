@@ -148,7 +148,9 @@ final class RelayEndpoint {
         }
 
         guard clientFD >= 0 else {
+            #if DEBUG
             NSLog("threadmill-relay: BUFFERING %d bytes for %@/%@ (clientFD=-1, pending=%d)", frame.count - 2, threadID, preset, pendingFrames.count)
+            #endif
             enqueuePendingFrame(frame)
             return
         }
@@ -362,7 +364,9 @@ final class RelayEndpoint {
         guard clientFD >= 0, !pendingFrames.isEmpty else {
             return
         }
+        #if DEBUG
         NSLog("threadmill-relay: FLUSHING %d pending frames (%d bytes) for %@/%@", pendingFrames.count, pendingFrameBytes, threadID, preset)
+        #endif
         let frames = pendingFrames
         pendingFrames.removeAll(keepingCapacity: false)
         pendingFrameBytes = 0
