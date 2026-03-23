@@ -1,7 +1,7 @@
 import Foundation
 import Network
 
-final class MockSpindleServer {
+final class MockSpindleServer: @unchecked Sendable {
     struct PresetFixture {
         let name: String
         let command: String
@@ -101,7 +101,7 @@ final class MockSpindleServer {
         let sourceType: String
     }
 
-    private final class ClientConnection {
+    private final class ClientConnection: @unchecked Sendable {
         let connection: NWConnection
         private let queue: DispatchQueue
         private let onMessage: (NWProtocolWebSocket.Opcode, Data, ClientConnection) -> Void
@@ -230,8 +230,8 @@ final class MockSpindleServer {
 
         let listener = try NWListener(using: parameters, on: .any)
         let semaphore = DispatchSemaphore(value: 0)
-        var startupError: Error?
-        var signaled = false
+        nonisolated(unsafe) var startupError: Error?
+        nonisolated(unsafe) var signaled = false
 
         listener.newConnectionHandler = { [weak self] connection in
             self?.queue.async {

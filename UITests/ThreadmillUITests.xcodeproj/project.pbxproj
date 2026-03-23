@@ -7,38 +7,210 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A10000000000000000000001 /* TerminalCreationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* TerminalCreationTests.swift */; };
-		A1000000000000000000000E /* TerminalPresetBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* TerminalPresetBehaviorTests.swift */; };
-		A10000000000000000000002 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* TestHelpers.swift */; };
-		A10000000000000000000003 /* MockSpindleServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* MockSpindleServer.swift */; };
+		C19BF539E1ABF9F659538998 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C29BF539E1ABF9F659538998 /* AppDelegate.swift */; };
+		C1E0011C313B8B063EA4C6B8 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E0011C313B8B063EA4C6B8 /* AppState.swift */; };
+		C147D35DD2FBCD6D67DD0157 /* SettingsWindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C247D35DD2FBCD6D67DD0157 /* SettingsWindowManager.swift */; };
+		C193A13D8C39F3FA9A51B787 /* ThreadmillApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C293A13D8C39F3FA9A51B787 /* ThreadmillApp.swift */; };
+		C16EEA3B4C2935566CE5830E /* SSHTunnelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C26EEA3B4C2935566CE5830E /* SSHTunnelManager.swift */; };
+		C149BA1CEABB5172DF183836 /* WebSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C249BA1CEABB5172DF183836 /* WebSocketClient.swift */; };
+		C1A3F1281B6560FDD004323E /* ChatConversationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A3F1281B6560FDD004323E /* ChatConversationService.swift */; };
+		C1E9DCE8DAC4B86026A0FF22 /* DatabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E9DCE8DAC4B86026A0FF22 /* DatabaseManager.swift */; };
+		C1C22420E1E0E56ECF4B1587 /* DatabaseManager+DatabaseManaging.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C22420E1E0E56ECF4B1587 /* DatabaseManager+DatabaseManaging.swift */; };
+		C1E2831B880015B22A951BEA /* SyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E2831B880015B22A951BEA /* SyncService.swift */; };
+		C159AEE8148942B3D0DF8711 /* BrowserControlBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C259AEE8148942B3D0DF8711 /* BrowserControlBar.swift */; };
+		C1B23AA3B2DDE2F3DBAB4018 /* BrowserSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2B23AA3B2DDE2F3DBAB4018 /* BrowserSessionManager.swift */; };
+		C1AC8EA938C9529C97AB49D5 /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2AC8EA938C9529C97AB49D5 /* BrowserView.swift */; };
+		C1A53B8030437C361226DFAD /* WebViewWrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A53B8030437C361226DFAD /* WebViewWrapper.swift */; };
+		C122C123776B36D1EFFD52AD /* ChatInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C222C123776B36D1EFFD52AD /* ChatInputBar.swift */; };
+		C117B130B60A7F08D4B30CDF /* ChatMessageList.swift in Sources */ = {isa = PBXBuildFile; fileRef = C217B130B60A7F08D4B30CDF /* ChatMessageList.swift */; };
+		C1DC9D56CB250D110BB66AC8 /* ChatProcessingIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2DC9D56CB250D110BB66AC8 /* ChatProcessingIndicator.swift */; };
+		C15C9C4F28E026BF5658CDD2 /* ChatSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25C9C4F28E026BF5658CDD2 /* ChatSessionView.swift */; };
+		C1A94ACB72C79D186CDB9697 /* ChatSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A94ACB72C79D186CDB9697 /* ChatSessionViewModel.swift */; };
+		C13F747A487F3EBDCF17C39C /* CodeBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23F747A487F3EBDCF17C39C /* CodeBlockView.swift */; };
+		C178F5808EC562F4AB6BF6CA /* InlineDiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C278F5808EC562F4AB6BF6CA /* InlineDiffView.swift */; };
+		C1CE6D595A2D08C4DE5FAE99 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2CE6D595A2D08C4DE5FAE99 /* MarkdownView.swift */; };
+		C187D0F1723B20810275AF94 /* MessageBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C287D0F1723B20810275AF94 /* MessageBubbleView.swift */; };
+		C1066B0BE89D5FEA25245CF3 /* ToolCallGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2066B0BE89D5FEA25245CF3 /* ToolCallGroupView.swift */; };
+		C1029DF0F1C12ED4715D5D63 /* ToolCallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2029DF0F1C12ED4715D5D63 /* ToolCallView.swift */; };
+		C11EAA5EF0C2362EDFABBB02 /* TurnSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21EAA5EF0C2362EDFABBB02 /* TurnSummaryView.swift */; };
+		C133F2E4A976F06D315062E7 /* CodeEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C233F2E4A976F06D315062E7 /* CodeEditorView.swift */; };
+		C1A5E696AD338F38E27FE570 /* FileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A5E696AD338F38E27FE570 /* FileBrowserView.swift */; };
+		C14FE04C45F190D8585BFE1E /* FileBrowserViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24FE04C45F190D8585BFE1E /* FileBrowserViewModel.swift */; };
+		C12164B46CC15EF0A7431E46 /* FileContentTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22164B46CC15EF0A7431E46 /* FileContentTabView.swift */; };
+		C1098C717BA72A67AC403872 /* FileTreeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2098C717BA72A67AC403872 /* FileTreeView.swift */; };
+		C1692453E7E9EB3E5D6B3BD0 /* LanguageDetection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2692453E7E9EB3E5D6B3BD0 /* LanguageDetection.swift */; };
+		C1B60CDA57A2DFABDDE7F16C /* ProjectSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2B60CDA57A2DFABDDE7F16C /* ProjectSection.swift */; };
+		C11E4817C88A38C55F4B183D /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21E4817C88A38C55F4B183D /* SidebarView.swift */; };
+		C10A6E3BCBECC4B4B038BC53 /* AddRepoSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20A6E3BCBECC4B4B038BC53 /* AddRepoSheet.swift */; };
+		C157E1906350087E021AD017 /* RepoSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C257E1906350087E021AD017 /* RepoSection.swift */; };
+		C149D5E22D7BCF44CF6C4FAB /* ChatSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C249D5E22D7BCF44CF6C4FAB /* ChatSettingsView.swift */; };
+		C1382207BBD5689077C262EF /* GeneralSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2382207BBD5689077C262EF /* GeneralSettingsView.swift */; };
+		C191AF0B1FDBA2E84157EE32 /* RemotesSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C291AF0B1FDBA2E84157EE32 /* RemotesSettingsView.swift */; };
+		C11303A8FAD564882C02B34E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21303A8FAD564882C02B34E /* SettingsView.swift */; };
+		C1B0839B1961D341D367E04D /* TerminalTabModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2B0839B1961D341D367E04D /* TerminalTabModel.swift */; };
+		C1CB310C182E667616C7F9E5 /* ChatModeContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2CB310C182E667616C7F9E5 /* ChatModeContent.swift */; };
+		C1FCC0ABD2193FE48C565372 /* InactiveThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FCC0ABD2193FE48C565372 /* InactiveThreadView.swift */; };
+		C10705431738FAC1C424D7DE /* NewThreadSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20705431738FAC1C424D7DE /* NewThreadSheet.swift */; };
+		C15D17EC89DE0953C9E3FD7B /* TerminalModeContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25D17EC89DE0953C9E3FD7B /* TerminalModeContent.swift */; };
+		C1C6908F6C30666374098C6B /* ThreadDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C6908F6C30666374098C6B /* ThreadDetailView.swift */; };
+		C1BF67DC173F4EBABBC07640 /* ThreadRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2BF67DC173F4EBABBC07640 /* ThreadRow.swift */; };
+		C1CE4FCF558B5DE14F982E93 /* ThreadSessionTabsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2CE4FCF558B5DE14F982E93 /* ThreadSessionTabsProvider.swift */; };
+		C18129E5CBFA0886AA82B926 /* ThreadTabStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C28129E5CBFA0886AA82B926 /* ThreadTabStateManager.swift */; };
+		C1964DB915F4F484610B4234 /* GitHubAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2964DB915F4F484610B4234 /* GitHubAuth.swift */; };
+		C1E84E81A7831F1EB695002B /* GitHubClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2E84E81A7831F1EB695002B /* GitHubClient.swift */; };
+		C1C62CF2568EF0C5C77A24D4 /* AgentConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C62CF2568EF0C5C77A24D4 /* AgentConfig.swift */; };
+		C1F35CF46811F79B2E3D4FAD /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2F35CF46811F79B2E3D4FAD /* BrowserSession.swift */; };
+		C1FED8DCF71EF673E2DC6F0E /* ChatConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FED8DCF71EF673E2DC6F0E /* ChatConversation.swift */; };
+		C1C701991B5F7A70CCE6F1D9 /* ChatHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C701991B5F7A70CCE6F1D9 /* ChatHarness.swift */; };
+		C16AFEE0E66065ED183B46A4 /* Preset.swift in Sources */ = {isa = PBXBuildFile; fileRef = C26AFEE0E66065ED183B46A4 /* Preset.swift */; };
+		C1BEB67B1865F1C9F4C49FF5 /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2BEB67B1865F1C9F4C49FF5 /* Project.swift */; };
+		C1F2FC0BCF57B80107698505 /* Remote.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2F2FC0BCF57B80107698505 /* Remote.swift */; };
+		C1431C4B73A377374FE21B3B /* Repo.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2431C4B73A377374FE21B3B /* Repo.swift */; };
+		C1B7181CA53A89F6B095CA76 /* SystemStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2B7181CA53A89F6B095CA76 /* SystemStats.swift */; };
+		C1A31DB25CB0DC1C73BE0589 /* TabItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A31DB25CB0DC1C73BE0589 /* TabItem.swift */; };
+		C1C7D0450351D82A54730907 /* Thread.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C7D0450351D82A54730907 /* Thread.swift */; };
+		C142E388F3943F659DF17B42 /* ThreadStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = C242E388F3943F659DF17B42 /* ThreadStatus.swift */; };
+		C141D3FBB3DBB1B5BACDEEE5 /* TimelineItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = C241D3FBB3DBB1B5BACDEEE5 /* TimelineItem.swift */; };
+		C1AA221F202D41C30A131C36 /* ToolCallGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2AA221F202D41C30A131C36 /* ToolCallGroup.swift */; };
+		C15EB25CEA19B1948C9E8D88 /* ProvisioningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25EB25CEA19B1948C9E8D88 /* ProvisioningService.swift */; };
+		C13654E69AA54A72FF9376AA /* Abstractions.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23654E69AA54A72FF9376AA /* Abstractions.swift */; };
+		C17E235957232068C546650A /* RelayBinaryLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27E235957232068C546650A /* RelayBinaryLocator.swift */; };
+		C12D878AECB4D1C75EF833A2 /* GhosttyKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22D878AECB4D1C75EF833A2 /* GhosttyKeyInput.swift */; };
+		C14ACC96B8B1CDCB0866DDB4 /* GhosttyNSView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24ACC96B8B1CDCB0866DDB4 /* GhosttyNSView.swift */; };
+		C183ABD752FB6572F3E59301 /* GhosttySurfaceHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = C283ABD752FB6572F3E59301 /* GhosttySurfaceHost.swift */; };
+		C1113C82DDACF08BD5486328 /* GhosttyTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2113C82DDACF08BD5486328 /* GhosttyTerminalView.swift */; };
+		C14A5BF08AAFAD12EA443FA8 /* AgentSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24A5BF08AAFAD12EA443FA8 /* AgentSessionManager.swift */; };
+		C11BC15C879AB6E6275A28C2 /* ConnectionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21BC15C879AB6E6275A28C2 /* ConnectionManager.swift */; };
+		C16AEB019B7B13AF97AE3B36 /* RelayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = C26AEB019B7B13AF97AE3B36 /* RelayEndpoint.swift */; };
+		C14C0327C175789DD90779DA /* RemoteConnectionPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24C0327C175789DD90779DA /* RemoteConnectionPool.swift */; };
+		C125FE6B6F848B0D07833F8D /* TerminalMultiplexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C225FE6B6F848B0D07833F8D /* TerminalMultiplexer.swift */; };
+		C12D57004AD6539E21A0F665 /* AnimatedGradientBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22D57004AD6539E21A0F665 /* AnimatedGradientBorder.swift */; };
+		C191BB38A648A0B66F1EE397 /* ConnectionStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C291BB38A648A0B66F1EE397 /* ConnectionStatusView.swift */; };
+		C1FAB810BE5059A4CD13AA52 /* FileIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FAB810BE5059A4CD13AA52 /* FileIconView.swift */; };
+		C1453A92B82E8138D41D6A4B /* HoverButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2453A92B82E8138D41D6A4B /* HoverButton.swift */; };
+		C1F3F7AFFE89209EE89DCD7B /* LucideIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2F3F7AFFE89209EE89DCD7B /* LucideIcons.swift */; };
+		C1CE3AF088484890E249FB90 /* ScrollBottomObserver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2CE3AF088484890E249FB90 /* ScrollBottomObserver.swift */; };
+		C1416A68814F8A442CAE0428 /* SessionTabsScrollView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2416A68814F8A442CAE0428 /* SessionTabsScrollView.swift */; };
+		C11896B0A407006CDC4E27A9 /* ShimmerEffect.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21896B0A407006CDC4E27A9 /* ShimmerEffect.swift */; };
+		C15FB20AEC68C6DD4224EFD2 /* SystemStatsBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25FB20AEC68C6DD4224EFD2 /* SystemStatsBar.swift */; };
+		C15D4F7F81103E2369A02AAE /* TabCloseButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25D4F7F81103E2369A02AAE /* TabCloseButton.swift */; };
+		C12F6BBB3A502FAFF5DB8ADB /* TabContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22F6BBB3A502FAFF5DB8ADB /* TabContainer.swift */; };
+		C167B23BF60C42480133CAA1 /* TabLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C267B23BF60C42480133CAA1 /* TabLabel.swift */; };
+		C136AD69D689DD988AA8BDF9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C236AD69D689DD988AA8BDF9 /* ContentView.swift */; };
+		A11B7816C5DF87B9D66BA0BD /* MockSpindleServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21B7816C5DF87B9D66BA0BD /* MockSpindleServer.swift */; };
+		A1DC991BA299935A06D939E7 /* TerminalCreationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2DC991BA299935A06D939E7 /* TerminalCreationTests.swift */; };
+		A12790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift */; };
+		A1E1B358652A7A4128E87D28 /* TerminalPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E1B358652A7A4128E87D28 /* TerminalPromptTests.swift */; };
+		A1B0ABE6C7B8FA20173EC6C2 /* TestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2B0ABE6C7B8FA20173EC6C2 /* TestHelpers.swift */; };
 		A10000000000000000000004 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* XCTest.framework */; };
-		A10000000000000000000005 /* DatabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* DatabaseManager.swift */; };
-		A10000000000000000000006 /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* Project.swift */; };
-		A10000000000000000000007 /* Thread.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* Thread.swift */; };
-		A10000000000000000000008 /* ThreadStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* ThreadStatus.swift */; };
-		A10000000000000000000009 /* Remote.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* Remote.swift */; };
-		A1000000000000000000000A /* Repo.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* Repo.swift */; };
-		A1000000000000000000000B /* ChatConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* ChatConversation.swift */; };
-		A1000000000000000000000C /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* BrowserSession.swift */; };
 		A1000000000000000000000D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000001 /* GRDB */; };
+		A1000000000000000000000F /* GhosttyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* GhosttyKit.xcframework */; };
+		A10000000000000000000010 /* ACP in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000002 /* ACP */; };
+		A10000000000000000000011 /* ACPModel in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000003 /* ACPModel */; };
+		A10000000000000000000012 /* CodeEditLanguages in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000004 /* CodeEditLanguages */; };
+		A10000000000000000000013 /* CodeEditSourceEditor in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000005 /* CodeEditSourceEditor */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		A20000000000000000000001 /* TerminalCreationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalCreationTests.swift; sourceTree = "<group>"; };
-		A20000000000000000000002 /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
-		A20000000000000000000003 /* MockSpindleServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockSpindleServer.swift; sourceTree = "<group>"; };
+		C29BF539E1ABF9F659538998 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AppDelegate.swift"; path = "../Sources/Threadmill/App/AppDelegate.swift"; sourceTree = SOURCE_ROOT; };
+		C2E0011C313B8B063EA4C6B8 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AppState.swift"; path = "../Sources/Threadmill/App/AppState.swift"; sourceTree = SOURCE_ROOT; };
+		C247D35DD2FBCD6D67DD0157 /* SettingsWindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SettingsWindowManager.swift"; path = "../Sources/Threadmill/App/SettingsWindowManager.swift"; sourceTree = SOURCE_ROOT; };
+		C293A13D8C39F3FA9A51B787 /* ThreadmillApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ThreadmillApp.swift"; path = "../Sources/Threadmill/App/ThreadmillApp.swift"; sourceTree = SOURCE_ROOT; };
+		C26EEA3B4C2935566CE5830E /* SSHTunnelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SSHTunnelManager.swift"; path = "../Sources/Threadmill/Connection/SSHTunnelManager.swift"; sourceTree = SOURCE_ROOT; };
+		C249BA1CEABB5172DF183836 /* WebSocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "WebSocketClient.swift"; path = "../Sources/Threadmill/Connection/WebSocketClient.swift"; sourceTree = SOURCE_ROOT; };
+		C2A3F1281B6560FDD004323E /* ChatConversationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatConversationService.swift"; path = "../Sources/Threadmill/Database/ChatConversationService.swift"; sourceTree = SOURCE_ROOT; };
+		C2E9DCE8DAC4B86026A0FF22 /* DatabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DatabaseManager.swift"; path = "../Sources/Threadmill/Database/DatabaseManager.swift"; sourceTree = SOURCE_ROOT; };
+		C2C22420E1E0E56ECF4B1587 /* DatabaseManager+DatabaseManaging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DatabaseManager+DatabaseManaging.swift"; path = "../Sources/Threadmill/Database/DatabaseManager+DatabaseManaging.swift"; sourceTree = SOURCE_ROOT; };
+		C2E2831B880015B22A951BEA /* SyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SyncService.swift"; path = "../Sources/Threadmill/Database/SyncService.swift"; sourceTree = SOURCE_ROOT; };
+		C259AEE8148942B3D0DF8711 /* BrowserControlBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "BrowserControlBar.swift"; path = "../Sources/Threadmill/Features/Browser/BrowserControlBar.swift"; sourceTree = SOURCE_ROOT; };
+		C2B23AA3B2DDE2F3DBAB4018 /* BrowserSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "BrowserSessionManager.swift"; path = "../Sources/Threadmill/Features/Browser/BrowserSessionManager.swift"; sourceTree = SOURCE_ROOT; };
+		C2AC8EA938C9529C97AB49D5 /* BrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "BrowserView.swift"; path = "../Sources/Threadmill/Features/Browser/BrowserView.swift"; sourceTree = SOURCE_ROOT; };
+		C2A53B8030437C361226DFAD /* WebViewWrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "WebViewWrapper.swift"; path = "../Sources/Threadmill/Features/Browser/WebViewWrapper.swift"; sourceTree = SOURCE_ROOT; };
+		C222C123776B36D1EFFD52AD /* ChatInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatInputBar.swift"; path = "../Sources/Threadmill/Features/Chat/ChatInputBar.swift"; sourceTree = SOURCE_ROOT; };
+		C217B130B60A7F08D4B30CDF /* ChatMessageList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatMessageList.swift"; path = "../Sources/Threadmill/Features/Chat/ChatMessageList.swift"; sourceTree = SOURCE_ROOT; };
+		C2DC9D56CB250D110BB66AC8 /* ChatProcessingIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatProcessingIndicator.swift"; path = "../Sources/Threadmill/Features/Chat/ChatProcessingIndicator.swift"; sourceTree = SOURCE_ROOT; };
+		C25C9C4F28E026BF5658CDD2 /* ChatSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatSessionView.swift"; path = "../Sources/Threadmill/Features/Chat/ChatSessionView.swift"; sourceTree = SOURCE_ROOT; };
+		C2A94ACB72C79D186CDB9697 /* ChatSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatSessionViewModel.swift"; path = "../Sources/Threadmill/Features/Chat/ChatSessionViewModel.swift"; sourceTree = SOURCE_ROOT; };
+		C23F747A487F3EBDCF17C39C /* CodeBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CodeBlockView.swift"; path = "../Sources/Threadmill/Features/Chat/CodeBlockView.swift"; sourceTree = SOURCE_ROOT; };
+		C278F5808EC562F4AB6BF6CA /* InlineDiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "InlineDiffView.swift"; path = "../Sources/Threadmill/Features/Chat/InlineDiffView.swift"; sourceTree = SOURCE_ROOT; };
+		C2CE6D595A2D08C4DE5FAE99 /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "MarkdownView.swift"; path = "../Sources/Threadmill/Features/Chat/MarkdownView.swift"; sourceTree = SOURCE_ROOT; };
+		C287D0F1723B20810275AF94 /* MessageBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "MessageBubbleView.swift"; path = "../Sources/Threadmill/Features/Chat/MessageBubbleView.swift"; sourceTree = SOURCE_ROOT; };
+		C2066B0BE89D5FEA25245CF3 /* ToolCallGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ToolCallGroupView.swift"; path = "../Sources/Threadmill/Features/Chat/ToolCallGroupView.swift"; sourceTree = SOURCE_ROOT; };
+		C2029DF0F1C12ED4715D5D63 /* ToolCallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ToolCallView.swift"; path = "../Sources/Threadmill/Features/Chat/ToolCallView.swift"; sourceTree = SOURCE_ROOT; };
+		C21EAA5EF0C2362EDFABBB02 /* TurnSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TurnSummaryView.swift"; path = "../Sources/Threadmill/Features/Chat/TurnSummaryView.swift"; sourceTree = SOURCE_ROOT; };
+		C233F2E4A976F06D315062E7 /* CodeEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CodeEditorView.swift"; path = "../Sources/Threadmill/Features/Files/CodeEditorView.swift"; sourceTree = SOURCE_ROOT; };
+		C2A5E696AD338F38E27FE570 /* FileBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FileBrowserView.swift"; path = "../Sources/Threadmill/Features/Files/FileBrowserView.swift"; sourceTree = SOURCE_ROOT; };
+		C24FE04C45F190D8585BFE1E /* FileBrowserViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FileBrowserViewModel.swift"; path = "../Sources/Threadmill/Features/Files/FileBrowserViewModel.swift"; sourceTree = SOURCE_ROOT; };
+		C22164B46CC15EF0A7431E46 /* FileContentTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FileContentTabView.swift"; path = "../Sources/Threadmill/Features/Files/FileContentTabView.swift"; sourceTree = SOURCE_ROOT; };
+		C2098C717BA72A67AC403872 /* FileTreeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FileTreeView.swift"; path = "../Sources/Threadmill/Features/Files/FileTreeView.swift"; sourceTree = SOURCE_ROOT; };
+		C2692453E7E9EB3E5D6B3BD0 /* LanguageDetection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LanguageDetection.swift"; path = "../Sources/Threadmill/Features/Files/LanguageDetection.swift"; sourceTree = SOURCE_ROOT; };
+		C2B60CDA57A2DFABDDE7F16C /* ProjectSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ProjectSection.swift"; path = "../Sources/Threadmill/Features/Projects/ProjectSection.swift"; sourceTree = SOURCE_ROOT; };
+		C21E4817C88A38C55F4B183D /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SidebarView.swift"; path = "../Sources/Threadmill/Features/Projects/SidebarView.swift"; sourceTree = SOURCE_ROOT; };
+		C20A6E3BCBECC4B4B038BC53 /* AddRepoSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AddRepoSheet.swift"; path = "../Sources/Threadmill/Features/Repos/AddRepoSheet.swift"; sourceTree = SOURCE_ROOT; };
+		C257E1906350087E021AD017 /* RepoSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RepoSection.swift"; path = "../Sources/Threadmill/Features/Repos/RepoSection.swift"; sourceTree = SOURCE_ROOT; };
+		C249D5E22D7BCF44CF6C4FAB /* ChatSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatSettingsView.swift"; path = "../Sources/Threadmill/Features/Settings/ChatSettingsView.swift"; sourceTree = SOURCE_ROOT; };
+		C2382207BBD5689077C262EF /* GeneralSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "GeneralSettingsView.swift"; path = "../Sources/Threadmill/Features/Settings/GeneralSettingsView.swift"; sourceTree = SOURCE_ROOT; };
+		C291AF0B1FDBA2E84157EE32 /* RemotesSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RemotesSettingsView.swift"; path = "../Sources/Threadmill/Features/Settings/RemotesSettingsView.swift"; sourceTree = SOURCE_ROOT; };
+		C21303A8FAD564882C02B34E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SettingsView.swift"; path = "../Sources/Threadmill/Features/Settings/SettingsView.swift"; sourceTree = SOURCE_ROOT; };
+		C2B0839B1961D341D367E04D /* TerminalTabModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TerminalTabModel.swift"; path = "../Sources/Threadmill/Features/TerminalTabs/TerminalTabModel.swift"; sourceTree = SOURCE_ROOT; };
+		C2CB310C182E667616C7F9E5 /* ChatModeContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatModeContent.swift"; path = "../Sources/Threadmill/Features/Threads/ChatModeContent.swift"; sourceTree = SOURCE_ROOT; };
+		C2FCC0ABD2193FE48C565372 /* InactiveThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "InactiveThreadView.swift"; path = "../Sources/Threadmill/Features/Threads/InactiveThreadView.swift"; sourceTree = SOURCE_ROOT; };
+		C20705431738FAC1C424D7DE /* NewThreadSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "NewThreadSheet.swift"; path = "../Sources/Threadmill/Features/Threads/NewThreadSheet.swift"; sourceTree = SOURCE_ROOT; };
+		C25D17EC89DE0953C9E3FD7B /* TerminalModeContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TerminalModeContent.swift"; path = "../Sources/Threadmill/Features/Threads/TerminalModeContent.swift"; sourceTree = SOURCE_ROOT; };
+		C2C6908F6C30666374098C6B /* ThreadDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ThreadDetailView.swift"; path = "../Sources/Threadmill/Features/Threads/ThreadDetailView.swift"; sourceTree = SOURCE_ROOT; };
+		C2BF67DC173F4EBABBC07640 /* ThreadRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ThreadRow.swift"; path = "../Sources/Threadmill/Features/Threads/ThreadRow.swift"; sourceTree = SOURCE_ROOT; };
+		C2CE4FCF558B5DE14F982E93 /* ThreadSessionTabsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ThreadSessionTabsProvider.swift"; path = "../Sources/Threadmill/Features/Threads/ThreadSessionTabsProvider.swift"; sourceTree = SOURCE_ROOT; };
+		C28129E5CBFA0886AA82B926 /* ThreadTabStateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ThreadTabStateManager.swift"; path = "../Sources/Threadmill/Features/Threads/ThreadTabStateManager.swift"; sourceTree = SOURCE_ROOT; };
+		C2964DB915F4F484610B4234 /* GitHubAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "GitHubAuth.swift"; path = "../Sources/Threadmill/GitHub/GitHubAuth.swift"; sourceTree = SOURCE_ROOT; };
+		C2E84E81A7831F1EB695002B /* GitHubClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "GitHubClient.swift"; path = "../Sources/Threadmill/GitHub/GitHubClient.swift"; sourceTree = SOURCE_ROOT; };
+		C2C62CF2568EF0C5C77A24D4 /* AgentConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AgentConfig.swift"; path = "../Sources/Threadmill/Models/AgentConfig.swift"; sourceTree = SOURCE_ROOT; };
+		C2F35CF46811F79B2E3D4FAD /* BrowserSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "BrowserSession.swift"; path = "../Sources/Threadmill/Models/BrowserSession.swift"; sourceTree = SOURCE_ROOT; };
+		C2FED8DCF71EF673E2DC6F0E /* ChatConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatConversation.swift"; path = "../Sources/Threadmill/Models/ChatConversation.swift"; sourceTree = SOURCE_ROOT; };
+		C2C701991B5F7A70CCE6F1D9 /* ChatHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatHarness.swift"; path = "../Sources/Threadmill/Models/ChatHarness.swift"; sourceTree = SOURCE_ROOT; };
+		C26AFEE0E66065ED183B46A4 /* Preset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Preset.swift"; path = "../Sources/Threadmill/Models/Preset.swift"; sourceTree = SOURCE_ROOT; };
+		C2BEB67B1865F1C9F4C49FF5 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Project.swift"; path = "../Sources/Threadmill/Models/Project.swift"; sourceTree = SOURCE_ROOT; };
+		C2F2FC0BCF57B80107698505 /* Remote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Remote.swift"; path = "../Sources/Threadmill/Models/Remote.swift"; sourceTree = SOURCE_ROOT; };
+		C2431C4B73A377374FE21B3B /* Repo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Repo.swift"; path = "../Sources/Threadmill/Models/Repo.swift"; sourceTree = SOURCE_ROOT; };
+		C2B7181CA53A89F6B095CA76 /* SystemStats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SystemStats.swift"; path = "../Sources/Threadmill/Models/SystemStats.swift"; sourceTree = SOURCE_ROOT; };
+		C2A31DB25CB0DC1C73BE0589 /* TabItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TabItem.swift"; path = "../Sources/Threadmill/Models/TabItem.swift"; sourceTree = SOURCE_ROOT; };
+		C2C7D0450351D82A54730907 /* Thread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Thread.swift"; path = "../Sources/Threadmill/Models/Thread.swift"; sourceTree = SOURCE_ROOT; };
+		C242E388F3943F659DF17B42 /* ThreadStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ThreadStatus.swift"; path = "../Sources/Threadmill/Models/ThreadStatus.swift"; sourceTree = SOURCE_ROOT; };
+		C241D3FBB3DBB1B5BACDEEE5 /* TimelineItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TimelineItem.swift"; path = "../Sources/Threadmill/Models/TimelineItem.swift"; sourceTree = SOURCE_ROOT; };
+		C2AA221F202D41C30A131C36 /* ToolCallGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ToolCallGroup.swift"; path = "../Sources/Threadmill/Models/ToolCallGroup.swift"; sourceTree = SOURCE_ROOT; };
+		C25EB25CEA19B1948C9E8D88 /* ProvisioningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ProvisioningService.swift"; path = "../Sources/Threadmill/Services/ProvisioningService.swift"; sourceTree = SOURCE_ROOT; };
+		C23654E69AA54A72FF9376AA /* Abstractions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Abstractions.swift"; path = "../Sources/Threadmill/Support/Abstractions.swift"; sourceTree = SOURCE_ROOT; };
+		C27E235957232068C546650A /* RelayBinaryLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RelayBinaryLocator.swift"; path = "../Sources/Threadmill/Support/RelayBinaryLocator.swift"; sourceTree = SOURCE_ROOT; };
+		C22D878AECB4D1C75EF833A2 /* GhosttyKeyInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "GhosttyKeyInput.swift"; path = "../Sources/Threadmill/Terminal/GhosttyKeyInput.swift"; sourceTree = SOURCE_ROOT; };
+		C24ACC96B8B1CDCB0866DDB4 /* GhosttyNSView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "GhosttyNSView.swift"; path = "../Sources/Threadmill/Terminal/GhosttyNSView.swift"; sourceTree = SOURCE_ROOT; };
+		C283ABD752FB6572F3E59301 /* GhosttySurfaceHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "GhosttySurfaceHost.swift"; path = "../Sources/Threadmill/Terminal/GhosttySurfaceHost.swift"; sourceTree = SOURCE_ROOT; };
+		C2113C82DDACF08BD5486328 /* GhosttyTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "GhosttyTerminalView.swift"; path = "../Sources/Threadmill/Terminal/GhosttyTerminalView.swift"; sourceTree = SOURCE_ROOT; };
+		C24A5BF08AAFAD12EA443FA8 /* AgentSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AgentSessionManager.swift"; path = "../Sources/Threadmill/Transport/AgentSessionManager.swift"; sourceTree = SOURCE_ROOT; };
+		C21BC15C879AB6E6275A28C2 /* ConnectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ConnectionManager.swift"; path = "../Sources/Threadmill/Transport/ConnectionManager.swift"; sourceTree = SOURCE_ROOT; };
+		C26AEB019B7B13AF97AE3B36 /* RelayEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RelayEndpoint.swift"; path = "../Sources/Threadmill/Transport/RelayEndpoint.swift"; sourceTree = SOURCE_ROOT; };
+		C24C0327C175789DD90779DA /* RemoteConnectionPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RemoteConnectionPool.swift"; path = "../Sources/Threadmill/Transport/RemoteConnectionPool.swift"; sourceTree = SOURCE_ROOT; };
+		C225FE6B6F848B0D07833F8D /* TerminalMultiplexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TerminalMultiplexer.swift"; path = "../Sources/Threadmill/Transport/TerminalMultiplexer.swift"; sourceTree = SOURCE_ROOT; };
+		C22D57004AD6539E21A0F665 /* AnimatedGradientBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AnimatedGradientBorder.swift"; path = "../Sources/Threadmill/Views/Components/AnimatedGradientBorder.swift"; sourceTree = SOURCE_ROOT; };
+		C291BB38A648A0B66F1EE397 /* ConnectionStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ConnectionStatusView.swift"; path = "../Sources/Threadmill/Views/Components/ConnectionStatusView.swift"; sourceTree = SOURCE_ROOT; };
+		C2FAB810BE5059A4CD13AA52 /* FileIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FileIconView.swift"; path = "../Sources/Threadmill/Views/Components/FileIconView.swift"; sourceTree = SOURCE_ROOT; };
+		C2453A92B82E8138D41D6A4B /* HoverButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "HoverButton.swift"; path = "../Sources/Threadmill/Views/Components/HoverButton.swift"; sourceTree = SOURCE_ROOT; };
+		C2F3F7AFFE89209EE89DCD7B /* LucideIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LucideIcons.swift"; path = "../Sources/Threadmill/Views/Components/LucideIcons.swift"; sourceTree = SOURCE_ROOT; };
+		C2CE3AF088484890E249FB90 /* ScrollBottomObserver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ScrollBottomObserver.swift"; path = "../Sources/Threadmill/Views/Components/ScrollBottomObserver.swift"; sourceTree = SOURCE_ROOT; };
+		C2416A68814F8A442CAE0428 /* SessionTabsScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SessionTabsScrollView.swift"; path = "../Sources/Threadmill/Views/Components/SessionTabsScrollView.swift"; sourceTree = SOURCE_ROOT; };
+		C21896B0A407006CDC4E27A9 /* ShimmerEffect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ShimmerEffect.swift"; path = "../Sources/Threadmill/Views/Components/ShimmerEffect.swift"; sourceTree = SOURCE_ROOT; };
+		C25FB20AEC68C6DD4224EFD2 /* SystemStatsBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SystemStatsBar.swift"; path = "../Sources/Threadmill/Views/Components/SystemStatsBar.swift"; sourceTree = SOURCE_ROOT; };
+		C25D4F7F81103E2369A02AAE /* TabCloseButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TabCloseButton.swift"; path = "../Sources/Threadmill/Views/Components/TabCloseButton.swift"; sourceTree = SOURCE_ROOT; };
+		C22F6BBB3A502FAFF5DB8ADB /* TabContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TabContainer.swift"; path = "../Sources/Threadmill/Views/Components/TabContainer.swift"; sourceTree = SOURCE_ROOT; };
+		C267B23BF60C42480133CAA1 /* TabLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TabLabel.swift"; path = "../Sources/Threadmill/Views/Components/TabLabel.swift"; sourceTree = SOURCE_ROOT; };
+		C236AD69D689DD988AA8BDF9 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ContentView.swift"; path = "../Sources/Threadmill/Views/ContentView.swift"; sourceTree = SOURCE_ROOT; };
+		A21B7816C5DF87B9D66BA0BD /* MockSpindleServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockSpindleServer.swift; sourceTree = "<group>"; };
+		A2DC991BA299935A06D939E7 /* TerminalCreationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalCreationTests.swift; sourceTree = "<group>"; };
+		A22790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalPresetBehaviorTests.swift; sourceTree = "<group>"; };
+		A2E1B358652A7A4128E87D28 /* TerminalPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalPromptTests.swift; sourceTree = "<group>"; };
+		A2B0ABE6C7B8FA20173EC6C2 /* TestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelpers.swift; sourceTree = "<group>"; };
 		A20000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000005 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A20000000000000000000006 /* ThreadmillUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ThreadmillUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		A20000000000000000000007 /* DatabaseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DatabaseManager.swift; path = ../Sources/Threadmill/Database/DatabaseManager.swift; sourceTree = SOURCE_ROOT; };
-		A20000000000000000000008 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Project.swift; path = ../Sources/Threadmill/Models/Project.swift; sourceTree = SOURCE_ROOT; };
-		A20000000000000000000009 /* Thread.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Thread.swift; path = ../Sources/Threadmill/Models/Thread.swift; sourceTree = SOURCE_ROOT; };
-		A2000000000000000000000A /* ThreadStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ThreadStatus.swift; path = ../Sources/Threadmill/Models/ThreadStatus.swift; sourceTree = SOURCE_ROOT; };
-		A2000000000000000000000B /* Remote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Remote.swift; path = ../Sources/Threadmill/Models/Remote.swift; sourceTree = SOURCE_ROOT; };
-		A2000000000000000000000C /* Repo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Repo.swift; path = ../Sources/Threadmill/Models/Repo.swift; sourceTree = SOURCE_ROOT; };
-		A2000000000000000000000D /* ChatConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ChatConversation.swift; path = ../Sources/Threadmill/Models/ChatConversation.swift; sourceTree = SOURCE_ROOT; };
-		A2000000000000000000000E /* BrowserSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BrowserSession.swift; path = ../Sources/Threadmill/Models/BrowserSession.swift; sourceTree = SOURCE_ROOT; };
-		A2000000000000000000000F /* TerminalPresetBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalPresetBehaviorTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000010 /* GhosttyKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = GhosttyKit.xcframework; path = ../GhosttyKit.xcframework; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -46,8 +218,13 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A1000000000000000000000D /* GRDB in Frameworks */,
 				A10000000000000000000004 /* XCTest.framework in Frameworks */,
+				A1000000000000000000000D /* GRDB in Frameworks */,
+				A1000000000000000000000F /* GhosttyKit.xcframework in Frameworks */,
+				A10000000000000000000010 /* ACP in Frameworks */,
+				A10000000000000000000011 /* ACPModel in Frameworks */,
+				A10000000000000000000012 /* CodeEditLanguages in Frameworks */,
+				A10000000000000000000013 /* CodeEditSourceEditor in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -57,34 +234,131 @@
 		A40000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
-				A40000000000000000000005 /* ThreadmillSources */,
-				A40000000000000000000002 /* UITests */,
-				A40000000000000000000003 /* Frameworks */,
-				A40000000000000000000004 /* Products */,
+				A40000000000000000000002 /* ThreadmillUITests */,
+				A40000000000000000000003 /* Threadmill Sources */,
+				A40000000000000000000004 /* Frameworks */,
+				A40000000000000000000005 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		A40000000000000000000002 /* UITests */ = {
+		A40000000000000000000002 /* ThreadmillUITests */ = {
 			isa = PBXGroup;
 			children = (
-				A20000000000000000000001 /* TerminalCreationTests.swift */,
-				A2000000000000000000000F /* TerminalPresetBehaviorTests.swift */,
-				A20000000000000000000002 /* TestHelpers.swift */,
-				A20000000000000000000003 /* MockSpindleServer.swift */,
-				A20000000000000000000004 /* Info.plist */,
+				A21B7816C5DF87B9D66BA0BD /* MockSpindleServer.swift */,
+				A2DC991BA299935A06D939E7 /* TerminalCreationTests.swift */,
+				A22790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift */,
+				A2E1B358652A7A4128E87D28 /* TerminalPromptTests.swift */,
+				A2B0ABE6C7B8FA20173EC6C2 /* TestHelpers.swift */,				A20000000000000000000004 /* Info.plist */,
 			);
 			path = ThreadmillUITests;
 			sourceTree = "<group>";
 		};
-		A40000000000000000000003 /* Frameworks */ = {
+		A40000000000000000000003 /* Threadmill Sources */ = {
+			isa = PBXGroup;
+			children = (
+				C29BF539E1ABF9F659538998 /* AppDelegate.swift */,
+				C2E0011C313B8B063EA4C6B8 /* AppState.swift */,
+				C247D35DD2FBCD6D67DD0157 /* SettingsWindowManager.swift */,
+				C293A13D8C39F3FA9A51B787 /* ThreadmillApp.swift */,
+				C26EEA3B4C2935566CE5830E /* SSHTunnelManager.swift */,
+				C249BA1CEABB5172DF183836 /* WebSocketClient.swift */,
+				C2A3F1281B6560FDD004323E /* ChatConversationService.swift */,
+				C2E9DCE8DAC4B86026A0FF22 /* DatabaseManager.swift */,
+				C2C22420E1E0E56ECF4B1587 /* DatabaseManager+DatabaseManaging.swift */,
+				C2E2831B880015B22A951BEA /* SyncService.swift */,
+				C259AEE8148942B3D0DF8711 /* BrowserControlBar.swift */,
+				C2B23AA3B2DDE2F3DBAB4018 /* BrowserSessionManager.swift */,
+				C2AC8EA938C9529C97AB49D5 /* BrowserView.swift */,
+				C2A53B8030437C361226DFAD /* WebViewWrapper.swift */,
+				C222C123776B36D1EFFD52AD /* ChatInputBar.swift */,
+				C217B130B60A7F08D4B30CDF /* ChatMessageList.swift */,
+				C2DC9D56CB250D110BB66AC8 /* ChatProcessingIndicator.swift */,
+				C25C9C4F28E026BF5658CDD2 /* ChatSessionView.swift */,
+				C2A94ACB72C79D186CDB9697 /* ChatSessionViewModel.swift */,
+				C23F747A487F3EBDCF17C39C /* CodeBlockView.swift */,
+				C278F5808EC562F4AB6BF6CA /* InlineDiffView.swift */,
+				C2CE6D595A2D08C4DE5FAE99 /* MarkdownView.swift */,
+				C287D0F1723B20810275AF94 /* MessageBubbleView.swift */,
+				C2066B0BE89D5FEA25245CF3 /* ToolCallGroupView.swift */,
+				C2029DF0F1C12ED4715D5D63 /* ToolCallView.swift */,
+				C21EAA5EF0C2362EDFABBB02 /* TurnSummaryView.swift */,
+				C233F2E4A976F06D315062E7 /* CodeEditorView.swift */,
+				C2A5E696AD338F38E27FE570 /* FileBrowserView.swift */,
+				C24FE04C45F190D8585BFE1E /* FileBrowserViewModel.swift */,
+				C22164B46CC15EF0A7431E46 /* FileContentTabView.swift */,
+				C2098C717BA72A67AC403872 /* FileTreeView.swift */,
+				C2692453E7E9EB3E5D6B3BD0 /* LanguageDetection.swift */,
+				C2B60CDA57A2DFABDDE7F16C /* ProjectSection.swift */,
+				C21E4817C88A38C55F4B183D /* SidebarView.swift */,
+				C20A6E3BCBECC4B4B038BC53 /* AddRepoSheet.swift */,
+				C257E1906350087E021AD017 /* RepoSection.swift */,
+				C249D5E22D7BCF44CF6C4FAB /* ChatSettingsView.swift */,
+				C2382207BBD5689077C262EF /* GeneralSettingsView.swift */,
+				C291AF0B1FDBA2E84157EE32 /* RemotesSettingsView.swift */,
+				C21303A8FAD564882C02B34E /* SettingsView.swift */,
+				C2B0839B1961D341D367E04D /* TerminalTabModel.swift */,
+				C2CB310C182E667616C7F9E5 /* ChatModeContent.swift */,
+				C2FCC0ABD2193FE48C565372 /* InactiveThreadView.swift */,
+				C20705431738FAC1C424D7DE /* NewThreadSheet.swift */,
+				C25D17EC89DE0953C9E3FD7B /* TerminalModeContent.swift */,
+				C2C6908F6C30666374098C6B /* ThreadDetailView.swift */,
+				C2BF67DC173F4EBABBC07640 /* ThreadRow.swift */,
+				C2CE4FCF558B5DE14F982E93 /* ThreadSessionTabsProvider.swift */,
+				C28129E5CBFA0886AA82B926 /* ThreadTabStateManager.swift */,
+				C2964DB915F4F484610B4234 /* GitHubAuth.swift */,
+				C2E84E81A7831F1EB695002B /* GitHubClient.swift */,
+				C2C62CF2568EF0C5C77A24D4 /* AgentConfig.swift */,
+				C2F35CF46811F79B2E3D4FAD /* BrowserSession.swift */,
+				C2FED8DCF71EF673E2DC6F0E /* ChatConversation.swift */,
+				C2C701991B5F7A70CCE6F1D9 /* ChatHarness.swift */,
+				C26AFEE0E66065ED183B46A4 /* Preset.swift */,
+				C2BEB67B1865F1C9F4C49FF5 /* Project.swift */,
+				C2F2FC0BCF57B80107698505 /* Remote.swift */,
+				C2431C4B73A377374FE21B3B /* Repo.swift */,
+				C2B7181CA53A89F6B095CA76 /* SystemStats.swift */,
+				C2A31DB25CB0DC1C73BE0589 /* TabItem.swift */,
+				C2C7D0450351D82A54730907 /* Thread.swift */,
+				C242E388F3943F659DF17B42 /* ThreadStatus.swift */,
+				C241D3FBB3DBB1B5BACDEEE5 /* TimelineItem.swift */,
+				C2AA221F202D41C30A131C36 /* ToolCallGroup.swift */,
+				C25EB25CEA19B1948C9E8D88 /* ProvisioningService.swift */,
+				C23654E69AA54A72FF9376AA /* Abstractions.swift */,
+				C27E235957232068C546650A /* RelayBinaryLocator.swift */,
+				C22D878AECB4D1C75EF833A2 /* GhosttyKeyInput.swift */,
+				C24ACC96B8B1CDCB0866DDB4 /* GhosttyNSView.swift */,
+				C283ABD752FB6572F3E59301 /* GhosttySurfaceHost.swift */,
+				C2113C82DDACF08BD5486328 /* GhosttyTerminalView.swift */,
+				C24A5BF08AAFAD12EA443FA8 /* AgentSessionManager.swift */,
+				C21BC15C879AB6E6275A28C2 /* ConnectionManager.swift */,
+				C26AEB019B7B13AF97AE3B36 /* RelayEndpoint.swift */,
+				C24C0327C175789DD90779DA /* RemoteConnectionPool.swift */,
+				C225FE6B6F848B0D07833F8D /* TerminalMultiplexer.swift */,
+				C22D57004AD6539E21A0F665 /* AnimatedGradientBorder.swift */,
+				C291BB38A648A0B66F1EE397 /* ConnectionStatusView.swift */,
+				C2FAB810BE5059A4CD13AA52 /* FileIconView.swift */,
+				C2453A92B82E8138D41D6A4B /* HoverButton.swift */,
+				C2F3F7AFFE89209EE89DCD7B /* LucideIcons.swift */,
+				C2CE3AF088484890E249FB90 /* ScrollBottomObserver.swift */,
+				C2416A68814F8A442CAE0428 /* SessionTabsScrollView.swift */,
+				C21896B0A407006CDC4E27A9 /* ShimmerEffect.swift */,
+				C25FB20AEC68C6DD4224EFD2 /* SystemStatsBar.swift */,
+				C25D4F7F81103E2369A02AAE /* TabCloseButton.swift */,
+				C22F6BBB3A502FAFF5DB8ADB /* TabContainer.swift */,
+				C267B23BF60C42480133CAA1 /* TabLabel.swift */,
+				C236AD69D689DD988AA8BDF9 /* ContentView.swift */,			);
+			name = "Threadmill Sources";
+			sourceTree = "<group>";
+		};
+		A40000000000000000000004 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000005 /* XCTest.framework */,
+				A20000000000000000000010 /* GhosttyKit.xcframework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		A40000000000000000000004 /* Products */ = {
+		A40000000000000000000005 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000006 /* ThreadmillUITests.xctest */,
@@ -92,31 +366,15 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
-		A40000000000000000000005 /* ThreadmillSources */ = {
-			isa = PBXGroup;
-			children = (
-				A20000000000000000000007 /* DatabaseManager.swift */,
-				A20000000000000000000008 /* Project.swift */,
-				A20000000000000000000009 /* Thread.swift */,
-				A2000000000000000000000A /* ThreadStatus.swift */,
-				A2000000000000000000000B /* Remote.swift */,
-				A2000000000000000000000C /* Repo.swift */,
-				A2000000000000000000000D /* ChatConversation.swift */,
-				A2000000000000000000000E /* BrowserSession.swift */,
-			);
-			name = ThreadmillSources;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
 		A50000000000000000000001 /* ThreadmillUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A70000000000000000000002 /* Build configuration list for PBXNativeTarget "ThreadmillUITests" */;
+			buildConfigurationList = A70000000000000000000003 /* Build configuration list for PBXNativeTarget "ThreadmillUITests" */;
 			buildPhases = (
-				A30000000000000000000002 /* Sources */,
+				A60000000000000000000001 /* Sources */,
 				A30000000000000000000001 /* Frameworks */,
-				A30000000000000000000003 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -125,6 +383,10 @@
 			name = ThreadmillUITests;
 			packageProductDependencies = (
 				A90000000000000000000001 /* GRDB */,
+				A90000000000000000000002 /* ACP */,
+				A90000000000000000000003 /* ACPModel */,
+				A90000000000000000000004 /* CodeEditLanguages */,
+				A90000000000000000000005 /* CodeEditSourceEditor */,
 			);
 			productName = ThreadmillUITests;
 			productReference = A20000000000000000000006 /* ThreadmillUITests.xctest */;
@@ -133,20 +395,13 @@
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		A60000000000000000000001 /* Project object */ = {
+		A50000000000000000000002 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1600;
 				LastUpgradeCheck = 1600;
-				TargetAttributes = {
-					A50000000000000000000001 = {
-						CreatedOnToolsVersion = 16.0;
-					};
-				};
 			};
 			buildConfigurationList = A70000000000000000000001 /* Build configuration list for PBXProject "ThreadmillUITests" */;
-			compatibilityVersion = "Xcode 16.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -155,9 +410,13 @@
 			);
 			mainGroup = A40000000000000000000001;
 			packageReferences = (
-				AA0000000000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+				A80000000000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */,
+				A80000000000000000000002 /* XCRemoteSwiftPackageReference "swift-acp" */,
+				A80000000000000000000003 /* XCRemoteSwiftPackageReference "CodeEditSourceEditor" */,
+				A80000000000000000000004 /* XCRemoteSwiftPackageReference "CodeEditLanguages" */,
 			);
-			productRefGroup = A40000000000000000000004 /* Products */;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = A40000000000000000000005 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -166,142 +425,234 @@
 		};
 /* End PBXProject section */
 
-/* Begin PBXResourcesBuildPhase section */
-		A30000000000000000000003 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXResourcesBuildPhase section */
-
 /* Begin PBXSourcesBuildPhase section */
-		A30000000000000000000002 /* Sources */ = {
+		A60000000000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A1000000000000000000000C /* BrowserSession.swift in Sources */,
-				A1000000000000000000000B /* ChatConversation.swift in Sources */,
-				A10000000000000000000005 /* DatabaseManager.swift in Sources */,
-				A10000000000000000000003 /* MockSpindleServer.swift in Sources */,
-				A10000000000000000000006 /* Project.swift in Sources */,
-				A10000000000000000000009 /* Remote.swift in Sources */,
-				A1000000000000000000000A /* Repo.swift in Sources */,
-				A10000000000000000000002 /* TestHelpers.swift in Sources */,
-				A10000000000000000000007 /* Thread.swift in Sources */,
-				A10000000000000000000008 /* ThreadStatus.swift in Sources */,
-				A10000000000000000000001 /* TerminalCreationTests.swift in Sources */,
-				A1000000000000000000000E /* TerminalPresetBehaviorTests.swift in Sources */,
-			);
+				C19BF539E1ABF9F659538998 /* AppDelegate.swift in Sources */,
+				C1E0011C313B8B063EA4C6B8 /* AppState.swift in Sources */,
+				C147D35DD2FBCD6D67DD0157 /* SettingsWindowManager.swift in Sources */,
+				C193A13D8C39F3FA9A51B787 /* ThreadmillApp.swift in Sources */,
+				C16EEA3B4C2935566CE5830E /* SSHTunnelManager.swift in Sources */,
+				C149BA1CEABB5172DF183836 /* WebSocketClient.swift in Sources */,
+				C1A3F1281B6560FDD004323E /* ChatConversationService.swift in Sources */,
+				C1E9DCE8DAC4B86026A0FF22 /* DatabaseManager.swift in Sources */,
+				C1C22420E1E0E56ECF4B1587 /* DatabaseManager+DatabaseManaging.swift in Sources */,
+				C1E2831B880015B22A951BEA /* SyncService.swift in Sources */,
+				C159AEE8148942B3D0DF8711 /* BrowserControlBar.swift in Sources */,
+				C1B23AA3B2DDE2F3DBAB4018 /* BrowserSessionManager.swift in Sources */,
+				C1AC8EA938C9529C97AB49D5 /* BrowserView.swift in Sources */,
+				C1A53B8030437C361226DFAD /* WebViewWrapper.swift in Sources */,
+				C122C123776B36D1EFFD52AD /* ChatInputBar.swift in Sources */,
+				C117B130B60A7F08D4B30CDF /* ChatMessageList.swift in Sources */,
+				C1DC9D56CB250D110BB66AC8 /* ChatProcessingIndicator.swift in Sources */,
+				C15C9C4F28E026BF5658CDD2 /* ChatSessionView.swift in Sources */,
+				C1A94ACB72C79D186CDB9697 /* ChatSessionViewModel.swift in Sources */,
+				C13F747A487F3EBDCF17C39C /* CodeBlockView.swift in Sources */,
+				C178F5808EC562F4AB6BF6CA /* InlineDiffView.swift in Sources */,
+				C1CE6D595A2D08C4DE5FAE99 /* MarkdownView.swift in Sources */,
+				C187D0F1723B20810275AF94 /* MessageBubbleView.swift in Sources */,
+				C1066B0BE89D5FEA25245CF3 /* ToolCallGroupView.swift in Sources */,
+				C1029DF0F1C12ED4715D5D63 /* ToolCallView.swift in Sources */,
+				C11EAA5EF0C2362EDFABBB02 /* TurnSummaryView.swift in Sources */,
+				C133F2E4A976F06D315062E7 /* CodeEditorView.swift in Sources */,
+				C1A5E696AD338F38E27FE570 /* FileBrowserView.swift in Sources */,
+				C14FE04C45F190D8585BFE1E /* FileBrowserViewModel.swift in Sources */,
+				C12164B46CC15EF0A7431E46 /* FileContentTabView.swift in Sources */,
+				C1098C717BA72A67AC403872 /* FileTreeView.swift in Sources */,
+				C1692453E7E9EB3E5D6B3BD0 /* LanguageDetection.swift in Sources */,
+				C1B60CDA57A2DFABDDE7F16C /* ProjectSection.swift in Sources */,
+				C11E4817C88A38C55F4B183D /* SidebarView.swift in Sources */,
+				C10A6E3BCBECC4B4B038BC53 /* AddRepoSheet.swift in Sources */,
+				C157E1906350087E021AD017 /* RepoSection.swift in Sources */,
+				C149D5E22D7BCF44CF6C4FAB /* ChatSettingsView.swift in Sources */,
+				C1382207BBD5689077C262EF /* GeneralSettingsView.swift in Sources */,
+				C191AF0B1FDBA2E84157EE32 /* RemotesSettingsView.swift in Sources */,
+				C11303A8FAD564882C02B34E /* SettingsView.swift in Sources */,
+				C1B0839B1961D341D367E04D /* TerminalTabModel.swift in Sources */,
+				C1CB310C182E667616C7F9E5 /* ChatModeContent.swift in Sources */,
+				C1FCC0ABD2193FE48C565372 /* InactiveThreadView.swift in Sources */,
+				C10705431738FAC1C424D7DE /* NewThreadSheet.swift in Sources */,
+				C15D17EC89DE0953C9E3FD7B /* TerminalModeContent.swift in Sources */,
+				C1C6908F6C30666374098C6B /* ThreadDetailView.swift in Sources */,
+				C1BF67DC173F4EBABBC07640 /* ThreadRow.swift in Sources */,
+				C1CE4FCF558B5DE14F982E93 /* ThreadSessionTabsProvider.swift in Sources */,
+				C18129E5CBFA0886AA82B926 /* ThreadTabStateManager.swift in Sources */,
+				C1964DB915F4F484610B4234 /* GitHubAuth.swift in Sources */,
+				C1E84E81A7831F1EB695002B /* GitHubClient.swift in Sources */,
+				C1C62CF2568EF0C5C77A24D4 /* AgentConfig.swift in Sources */,
+				C1F35CF46811F79B2E3D4FAD /* BrowserSession.swift in Sources */,
+				C1FED8DCF71EF673E2DC6F0E /* ChatConversation.swift in Sources */,
+				C1C701991B5F7A70CCE6F1D9 /* ChatHarness.swift in Sources */,
+				C16AFEE0E66065ED183B46A4 /* Preset.swift in Sources */,
+				C1BEB67B1865F1C9F4C49FF5 /* Project.swift in Sources */,
+				C1F2FC0BCF57B80107698505 /* Remote.swift in Sources */,
+				C1431C4B73A377374FE21B3B /* Repo.swift in Sources */,
+				C1B7181CA53A89F6B095CA76 /* SystemStats.swift in Sources */,
+				C1A31DB25CB0DC1C73BE0589 /* TabItem.swift in Sources */,
+				C1C7D0450351D82A54730907 /* Thread.swift in Sources */,
+				C142E388F3943F659DF17B42 /* ThreadStatus.swift in Sources */,
+				C141D3FBB3DBB1B5BACDEEE5 /* TimelineItem.swift in Sources */,
+				C1AA221F202D41C30A131C36 /* ToolCallGroup.swift in Sources */,
+				C15EB25CEA19B1948C9E8D88 /* ProvisioningService.swift in Sources */,
+				C13654E69AA54A72FF9376AA /* Abstractions.swift in Sources */,
+				C17E235957232068C546650A /* RelayBinaryLocator.swift in Sources */,
+				C12D878AECB4D1C75EF833A2 /* GhosttyKeyInput.swift in Sources */,
+				C14ACC96B8B1CDCB0866DDB4 /* GhosttyNSView.swift in Sources */,
+				C183ABD752FB6572F3E59301 /* GhosttySurfaceHost.swift in Sources */,
+				C1113C82DDACF08BD5486328 /* GhosttyTerminalView.swift in Sources */,
+				C14A5BF08AAFAD12EA443FA8 /* AgentSessionManager.swift in Sources */,
+				C11BC15C879AB6E6275A28C2 /* ConnectionManager.swift in Sources */,
+				C16AEB019B7B13AF97AE3B36 /* RelayEndpoint.swift in Sources */,
+				C14C0327C175789DD90779DA /* RemoteConnectionPool.swift in Sources */,
+				C125FE6B6F848B0D07833F8D /* TerminalMultiplexer.swift in Sources */,
+				C12D57004AD6539E21A0F665 /* AnimatedGradientBorder.swift in Sources */,
+				C191BB38A648A0B66F1EE397 /* ConnectionStatusView.swift in Sources */,
+				C1FAB810BE5059A4CD13AA52 /* FileIconView.swift in Sources */,
+				C1453A92B82E8138D41D6A4B /* HoverButton.swift in Sources */,
+				C1F3F7AFFE89209EE89DCD7B /* LucideIcons.swift in Sources */,
+				C1CE3AF088484890E249FB90 /* ScrollBottomObserver.swift in Sources */,
+				C1416A68814F8A442CAE0428 /* SessionTabsScrollView.swift in Sources */,
+				C11896B0A407006CDC4E27A9 /* ShimmerEffect.swift in Sources */,
+				C15FB20AEC68C6DD4224EFD2 /* SystemStatsBar.swift in Sources */,
+				C15D4F7F81103E2369A02AAE /* TabCloseButton.swift in Sources */,
+				C12F6BBB3A502FAFF5DB8ADB /* TabContainer.swift in Sources */,
+				C167B23BF60C42480133CAA1 /* TabLabel.swift in Sources */,
+				C136AD69D689DD988AA8BDF9 /* ContentView.swift in Sources */,
+				A11B7816C5DF87B9D66BA0BD /* MockSpindleServer.swift in Sources */,
+				A1DC991BA299935A06D939E7 /* TerminalCreationTests.swift in Sources */,
+				A12790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift in Sources */,
+				A1E1B358652A7A4128E87D28 /* TerminalPromptTests.swift in Sources */,
+				A1B0ABE6C7B8FA20173EC6C2 /* TestHelpers.swift in Sources */,			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		AA0000000000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/groue/GRDB.swift.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 7.0.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
 /* Begin XCBuildConfiguration section */
-		A80000000000000000000001 /* Debug */ = {
+		A70000000000000000000004 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = NO;
-				COPY_PHASE_STRIP = NO;
-				DEBUG_INFORMATION_FORMAT = dwarf;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ThreadmillUITests/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @loader_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				ONLY_ACTIVE_ARCH = YES;
-				SDKROOT = macosx;
-				SWIFT_VERSION = 5.10;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.threadmill.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited)";
+				HEADER_SEARCH_PATHS = "$(inherited)";
+				OTHER_LDFLAGS = (
+					"-framework", "Metal",
+					"-framework", "MetalKit",
+					"-framework", "QuartzCore",
+					"-framework", "WebKit",
+				);
 			};
 			name = Debug;
 		};
-		A80000000000000000000002 /* Release */ = {
+		A70000000000000000000005 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = NO;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu17;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ThreadmillUITests/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @loader_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				SDKROOT = macosx;
-				SWIFT_VERSION = 5.10;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.threadmill.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited)";
+				HEADER_SEARCH_PATHS = "$(inherited)";
+				OTHER_LDFLAGS = (
+					"-framework", "Metal",
+					"-framework", "MetalKit",
+					"-framework", "QuartzCore",
+					"-framework", "WebKit",
+				);
 			};
 			name = Release;
 		};
-		A80000000000000000000003 /* Debug */ = {
+		A70000000000000000000006 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "";
-				CODE_SIGNING_ALLOWED = NO;
-				CODE_SIGNING_REQUIRED = NO;
-				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 1;
-				DEFINES_MODULE = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = ThreadmillUITests/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@loader_path/Frameworks",
-					"@loader_path/../Frameworks",
-				);
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.threadmill.ThreadmillUITests;
-				PRODUCT_MODULE_NAME = ThreadmillUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = macosx;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.10;
-				TEST_HOST = "";
-				TEST_TARGET_NAME = "";
-				WRAPPER_EXTENSION = xctest;
+				SDKROOT = macosx;
 			};
 			name = Debug;
 		};
-		A80000000000000000000004 /* Release */ = {
+		A70000000000000000000007 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "";
-				CODE_SIGNING_ALLOWED = NO;
-				CODE_SIGNING_REQUIRED = NO;
-				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 1;
-				DEFINES_MODULE = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = ThreadmillUITests/Info.plist;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@loader_path/Frameworks",
-					"@loader_path/../Frameworks",
-				);
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.threadmill.ThreadmillUITests;
-				PRODUCT_MODULE_NAME = ThreadmillUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = macosx;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.10;
-				TEST_HOST = "";
-				TEST_TARGET_NAME = "";
-				WRAPPER_EXTENSION = xctest;
+				SDKROOT = macosx;
 			};
 			name = Release;
 		};
@@ -311,30 +662,77 @@
 		A70000000000000000000001 /* Build configuration list for PBXProject "ThreadmillUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A80000000000000000000001 /* Debug */,
-				A80000000000000000000002 /* Release */,
+				A70000000000000000000006 /* Debug */,
+				A70000000000000000000007 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
-		A70000000000000000000002 /* Build configuration list for PBXNativeTarget "ThreadmillUITests" */ = {
+		A70000000000000000000003 /* Build configuration list for PBXNativeTarget "ThreadmillUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A80000000000000000000003 /* Debug */,
-				A80000000000000000000004 /* Release */,
+				A70000000000000000000004 /* Debug */,
+				A70000000000000000000005 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference / XCLocalSwiftPackageReference section */
+		A80000000000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 7.4.1;
+			};
+		};
+		A80000000000000000000002 /* XCRemoteSwiftPackageReference "swift-acp" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/wiedymi/swift-acp";
+			requirement = {
+				kind = branch;
+				branch = main;
+			};
+		};
+		A80000000000000000000003 /* XCLocalSwiftPackageReference "CodeEditSourceEditor" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/CodeEditSourceEditor;
+		};
+		A80000000000000000000004 /* XCLocalSwiftPackageReference "CodeEditLanguages" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/CodeEditLanguages;
+		};
+/* End XCRemoteSwiftPackageReference / XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		A90000000000000000000001 /* GRDB */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = AA0000000000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
+			package = A80000000000000000000001 /* XCRemoteSwiftPackageReference "GRDB.swift" */;
 			productName = GRDB;
+		};
+		A90000000000000000000002 /* ACP */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A80000000000000000000002 /* XCRemoteSwiftPackageReference "swift-acp" */;
+			productName = ACP;
+		};
+		A90000000000000000000003 /* ACPModel */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A80000000000000000000002 /* XCRemoteSwiftPackageReference "swift-acp" */;
+			productName = ACPModel;
+		};
+		A90000000000000000000004 /* CodeEditLanguages */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A80000000000000000000004 /* XCRemoteSwiftPackageReference "CodeEditLanguages" */;
+			productName = CodeEditLanguages;
+		};
+		A90000000000000000000005 /* CodeEditSourceEditor */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A80000000000000000000003 /* XCRemoteSwiftPackageReference "CodeEditSourceEditor" */;
+			productName = CodeEditSourceEditor;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = A60000000000000000000001 /* Project object */;
+	rootObject = A50000000000000000000002 /* Project object */;
 }

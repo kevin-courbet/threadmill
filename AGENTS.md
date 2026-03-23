@@ -142,9 +142,10 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 | **Tests/ThreadmillTests/Shared/** | TestDoubles.swift — mock doubles shared by unit + integration |
 | **Tests/ThreadmillTests/Unit/** | ~186 unit tests with mock doubles |
 | **Tests/ThreadmillTests/Integration/** | Real Spindle integration tests (beast + SSH tunnel) |
-| `Integration/SpindleConnection.swift` | Lightweight WebSocket client for test harness |
-| `Integration/IntegrationTestCase.swift` | Base class: setUp sweep, tearDown cleanup, shared helpers |
-| `Integration/{Project,Thread,Terminal,Preset,Chat}IntegrationTests.swift` | One file per domain |
+| `Integration/Protocol/SpindleConnection.swift` | Lightweight WebSocket client for test harness |
+| `Integration/Protocol/IntegrationTestCase.swift` | Base class: setUp sweep, tearDown cleanup, shared helpers |
+| `Integration/Protocol/{Project,Thread,Terminal,Preset,Chat}IntegrationTests.swift` | One file per domain |
+| `Integration/AppStack/AppStackTestCase.swift` | Base class using real AppState + ConnectionManager + GRDB |
 | **UITests/ThreadmillUITests/** | XCUITest e2e harness with MockSpindleServer (opt-in) |
 
 ### Spindle (on beast) — Rust daemon

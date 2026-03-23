@@ -73,7 +73,6 @@ final class AppStateAttachAfterConnectTests: XCTestCase {
         let database = MockDatabaseManager()
         let sync = MockSyncService()
         let multiplexer = MockTerminalMultiplexer()
-        let openCodeClient = MockOpenCodeClient()
 
         connection.requestHandler = { method, _, _ in
             if method == "system.stats" {
@@ -88,7 +87,6 @@ final class AppStateAttachAfterConnectTests: XCTestCase {
             databaseManager: database,
             syncService: sync,
             multiplexer: multiplexer,
-            openCodeClient: openCodeClient
         )
 
         appState.connectionStatus = .connected
@@ -104,6 +102,5 @@ final class AppStateAttachAfterConnectTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 200_000_000)
 
         XCTAssertEqual(connection.requests.filter { $0.method == "system.stats" }.count, requestCountBeforeShutdown)
-        XCTAssertEqual(openCodeClient.invalidateCallCount, 1)
     }
 }

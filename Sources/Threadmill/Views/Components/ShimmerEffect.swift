@@ -23,9 +23,9 @@ final class ShimmerTextNSView: NSView {
     private var text: String
     private var font: NSFont
     private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-    private var didBecomeObserver: NSObjectProtocol?
-    private var didResignObserver: NSObjectProtocol?
-    private var displayOptionsObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var didBecomeObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var didResignObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var displayOptionsObserver: NSObjectProtocol?
 
     init(text: String, font: NSFont) {
         self.text = text

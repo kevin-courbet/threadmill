@@ -8,7 +8,7 @@ final class GitHubClientTests: XCTestCase {
         var requests: [URLRequest] = []
         var pollCount = 0
 
-        let client = GitHubClient(token: "gho_test") { request in
+        let client = GitHubClient(token: "gho_test", dataLoader: { request in
             requests.append(request)
             pollCount += 1
 
@@ -68,7 +68,7 @@ final class GitHubClientTests: XCTestCase {
                 )
             )
             return (data, response)
-        }
+        })
 
         let repos = try await client.fetchUserRepos()
 
@@ -79,9 +79,9 @@ final class GitHubClientTests: XCTestCase {
     }
 
     func testMapToRepoPrefersSSHCloneURL() {
-        let client = GitHubClient(token: "gho_test") { _ in
+        let client = GitHubClient(token: "gho_test", dataLoader: { _ in
             throw TestError.missingStub
-        }
+        })
 
         let gitHubRepo = GitHubRepo(
             id: 1,

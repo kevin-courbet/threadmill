@@ -178,7 +178,6 @@ final class AppState {
         }
     }
     var selectedEndpoint: RelayEndpoint?
-    private(set) var openCodeClient: (any OpenCodeManaging)?
     private(set) var chatConversationService: (any ChatConversationManaging)?
     private(set) var fileService: (any FileBrowsing)?
     private(set) var agentSessionManager: AgentSessionManager?
@@ -414,7 +413,6 @@ final class AppState {
         syncService: any SyncServicing,
         multiplexer: any TerminalMultiplexing,
         provisioningService: (any Provisioning)? = nil,
-        openCodeClient: any OpenCodeManaging = OpenCodeClient(),
         chatConversationService: (any ChatConversationManaging)? = nil,
         fileService: (any FileBrowsing)? = nil,
         agentSessionManager: AgentSessionManager? = nil
@@ -424,7 +422,6 @@ final class AppState {
         self.provisioningService = provisioningService ?? ProvisioningService(connectionPool: connectionPool)
         self.syncService = syncService
         self.multiplexer = multiplexer
-        self.openCodeClient = openCodeClient
         self.chatConversationService = chatConversationService
         self.agentSessionManager = agentSessionManager
         self.fileService = fileService ?? FileService(connectionProvider: { [weak self] in
@@ -1694,7 +1691,6 @@ final class AppState {
 
     func shutdown() {
         stopStatsTimer()
-        openCodeClient?.invalidate()
     }
 
     // MARK: - Keyboard shortcut actions

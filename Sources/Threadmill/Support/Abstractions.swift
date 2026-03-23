@@ -93,7 +93,6 @@ protocol ChatConversationManaging: AnyObject {
     func activeConversations(threadID: String) async throws -> [ChatConversation]
     func archiveConversation(id: String) async throws
     func updateTitle(conversationID: String, title: String) async throws
-    func verifySession(conversation: ChatConversation) async throws -> Bool
 }
 
 @MainActor

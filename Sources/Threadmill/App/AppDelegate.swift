@@ -4,7 +4,6 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isBootstrapped = false
     private let surfaceHost = GhosttySurfaceHost()
-    private let openCodeClient = OpenCodeClient()
 
     private var remoteConnectionPool: RemoteConnectionPool?
     private var primaryConnectionManager: (any ConnectionManaging)?
@@ -72,8 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
             let provisioningService = ProvisioningService(connectionPool: connectionPool)
             let chatConversationService = ChatConversationService(
-                databaseManager: databaseManager,
-                openCodeClient: openCodeClient
+                databaseManager: databaseManager
             )
             if let agentManagingConnection = primaryConnectionManager as? AgentManaging {
                 agentSessionManager = AgentSessionManager(
@@ -100,7 +98,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 syncService: syncService,
                 multiplexer: multiplexer,
                 provisioningService: provisioningService,
-                openCodeClient: openCodeClient,
                 chatConversationService: chatConversationService,
                 agentSessionManager: agentSessionManager
             )

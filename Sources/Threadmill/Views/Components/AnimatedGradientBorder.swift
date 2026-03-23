@@ -31,7 +31,7 @@ final class GradientBorderNSView: NSView {
     private var lineWidth: CGFloat
     private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
-    private var displayOptionsObserver: NSObjectProtocol?
+    private nonisolated(unsafe) var displayOptionsObserver: NSObjectProtocol?
 
     init(state: AnimatedGradientBorderState, cornerRadius: CGFloat, lineWidth: CGFloat) {
         self.state = state

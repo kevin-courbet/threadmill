@@ -25,13 +25,13 @@ struct ScrollBottomObserver: NSViewRepresentable {
         coordinator.detach()
     }
 
-    final class Coordinator {
+    final class Coordinator: @unchecked Sendable {
         var onNearBottomChange: (Bool) -> Void
         var onUserScrolledUpChange: (Bool) -> Void
 
         private weak var scrollView: NSScrollView?
-        private var boundsObservation: NSKeyValueObservation?
-        private var frameObservation: NSKeyValueObservation?
+        private var boundsObservation: NSObjectProtocol?
+        private var frameObservation: NSObjectProtocol?
 
         private var isNearBottom = true
         private var userScrolledUp = false
@@ -53,8 +53,10 @@ struct ScrollBottomObserver: NSViewRepresentable {
                 return
             }
 
-            DispatchQueue.main.async { [weak self, weak view] in
-                guard let self, let view, let scrollView = self.resolveScrollView(from: view) else {
+            // Delay to next run loop iteration — the scroll view may not be
+            // in the hierarchy yet on first layout pass.
+            DispatchQueue.main.async {
+                guard let scrollView = self.resolveScrollView(from: view) else {
                     return
                 }
                 self.attach(to: scrollView)
@@ -62,8 +64,8 @@ struct ScrollBottomObserver: NSViewRepresentable {
         }
 
         func detach() {
-            boundsObservation?.invalidate()
-            frameObservation?.invalidate()
+            if let obs = boundsObservation { NotificationCenter.default.removeObserver(obs) }
+            if let obs = frameObservation { NotificationCenter.default.removeObserver(obs) }
             boundsObservation = nil
             frameObservation = nil
             scrollView = nil
@@ -78,14 +80,25 @@ struct ScrollBottomObserver: NSViewRepresentable {
             detach()
             self.scrollView = scrollView
 
-            boundsObservation = scrollView.contentView.observe(\.bounds, options: [.new]) { [weak self] _, _ in
+            let contentView = scrollView.contentView
+            boundsObservation = NotificationCenter.default.addObserver(
+                forName: NSView.boundsDidChangeNotification,
+                object: contentView,
+                queue: .main
+            ) { [weak self] _ in
                 self?.evaluatePosition()
             }
+            contentView.postsBoundsChangedNotifications = true
 
             if let documentView = scrollView.documentView {
-                frameObservation = documentView.observe(\.frame, options: [.new]) { [weak self] _, _ in
+                frameObservation = NotificationCenter.default.addObserver(
+                    forName: NSView.frameDidChangeNotification,
+                    object: documentView,
+                    queue: .main
+                ) { [weak self] _ in
                     self?.evaluatePosition()
                 }
+                documentView.postsFrameChangedNotifications = true
             }
 
             evaluatePosition()

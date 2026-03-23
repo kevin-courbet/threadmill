@@ -99,17 +99,23 @@ final class SpindleConnection: @unchecked Sendable {
 
         // Register continuation BEFORE send — if the response arrives between
         // send() returning and the continuation being stored, it would be dropped.
-        return try await withTimeout(seconds: timeout) {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any, Error>) in
-                self.withLock {
-                    self.pendingRequests[requestID] = continuation
-                }
-                Task {
-                    do {
-                        try await task.send(.string(requestString))
-                    } catch {
-                        self.failPendingRequest(requestID, with: error)
-                    }
+        // Timeout cancels the pending request from outside the continuation.
+        let timeoutTask = Task { [weak self] in
+            try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            self?.failPendingRequest(requestID, with: SpindleConnectionError.timedOut("\(method) RPC"))
+        }
+
+        defer { timeoutTask.cancel() }
+
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any, Error>) in
+            self.withLock {
+                self.pendingRequests[requestID] = continuation
+            }
+            Task {
+                do {
+                    try await task.send(.string(requestString))
+                } catch {
+                    self.failPendingRequest(requestID, with: error)
                 }
             }
         }
@@ -262,7 +268,8 @@ final class SpindleConnection: @unchecked Sendable {
         let continuation = withLock {
             pendingRequests.removeValue(forKey: id)
         }
-        continuation?.resume(returning: result)
+        nonisolated(unsafe) let unsafeResult = result
+        continuation?.resume(returning: unsafeResult)
     }
 
     private func failPendingRequest(_ id: Int, with error: Error) {
@@ -296,23 +303,7 @@ final class SpindleConnection: @unchecked Sendable {
         }
     }
 
-    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask {
-                try await operation()
-            }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw SpindleConnectionError.timedOut("RPC response")
-            }
 
-            guard let result = try await group.next() else {
-                throw SpindleConnectionError.timedOut("RPC response")
-            }
-            group.cancelAll()
-            return result
-        }
-    }
 
     private func isJSON(_ data: Data) -> Bool {
         guard let first = data.first else {

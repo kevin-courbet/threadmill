@@ -11,7 +11,6 @@ final class ChatModeActionsTests: XCTestCase {
         let syncService = MockSyncService()
         let multiplexer = MockTerminalMultiplexer()
         let chatConversationService = MockChatConversationService()
-        let openCodeClient = MockOpenCodeClient()
 
         let pool = makeSingleRemoteConnectionPool(connection: connection)
         appState.configure(
@@ -19,7 +18,6 @@ final class ChatModeActionsTests: XCTestCase {
             databaseManager: database,
             syncService: syncService,
             multiplexer: multiplexer,
-            openCodeClient: openCodeClient,
             chatConversationService: chatConversationService
         )
 
@@ -90,7 +88,6 @@ final class ChatModeActionsTests: XCTestCase {
         let syncService = MockSyncService()
         let multiplexer = MockTerminalMultiplexer()
         let chatConversationService = MockChatConversationService()
-        let openCodeClient = MockOpenCodeClient()
 
         let pool = makeSingleRemoteConnectionPool(connection: connection)
         appState.configure(
@@ -98,7 +95,6 @@ final class ChatModeActionsTests: XCTestCase {
             databaseManager: database,
             syncService: syncService,
             multiplexer: multiplexer,
-            openCodeClient: openCodeClient,
             chatConversationService: chatConversationService
         )
 
@@ -158,7 +154,6 @@ final class ChatModeActionsTests: XCTestCase {
         let syncService = MockSyncService()
         let multiplexer = MockTerminalMultiplexer()
         let chatConversationService = MockChatConversationService()
-        let openCodeClient = MockOpenCodeClient()
 
         let pool = makeSingleRemoteConnectionPool(connection: connection)
         appState.configure(
@@ -166,7 +161,6 @@ final class ChatModeActionsTests: XCTestCase {
             databaseManager: database,
             syncService: syncService,
             multiplexer: multiplexer,
-            openCodeClient: openCodeClient,
             chatConversationService: chatConversationService
         )
 
@@ -233,7 +227,6 @@ final class ChatModeActionsTests: XCTestCase {
         let syncService = MockSyncService()
         let multiplexer = MockTerminalMultiplexer()
         let chatConversationService = MockChatConversationService()
-        let openCodeClient = MockOpenCodeClient()
 
         let pool = makeSingleRemoteConnectionPool(connection: connection)
         appState.configure(
@@ -241,7 +234,6 @@ final class ChatModeActionsTests: XCTestCase {
             databaseManager: database,
             syncService: syncService,
             multiplexer: multiplexer,
-            openCodeClient: openCodeClient,
             chatConversationService: chatConversationService
         )
 
@@ -297,7 +289,6 @@ final class ChatModeActionsTests: XCTestCase {
         let connection = MockDaemonConnection()
         let syncService = MockSyncService()
         let multiplexer = MockTerminalMultiplexer()
-        let openCodeClient = MockOpenCodeClient()
         let chatConversationService = MockChatConversationService()
 
         let pool = makeSingleRemoteConnectionPool(connection: connection)
@@ -306,7 +297,6 @@ final class ChatModeActionsTests: XCTestCase {
             databaseManager: database,
             syncService: syncService,
             multiplexer: multiplexer,
-            openCodeClient: openCodeClient,
             chatConversationService: chatConversationService
         )
 
@@ -367,7 +357,6 @@ final class ChatModeActionsTests: XCTestCase {
         let connection = MockDaemonConnection()
         let syncService = MockSyncService()
         let multiplexer = MockTerminalMultiplexer()
-        let openCodeClient = MockOpenCodeClient()
         let chatConversationService = MockChatConversationService()
 
         let pool = makeSingleRemoteConnectionPool(connection: connection)
@@ -376,7 +365,6 @@ final class ChatModeActionsTests: XCTestCase {
             databaseManager: database,
             syncService: syncService,
             multiplexer: multiplexer,
-            openCodeClient: openCodeClient,
             chatConversationService: chatConversationService
         )
 

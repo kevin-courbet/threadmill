@@ -229,7 +229,8 @@ final class WebSocketClient: NSObject, WebSocketManaging {
         }
 
         pending.timeoutTask.cancel()
-        pending.continuation.resume(with: result)
+        nonisolated(unsafe) let unsafeResult = result
+        pending.continuation.resume(with: unsafeResult)
     }
 
     private func timeoutPendingRequest(id: Int) {

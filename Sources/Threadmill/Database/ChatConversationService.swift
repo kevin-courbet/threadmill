@@ -17,11 +17,9 @@ enum ChatConversationServiceError: LocalizedError {
 @MainActor
 final class ChatConversationService: ChatConversationManaging {
     private let databaseManager: any DatabaseManaging
-    private let openCodeClient: any OpenCodeManaging
 
-    init(databaseManager: any DatabaseManaging, openCodeClient: any OpenCodeManaging) {
+    init(databaseManager: any DatabaseManaging) {
         self.databaseManager = databaseManager
-        self.openCodeClient = openCodeClient
     }
 
     func createConversation(threadID: String, directory _: String, agentType: String = "opencode") async throws -> ChatConversation {
@@ -55,26 +53,5 @@ final class ChatConversationService: ChatConversationManaging {
 
         conversation.updateTitle(title)
         try databaseManager.saveConversation(conversation)
-    }
-
-    func verifySession(conversation: ChatConversation) async throws -> Bool {
-        guard conversation.agentType == "opencode" else {
-            return false
-        }
-
-        guard let sessionID = conversation.agentSessionID else {
-            return false
-        }
-
-        guard let directory = try databaseManager.allThreads().first(where: { $0.id == conversation.threadID })?.worktreePath else {
-            throw ChatConversationServiceError.threadNotFound(conversation.threadID)
-        }
-
-        do {
-            _ = try await openCodeClient.getSession(id: sessionID, directory: directory)
-            return true
-        } catch {
-            return false
-        }
     }
 }

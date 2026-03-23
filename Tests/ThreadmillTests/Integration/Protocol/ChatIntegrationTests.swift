@@ -33,9 +33,7 @@ final class ChatIntegrationTests: IntegrationTestCase {
         let (channelID, acpSessionID) = try await startACPSession(conn: conn)
 
         let dbPath = try makeTempDatabasePath()
-        let conversation = try await createAndLinkConversation(
-            dbPath: dbPath, acpSessionID: acpSessionID
-        )
+        let conversation = try await Self.createAndLinkConversation(dbPath: dbPath, acpSessionID: acpSessionID)
 
         let promptReq = try makeACPRequest(
             id: 3,
@@ -53,7 +51,7 @@ final class ChatIntegrationTests: IntegrationTestCase {
         }
         XCTAssertEqual(update["method"] as? String, "session/update")
 
-        let active = try await verifyConversation(dbPath: dbPath)
+        let active = try await Self.verifyConversation(dbPath: dbPath)
         XCTAssertEqual(active.count, 1)
         XCTAssertEqual(active.first?.id, conversation.id)
         XCTAssertEqual(active.first?.agentType, "opencode")
@@ -63,7 +61,7 @@ final class ChatIntegrationTests: IntegrationTestCase {
     // MARK: - GRDB helpers
 
     @MainActor
-    private func createAndLinkConversation(dbPath: String, acpSessionID: String) throws -> ChatConversation {
+    private static func createAndLinkConversation(dbPath: String, acpSessionID: String) throws -> ChatConversation {
         let database = try DatabaseManager(databasePath: dbPath)
         var conv = ChatConversation(threadID: "test-thread")
         conv.agentType = "opencode"
@@ -73,7 +71,7 @@ final class ChatIntegrationTests: IntegrationTestCase {
     }
 
     @MainActor
-    private func verifyConversation(dbPath: String) throws -> [ChatConversation] {
+    private static func verifyConversation(dbPath: String) throws -> [ChatConversation] {
         let database = try DatabaseManager(databasePath: dbPath)
         return try database.activeConversations(threadID: "test-thread")
     }

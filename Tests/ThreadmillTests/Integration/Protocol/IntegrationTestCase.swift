@@ -10,7 +10,7 @@ class IntegrationTestCase: XCTestCase {
     static let fixtureRepoPath = "/home/wsl/dev/threadmill-test-fixture"
     static let testPrefix = "test-"
 
-    private static var hasSweptStaleThreads = false
+    private nonisolated(unsafe) static var hasSweptStaleThreads = false
     var createdThreadIDs: [String] = []
 
     override func setUp() async throws {
