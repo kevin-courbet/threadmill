@@ -98,6 +98,7 @@
 		C167B23BF60C42480133CAA1 /* TabLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C267B23BF60C42480133CAA1 /* TabLabel.swift */; };
 		C136AD69D689DD988AA8BDF9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C236AD69D689DD988AA8BDF9 /* ContentView.swift */; };
 		A11B7816C5DF87B9D66BA0BD /* MockSpindleServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21B7816C5DF87B9D66BA0BD /* MockSpindleServer.swift */; };
+		A1E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift */; };
 		A1863FB780FE4F255696A248 /* SimpleSpindleClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2863FB780FE4F255696A248 /* SimpleSpindleClient.swift */; };
 		A1DC991BA299935A06D939E7 /* TerminalCreationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2DC991BA299935A06D939E7 /* TerminalCreationTests.swift */; };
 		A12790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift */; };
@@ -204,6 +205,7 @@
 		C267B23BF60C42480133CAA1 /* TabLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TabLabel.swift"; path = "../Sources/Threadmill/Views/Components/TabLabel.swift"; sourceTree = SOURCE_ROOT; };
 		C236AD69D689DD988AA8BDF9 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ContentView.swift"; path = "../Sources/Threadmill/Views/ContentView.swift"; sourceTree = SOURCE_ROOT; };
 		A21B7816C5DF87B9D66BA0BD /* MockSpindleServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockSpindleServer.swift; sourceTree = "<group>"; };
+		A2E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealSpindleHarness.swift; sourceTree = "<group>"; };
 		A2863FB780FE4F255696A248 /* SimpleSpindleClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimpleSpindleClient.swift; sourceTree = "<group>"; };
 		A2DC991BA299935A06D939E7 /* TerminalCreationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalCreationTests.swift; sourceTree = "<group>"; };
 		A22790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalPresetBehaviorTests.swift; sourceTree = "<group>"; };
@@ -247,6 +249,7 @@
 			isa = PBXGroup;
 			children = (
 				A21B7816C5DF87B9D66BA0BD /* MockSpindleServer.swift */,
+				A2E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift */,
 				A2863FB780FE4F255696A248 /* SimpleSpindleClient.swift */,
 				A2DC991BA299935A06D939E7 /* TerminalCreationTests.swift */,
 				A22790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift */,
@@ -435,6 +438,7 @@
 				C167B23BF60C42480133CAA1 /* TabLabel.swift in Sources */,
 				C136AD69D689DD988AA8BDF9 /* ContentView.swift in Sources */,
 				A11B7816C5DF87B9D66BA0BD /* MockSpindleServer.swift in Sources */,
+				A1E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift in Sources */,
 				A1863FB780FE4F255696A248 /* SimpleSpindleClient.swift in Sources */,
 				A1DC991BA299935A06D939E7 /* TerminalCreationTests.swift in Sources */,
 				A12790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift in Sources */,

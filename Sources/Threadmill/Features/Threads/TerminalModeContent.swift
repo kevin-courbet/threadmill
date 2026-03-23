@@ -65,6 +65,8 @@ struct TerminalModeContent: View {
             } else {
                 GhosttyTerminalView(endpoint: endpoint)
                     .accessibilityIdentifier("terminal.surface")
+                    .accessibilityElement(children: .contain)
+                    .accessibilityAddTraits(.updatesFrequently)
             }
         } else {
             VStack(spacing: 8) {

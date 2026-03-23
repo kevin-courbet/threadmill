@@ -22,6 +22,21 @@ final class RelayEndpoint {
 
     private weak var mountedView: GhosttyNSView?
     private var surface: ghostty_surface_t?
+
+    /// Raw terminal output bytes stripped of ANSI escapes, for accessibility/testing.
+    /// Capped at last 8KB to avoid unbounded growth.
+    private var terminalTextBuffer = Data()
+    private let terminalTextBufferMax = 8192
+
+    var terminalText: String {
+        // Strip ANSI escape sequences and return plain text
+        let raw = String(decoding: terminalTextBuffer, as: UTF8.self)
+        return raw.replacingOccurrences(
+            of: "\\x1b\\[[0-9;]*[a-zA-Z]|\\x1b\\][^\u{07}]*\u{07}|\\x1b\\[\\?[0-9;]*[a-zA-Z]",
+            with: "",
+            options: .regularExpression
+        )
+    }
     private var desiredColumns: Int?
     private var desiredRows: Int?
 
@@ -379,6 +394,12 @@ final class RelayEndpoint {
         let payload = frame.dropFirst(2)
         guard !payload.isEmpty else {
             return
+        }
+
+        // Accumulate for accessibility
+        terminalTextBuffer.append(contentsOf: payload)
+        if terminalTextBuffer.count > terminalTextBufferMax {
+            terminalTextBuffer.removeFirst(terminalTextBuffer.count - terminalTextBufferMax)
         }
 
         payload.withUnsafeBytes { rawBuf in

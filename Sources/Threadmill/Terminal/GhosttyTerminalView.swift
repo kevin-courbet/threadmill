@@ -13,6 +13,7 @@ struct GhosttyTerminalView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> GhosttyNSView {
         let view = GhosttyNSView(frame: .zero)
+        view.endpoint = endpoint
         endpoint.mount(on: view)
         context.coordinator.endpoint = endpoint
         return view

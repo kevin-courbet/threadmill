@@ -4,11 +4,22 @@ import GhosttyKit
 final class GhosttyNSView: NSView {
     var surface: ghostty_surface_t?
     var onSizeChanged: (() -> Void)?
+    weak var endpoint: RelayEndpoint?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
+        setAccessibilityIdentifier("terminal.surface")
+        setAccessibilityRole(.textArea)
+        setAccessibilityElement(true)
     }
+
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .textArea }
+    override func accessibilityIdentifier() -> String { "terminal.surface" }
+    override func accessibilityValue() -> Any? { endpoint?.terminalText }
+    override func accessibilityChildren() -> [Any]? { [] }
+    override func accessibilityParent() -> Any? { superview }
 
     required init?(coder: NSCoder) { fatalError() }
 
