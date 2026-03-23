@@ -118,9 +118,13 @@ final class AppState {
     var connectionStatus: ConnectionStatus = .disconnected {
         didSet {
             if case .connected = connectionStatus, oldValue != connectionStatus {
-                scheduleAttachSelectedPreset()
+                if shouldRetrySelectedPresetAttach() {
+                    scheduleAttachSelectedPreset()
+                }
                 startStatsTimer()
             } else if connectionStatus == .disconnected {
+                pendingScheduledAttachTask?.cancel()
+                pendingScheduledAttachTask = nil
                 stopStatsTimer()
                 systemStats = nil
             }
@@ -189,6 +193,8 @@ final class AppState {
     private var connectionPool: (any RemoteConnectionPooling)?
     private var eventSyncScheduled = false
     private var attachedEndpoints: [AttachmentKey: RelayEndpoint] = [:]
+    private(set) var pendingScheduledAttachTask: Task<Void, Never>?
+    private var pendingScheduledAttachToken = 0
     private var pendingAttachTasks: [AttachmentKey: Task<Void, Never>] = [:]
     private var permanentAttachFailures: Set<AttachmentKey> = []
     private var lastPresetStartErrors: [AttachmentKey: String] = [:]
@@ -459,6 +465,9 @@ final class AppState {
             ensureSelectedPresetIsValid()
             refreshSelectedEndpoint()
             updateActiveRemoteConnection()
+            if connectionStatus.isConnected, shouldRetrySelectedPresetAttach() {
+                scheduleAttachSelectedPreset()
+            }
         } catch {
             NSLog("threadmill-state: failed to load cache: %@", "\(error)")
         }
@@ -528,9 +537,21 @@ final class AppState {
     }
 
     func scheduleAttachSelectedPreset() {
-        Task { @MainActor [weak self] in
+        pendingScheduledAttachTask?.cancel()
+        pendingScheduledAttachToken += 1
+        let token = pendingScheduledAttachToken
+        let task = Task { @MainActor [weak self] in
+            guard !Task.isCancelled else {
+                return
+            }
+            defer {
+                if let self, self.pendingScheduledAttachToken == token {
+                    self.pendingScheduledAttachTask = nil
+                }
+            }
             await self?.attachSelectedPreset()
         }
+        pendingScheduledAttachTask = task
     }
 
     func attachSelectedPreset() async {
@@ -546,13 +567,14 @@ final class AppState {
             return
         }
 
-        guard let preset = selectedPreset ?? presets.first?.name else {
+        guard let preset = selectedPreset ?? selectedTerminalSessionIDToRecover(threadID: selectedThread.id) ?? presets.first?.name else {
             selectedEndpoint = nil
             return
         }
 
         let availablePresetNames = Set(presets.map(\.name))
-        guard availablePresetNames.contains(preset) else {
+        let normalizedPreset = daemonPresetName(forSessionID: preset)
+        guard availablePresetNames.contains(normalizedPreset) else {
             selectedPreset = presets.first?.name
             selectedEndpoint = nil
             return
@@ -1306,6 +1328,23 @@ final class AppState {
         }
 
         selectedPreset = availablePresets[0]
+    }
+
+    private func shouldRetrySelectedPresetAttach() -> Bool {
+        guard let selectedThreadID else {
+            return false
+        }
+        guard ThreadTabStateManager().selectedMode(threadID: selectedThreadID) == TabItem.terminal.id else {
+            return false
+        }
+        if let selectedPreset {
+            return selectedPreset != TerminalTabModel.chatTabSelectionID
+        }
+        return selectedTerminalSessionIDToRecover(threadID: selectedThreadID) != nil
+    }
+
+    private func selectedTerminalSessionIDToRecover(threadID: String) -> String? {
+        ThreadTabStateManager().selectedSessionID(modeID: TabItem.terminal.id, threadID: threadID)
     }
 
     private func daemonPresetName(forSessionID sessionID: String) -> String {

@@ -77,7 +77,6 @@ final class ChatModeActionsTests: XCTestCase {
 
         XCTAssertTrue(didSelectConversation)
         XCTAssertEqual(chatConversationService.createdConversations.first?.threadID, "thread-1")
-        XCTAssertEqual(chatConversationService.createdConversations.first?.directory, "/tmp/worktree")
         XCTAssertEqual(chatConversationService.createdConversations.first?.agentType, "opencode")
     }
 

@@ -1,118 +1,121 @@
 import Foundation
 import XCTest
 
-/// Tests the new preset behavior:
-/// - The + button creates unlimited terminal sessions (each is a fresh shell)
-/// - The dropdown menu offers named presets like dev-server (one instance per named preset)
-/// - Each terminal session sends preset.start + terminal.attach to the daemon
+/// Tests terminal preset behavior:
+/// - The + button creates multiple independent terminal sessions
+/// - The dropdown menu offers named presets (e.g. dev-server)
+///
+/// Uses RealSpindleHarness — real app, real Spindle, UI-only assertions.
 @MainActor
 final class TerminalPresetBehaviorTests: XCTestCase {
+    private var harness: RealSpindleHarness?
 
-    // MARK: - Test 1: + button creates 3 independent terminals
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        harness = try RealSpindleHarness.launch()
+    }
+
+    override func tearDownWithError() throws {
+        harness?.tearDown()
+        harness = nil
+        try super.tearDownWithError()
+    }
+
+    // MARK: - Test: + button creates 3 independent terminals
 
     func testPlusButtonCreatesThreeTerminals() throws {
-        let fixture = singleProjectFixture()
-        let threadID = fixture[0].thread.id
-        let harness = try UITestHarness.launch(with: fixture)
-        defer { harness.tearDown() }
+        guard let harness else { throw XCTSkip("Harness not available") }
 
-        // Switch to Terminal mode — this starts terminal-1
-        try harness.clickMode(identifier: "mode.tab.terminal", label: "Terminal")
-
-        // Wait for the initial terminal to be fully started and attached
-        let baselineStart = try harness.waitForRequestWhere(method: "preset.start", timeout: 15) {
-            ($0["thread_id"] as? String) == threadID && ($0["preset"] as? String) == "terminal"
+        guard let threadRow = harness.waitForFixtureThread(timeout: 10) else {
+            XCTFail("Fixture thread not found")
+            return
         }
-        XCTAssertNotNil(baselineStart)
-        let startsAfterFirst = harness.server.requestParams(method: "preset.start").count
-        let attachesAfterFirst = harness.server.requestParams(method: "terminal.attach").count
-
-        // Click + to create second terminal
-        try harness.click(identifier: "terminal.session.add")
-        try harness.waitForRequestCount(method: "preset.start", count: startsAfterFirst + 1, timeout: 15)
-
-        // Click + to create third terminal
-        try harness.click(identifier: "terminal.session.add")
-        try harness.waitForRequestCount(method: "preset.start", count: startsAfterFirst + 2, timeout: 15)
-
-        // Verify: + button created terminals, not other presets
-        let startsAfterPlus = harness.server.requestParams(method: "preset.start").suffix(from: startsAfterFirst)
-        XCTAssertTrue(startsAfterPlus.allSatisfy { ($0["preset"] as? String) == "terminal" },
-                      "+ button should always create terminals")
-        XCTAssertEqual(startsAfterPlus.count, 2, "2 additional terminals from + clicks")
-
-        // Verify: corresponding attaches happened
-        let totalAttaches = harness.server.requestParams(method: "terminal.attach").count
-        XCTAssertGreaterThanOrEqual(totalAttaches, attachesAfterFirst + 2)
-    }
-
-    // MARK: - Test 2: Dropdown opens dev-server named preset
-
-    func testDropdownOpensDevServer() throws {
-        let fixture = singleProjectFixture()
-        let threadID = fixture[0].thread.id
-        let harness = try UITestHarness.launch(with: fixture)
-        defer { harness.tearDown() }
+        threadRow.click()
 
         // Switch to Terminal mode — first terminal auto-starts
-        try harness.clickMode(identifier: "mode.tab.terminal", label: "Terminal")
-        _ = try harness.waitForRequestWhere(method: "preset.start", timeout: 15) {
-            ($0["preset"] as? String) == "terminal"
+        try harness.selectMode("mode.tab.terminal")
+
+        let surface = harness.app.descendants(matching: .any)
+            .matching(identifier: "terminal.surface").firstMatch
+        guard surface.waitForExistence(timeout: 10) else {
+            harness.screenshot(name: "first-terminal-missing", testCase: self)
+            XCTFail("First terminal surface did not appear")
+            return
         }
-        let startsBaseline = harness.server.requestParams(method: "preset.start").count
 
-        // Open the dropdown menu and select dev-server
-        try harness.click(identifier: "terminal.session.add.menu")
-        Thread.sleep(forTimeInterval: 0.5)
-        try harness.click(identifier: "terminal.session.add.item.dev-server")
-
-        // Wait for dev-server to start
-        let devServerStart = try harness.waitForRequestWhere(method: "preset.start", timeout: 15) {
-            ($0["preset"] as? String) == "dev-server"
+        let addButton = harness.app.descendants(matching: .any)
+            .matching(identifier: "terminal.session.add").firstMatch
+        guard addButton.waitForExistence(timeout: 5) else {
+            XCTFail("terminal.session.add button not found")
+            return
         }
-        XCTAssertEqual(devServerStart["thread_id"] as? String, threadID)
 
-        // Verify dev-server was attached
-        let devServerAttach = try harness.waitForRequestWhere(method: "terminal.attach", timeout: 15) {
-            ($0["preset"] as? String) == "dev-server"
-        }
-        XCTAssertEqual(devServerAttach["thread_id"] as? String, threadID)
+        // Click + twice to create terminals 2 and 3
+        addButton.click()
+        Thread.sleep(forTimeInterval: 1)
+        addButton.click()
+        Thread.sleep(forTimeInterval: 2)
 
-        // Verify: exactly 1 new start for dev-server after baseline
-        let newStarts = harness.server.requestParams(method: "preset.start").suffix(from: startsBaseline)
-        XCTAssertEqual(newStarts.count, 1)
-        XCTAssertEqual(newStarts.first?["preset"] as? String, "dev-server")
+        // Verify 3 session tabs exist
+        let sessionTabs = harness.app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'session.tab.' AND NOT identifier BEGINSWITH 'session.tab.close.'"))
+        XCTAssertGreaterThanOrEqual(sessionTabs.count, 3,
+                                    "Should have at least 3 terminal session tabs after clicking + twice")
+
+        harness.screenshot(name: "three-terminals", testCase: self)
     }
 
-    // MARK: - Fixtures
+    // MARK: - Test: Dropdown opens named preset
 
-    private func singleProjectFixture() -> [MockSpindleServer.ProjectFixture] {
-        let suffix = UUID().uuidString.lowercased()
-        return [
-            MockSpindleServer.ProjectFixture(
-                id: "project-\(suffix)",
-                name: "myapp",
-                path: "/home/wsl/dev/myapp",
-                presets: [
-                    MockSpindleServer.PresetFixture(name: "terminal", command: "$SHELL"),
-                    MockSpindleServer.PresetFixture(name: "dev-server", command: "task dev:worktree"),
-                ],
-                thread: MockSpindleServer.ThreadFixture(
-                    id: "thread-\(suffix)",
-                    name: "feature-work",
-                    branch: "feature/work",
-                    worktreePath: "/home/wsl/dev/.threadmill/myapp/feature-work",
-                    createdAt: Date(timeIntervalSince1970: 1),
-                    tmuxSession: "tm_myapp_work"
-                ),
-                repo: MockSpindleServer.RepoFixture(
-                    id: "repo-\(suffix)",
-                    owner: "myorg",
-                    name: "myapp",
-                    fullName: "myorg/myapp",
-                    cloneURL: "git@github.com:myorg/myapp.git"
-                )
-            ),
-        ]
+    func testDropdownOpensDevServer() throws {
+        guard let harness else { throw XCTSkip("Harness not available") }
+
+        guard let threadRow = harness.waitForFixtureThread(timeout: 10) else {
+            XCTFail("Fixture thread not found")
+            return
+        }
+        threadRow.click()
+
+        // Switch to Terminal mode
+        try harness.selectMode("mode.tab.terminal")
+
+        let surface = harness.app.descendants(matching: .any)
+            .matching(identifier: "terminal.surface").firstMatch
+        guard surface.waitForExistence(timeout: 10) else {
+            harness.screenshot(name: "terminal-not-loaded", testCase: self)
+            XCTFail("Terminal surface did not appear")
+            return
+        }
+
+        // Open the dropdown menu
+        let menuButton = harness.app.descendants(matching: .any)
+            .matching(identifier: "terminal.session.add.menu").firstMatch
+        guard menuButton.waitForExistence(timeout: 5) else {
+            harness.screenshot(name: "no-menu-button", testCase: self)
+            XCTFail("terminal.session.add.menu button not found")
+            return
+        }
+        menuButton.click()
+        Thread.sleep(forTimeInterval: 0.5)
+
+        // Click the dev-server preset item
+        let devServerItem = harness.app.descendants(matching: .any)
+            .matching(identifier: "terminal.session.add.item.dev-server").firstMatch
+        guard devServerItem.waitForExistence(timeout: 5) else {
+            harness.screenshot(name: "no-dev-server-item", testCase: self)
+            XCTFail("terminal.session.add.item.dev-server not found in dropdown")
+            return
+        }
+        devServerItem.click()
+
+        // Wait for the dev-server session tab to appear
+        Thread.sleep(forTimeInterval: 2)
+        let devServerTab = harness.app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'session.tab.' AND label CONTAINS[c] 'dev-server'"))
+            .firstMatch
+        XCTAssertTrue(devServerTab.waitForExistence(timeout: 5),
+                      "Session tab for dev-server preset should appear")
+
+        harness.screenshot(name: "dev-server-opened", testCase: self)
     }
 }
