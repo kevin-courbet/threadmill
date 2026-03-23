@@ -284,8 +284,13 @@ final class AppState {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
+    /// Visible threads excluding pinned ones (shown in their own section).
+    private var unpinnedVisibleThreads: [ThreadModel] {
+        visibleThreads.filter { !pinnedThreadIDs.contains($0.id) }
+    }
+
     var projectsWithThreads: [(Project, [ThreadModel])] {
-        let grouped = Dictionary(grouping: visibleThreads, by: \.projectId)
+        let grouped = Dictionary(grouping: unpinnedVisibleThreads, by: \.projectId)
         return projects
             .filter { !isDefaultWorkspaceProject($0) && $0.repoId == nil }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -296,7 +301,7 @@ final class AppState {
     }
 
     var reposWithThreads: [(Repo, [ThreadModel])] {
-        let grouped: [String?: [ThreadModel]] = Dictionary(grouping: visibleThreads) { thread -> String? in
+        let grouped: [String?: [ThreadModel]] = Dictionary(grouping: unpinnedVisibleThreads) { thread -> String? in
             guard let project = projectsByID[thread.projectId] else {
                 return nil
             }

@@ -32,9 +32,9 @@ struct ProjectSection: View {
             if isExpanded {
                 if displayedThreads.isEmpty {
                     Text("No threads yet")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 48)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.quaternary)
+                        .padding(.leading, 30)
                         .padding(.vertical, 3)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 3, trailing: 10))
@@ -100,53 +100,34 @@ struct ProjectSection: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .fill(project.avatarColor.opacity(0.9))
-                Text(project.avatarLetter)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: 22, height: 22)
+        HStack(spacing: 6) {
+            Image(systemName: isHeaderHovered
+                ? (isExpanded ? "chevron.down" : "chevron.right")
+                : "folder")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+                .animation(.easeInOut(duration: 0.15), value: isExpanded)
+                .contentTransition(.symbolEffect(.replace))
 
             Text(project.name)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
 
             Spacer(minLength: 0)
 
-            Button {
-                onNewThread(project)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20, height: 20)
-                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-            }
-            .disabled(!canCreateThread)
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("project.section.new-thread.\(project.id)")
-
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    isExpanded.toggle()
+            if isHeaderHovered {
+                HoverButton(systemName: "plus") {
+                    onNewThread(project)
                 }
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    .animation(.easeInOut(duration: 0.15), value: isExpanded)
-                    .frame(width: 20, height: 20)
-                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .disabled(!canCreateThread)
+                .transition(.opacity)
+                .accessibilityIdentifier("project.section.new-thread.\(project.id)")
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("project.section.disclosure.\(project.id)")
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
         .background(isHeaderHovered ? Color.white.opacity(0.05) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         .contentShape(Rectangle())

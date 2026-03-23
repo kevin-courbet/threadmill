@@ -22,7 +22,7 @@ struct SidebarView: View {
         @Bindable var bindableState = appState
 
         VStack(spacing: 0) {
-            List(selection: $bindableState.selectedThreadID) {
+            List {
                 // Pinned threads section — above everything else
                 if !appState.pinnedThreads.isEmpty {
                     pinnedSection
@@ -165,70 +165,16 @@ struct SidebarView: View {
         }
     }
 
-    // MARK: - Pinned Section
-
-    @State private var isPinnedExpanded = true
-    @State private var isPinnedHeaderHovered = false
+    // MARK: - Pinned Threads
 
     @ViewBuilder
     private var pinnedSection: some View {
-        // Header
-        HStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .fill(Color.orange.opacity(0.8))
-                Image(systemName: "pin.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white)
-                    .rotationEffect(.degrees(45))
-            }
-            .frame(width: 22, height: 22)
-
-            Text("Pinned")
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-
-            Spacer(minLength: 0)
-
-            Button {
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    isPinnedExpanded.toggle()
-                }
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(isPinnedExpanded ? 90 : 0))
-                    .animation(.easeInOut(duration: 0.15), value: isPinnedExpanded)
-                    .frame(width: 20, height: 20)
-                    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(isPinnedHeaderHovered ? Color.white.opacity(0.05) : .clear)
-        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.15)) {
-                isPinnedExpanded.toggle()
-            }
-        }
-        .onHover { isPinnedHeaderHovered = $0 }
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 3, leading: 10, bottom: 3, trailing: 10))
-        .listRowBackground(Color.clear)
-
-        // Pinned thread rows
-        if isPinnedExpanded {
-            ForEach(appState.pinnedThreads) { thread in
-                pinnedThreadRow(thread)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
-                    .listRowBackground(Color.clear)
-                    .tag(thread.id)
-            }
+        ForEach(appState.pinnedThreads) { thread in
+            pinnedThreadRow(thread)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
+                .listRowBackground(Color.clear)
+                .tag(thread.id)
         }
     }
 

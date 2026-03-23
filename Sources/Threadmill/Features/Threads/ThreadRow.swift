@@ -7,6 +7,7 @@ struct ThreadRow: View {
     let onCancelCreation: (ThreadModel) -> Void
     let onTogglePin: (ThreadModel) -> Void
     @State private var isHovered = false
+    @State private var isPinHovered = false
 
     init(
         thread: ThreadModel,
@@ -27,32 +28,32 @@ struct ThreadRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            // Icon column — same 22pt width as project avatar for alignment
+        HStack(alignment: .center, spacing: 6) {
+            // Pin icon column — aligned with folder icon in section headers
             ZStack {
                 if isPinned || isHovered {
                     Button {
                         onTogglePin(thread)
                     } label: {
-                        Image(systemName: isPinned ? "pin.fill" : "pin")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(isPinned ? .secondary : .tertiary)
-                            .rotationEffect(.degrees(45))
+                        LucideIconView(isPinned ? LucideIcon.pinOff : LucideIcon.pin, size: 14)
+                            .foregroundStyle(isPinHovered ? .primary : isPinned ? .secondary : .quaternary)
                     }
                     .buttonStyle(.plain)
+                    .help(isPinned ? "Unpin thread" : "Pin thread")
+                    .onHover { isPinHovered = $0 }
                     .transition(.opacity)
                 }
             }
-            .frame(width: 22, height: 22)
+            .frame(width: 16)
 
             VStack(alignment: .leading, spacing: showBranch ? 2 : 0) {
                 Text(thread.name)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13, weight: .regular))
                     .lineLimit(1)
                 if showBranch {
                     Text(thread.branch)
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(.secondary.opacity(0.7))
+                        .foregroundStyle(.tertiary)
                         .lineLimit(1)
                 }
             }
@@ -80,7 +81,7 @@ struct ThreadRow: View {
                 .accessibilityIdentifier("thread.cancel.\(thread.id)")
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
