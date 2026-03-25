@@ -40,8 +40,13 @@ final class AppStateAttachAfterConnectTests: XCTestCase {
         ]
         database.threads = [thread]
 
-        connection.requestHandler = { method, _, _ in
-            if method == "preset.start" { return ["ok": true] as [String: Any] }
+        connection.requestHandler = { method, params, _ in
+            if method == "preset.start" {
+                XCTAssertEqual(params?["thread_id"] as? String, "thread-1")
+                XCTAssertEqual(params?["preset"] as? String, "terminal")
+                XCTAssertEqual(params?["session_id"] as? String, "terminal")
+                return ["ok": true] as [String: Any]
+            }
             throw TestError.missingStub
         }
         multiplexer.attachHandler = { _, _, _ in
@@ -49,6 +54,7 @@ final class AppStateAttachAfterConnectTests: XCTestCase {
                 channelID: 1,
                 threadID: "thread-1",
                 preset: "terminal",
+                sessionID: "terminal",
                 connectionManager: connection,
                 surfaceHost: MockSurfaceHost()
             )
@@ -129,6 +135,7 @@ final class AppStateAttachAfterConnectTests: XCTestCase {
                 channelID: 1,
                 threadID: "thread-1",
                 preset: "terminal",
+                sessionID: "terminal",
                 connectionManager: connection,
                 surfaceHost: MockSurfaceHost()
             )
@@ -201,7 +208,8 @@ final class AppStateAttachAfterConnectTests: XCTestCase {
             RelayEndpoint(
                 channelID: 1,
                 threadID: "thread-1",
-                preset: sessionID,
+                preset: preset,
+                sessionID: sessionID,
                 connectionManager: connection,
                 surfaceHost: MockSurfaceHost()
             )
@@ -220,7 +228,8 @@ final class AppStateAttachAfterConnectTests: XCTestCase {
         await appState.attachSelectedPreset()
 
         XCTAssertEqual(appState.selectedPreset, "terminal-1")
-        XCTAssertEqual(appState.selectedEndpoint?.preset, "terminal-1")
+        XCTAssertEqual(appState.selectedEndpoint?.preset, "terminal")
+        XCTAssertEqual(appState.selectedEndpoint?.sessionID, "terminal-1")
     }
 
     func testScheduleAttachSelectedPresetCancelsPreviousRetryTask() {

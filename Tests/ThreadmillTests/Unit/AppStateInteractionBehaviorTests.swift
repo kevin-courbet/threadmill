@@ -421,8 +421,13 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         database.projects = [project]
         database.threads = [thread]
 
-        connection.requestHandler = { method, _, _ in
+        connection.requestHandler = { method, params, _ in
             if method == "preset.start" || method == "preset.stop" {
+                if method == "preset.stop" {
+                    XCTAssertEqual(params?["thread_id"] as? String, thread.id)
+                    XCTAssertEqual(params?["preset"] as? String, "opencode")
+                    XCTAssertEqual(params?["session_id"] as? String, "opencode")
+                }
                 return ["ok": true]
             }
             throw TestError.missingStub
@@ -433,6 +438,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
                 channelID: channelID,
                 threadID: thread.id,
                 preset: preset,
+                sessionID: preset,
                 connectionManager: connection,
                 surfaceHost: MockSurfaceHost()
             )
@@ -482,6 +488,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
                 channelID: preset == "terminal" ? 1 : 2,
                 threadID: thread.id,
                 preset: preset,
+                sessionID: preset,
                 connectionManager: connection,
                 surfaceHost: MockSurfaceHost()
             )
@@ -524,6 +531,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
                 channelID: 7,
                 threadID: threadID,
                 preset: preset,
+                sessionID: preset,
                 connectionManager: connection,
                 surfaceHost: MockSurfaceHost()
             )
@@ -783,6 +791,7 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
                 channelID: 1,
                 threadID: threadID,
                 preset: preset,
+                sessionID: preset,
                 connectionManager: connection,
                 surfaceHost: MockSurfaceHost()
             )

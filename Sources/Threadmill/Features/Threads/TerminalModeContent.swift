@@ -123,7 +123,7 @@ enum TerminalModeActions {
             return
         }
 
-        let existingTerminalCount = terminalSessionIDs.wrappedValue.filter { presetName(forSessionID: $0) == "terminal" }.count
+        let existingTerminalCount = terminalSessionIDs.wrappedValue.filter { Preset.baseName(forSessionID: $0) == "terminal" }.count
         let sessionID = "terminal-\(existingTerminalCount + 1)"
 
         terminalSessionIDs.wrappedValue.append(sessionID)
@@ -160,15 +160,6 @@ enum TerminalModeActions {
         tabStateManager.setTerminalSessionIDs(terminalSessionIDs.wrappedValue, threadID: threadID)
         selectedTerminalSessionIDBinding.wrappedValue = preset
         tabStateManager.setSelectedSessionID(preset, modeID: TabItem.terminal.id, threadID: threadID)
-    }
-
-    /// Extract the daemon preset name from a session ID.
-    /// "terminal-1" → "terminal", "dev-server" → "dev-server"
-    static func presetName(forSessionID sessionID: String) -> String {
-        if sessionID.hasPrefix("terminal-"), sessionID.dropFirst("terminal-".count).allSatisfy(\.isNumber) {
-            return "terminal"
-        }
-        return sessionID
     }
 
     static func closeTerminalSessions(

@@ -2,25 +2,24 @@
 
 status: SPAWNING
 goal_version: 1
-next_worker_id: W002
-active_batch_id: B001
-last_integrated_commit: none
+next_worker_id: W003
+active_batch_id: B002
+last_integrated_commit: 876f9f0
 
 ## Active Workers
-- worker_id: W001
-  batch_id: B001
-  task: "Phase 1: Spindle protocol + params — add session_id to all RPC params, use preset for config lookup, session_id for window/target key, remove resolve_base_preset_name, update schema"
-  handoff_file: /Users/kevincourbet/dev/threadmill.session-id-protocol/.sisyphus/workers/W001.md
+- worker_id: W002
+  batch_id: B002
+  task: "Phase 2: Mac sends session_id — consolidate preset name resolution, send preset + session_id in all RPCs, remove daemonPreset param"
+  handoff_file: /Users/kevincourbet/dev/threadmill.session-id-protocol/.sisyphus/workers/W002.md
   status: assigned
 
 ## Pending Integration
-- worker_id: none
-  batch_id: none
-  stop_reason: none
-  handoff_file: none
-  status: none
+- worker_id: W001
+  batch_id: B001
+  stop_reason: DONE
+  handoff_file: /Users/kevincourbet/dev/threadmill.session-id-protocol/.sisyphus/workers/W001.md
+  status: integrated
 
 ## Notes
-- Shared worktree mode: workers do not commit; orchestrator owns git integration.
-- Two-phase task: Phase 1 = Spindle (Rust), Phase 2 = Mac (Swift). Sequential because Mac depends on protocol changes.
-- Spindle source is at spindle/ symlink (→ /Volumes/wsl-dev/spindle/), edits are local, builds via SSH.
+- Phase 1 (Spindle) integrated at 876f9f0. Spindle changes in separate repo (symlink).
+- Now spawning Phase 2 (Mac/Swift).
