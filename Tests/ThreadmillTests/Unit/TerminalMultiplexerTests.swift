@@ -9,16 +9,17 @@ final class TerminalMultiplexerTests: XCTestCase {
             if method == "terminal.attach" {
                 XCTAssertEqual(params?["thread_id"] as? String, "thread-1")
                 XCTAssertEqual(params?["preset"] as? String, "terminal")
+                XCTAssertEqual(params?["session_id"] as? String, "terminal-2")
                 return ["channel_id": 7]
             }
             return NSNull()
         }
 
         let multiplexer = TerminalMultiplexer(connectionManager: connection, surfaceHost: MockSurfaceHost())
-        let endpoint = try await multiplexer.attach(threadID: "thread-1", sessionID: "terminal", preset: "terminal")
+        let endpoint = try await multiplexer.attach(threadID: "thread-1", sessionID: "terminal-2", preset: "terminal")
 
         XCTAssertEqual(endpoint.channelID, 7)
-        XCTAssertTrue(multiplexer.endpoint(threadID: "thread-1", sessionID: "terminal") === endpoint)
+        XCTAssertTrue(multiplexer.endpoint(threadID: "thread-1", sessionID: "terminal-2") === endpoint)
         multiplexer.detachAll()
     }
 
@@ -146,21 +147,25 @@ final class TerminalMultiplexerTests: XCTestCase {
         let remoteAConnection = MockDaemonConnection(state: .connected)
         let remoteBConnection = MockDaemonConnection(state: .connected)
 
-        remoteAConnection.requestHandler = { method, _, _ in
+        remoteAConnection.requestHandler = { method, params, _ in
             if method == "terminal.attach" {
+                XCTAssertEqual(params?["session_id"] as? String, "terminal")
                 return ["channel_id": 11]
             }
             if method == "terminal.detach" {
+                XCTAssertEqual(params?["session_id"] as? String, "terminal")
                 return ["detached": true]
             }
             return NSNull()
         }
 
-        remoteBConnection.requestHandler = { method, _, _ in
+        remoteBConnection.requestHandler = { method, params, _ in
             if method == "terminal.attach" {
+                XCTAssertEqual(params?["session_id"] as? String, "terminal")
                 return ["channel_id": 22]
             }
             if method == "terminal.detach" {
+                XCTAssertEqual(params?["session_id"] as? String, "terminal")
                 return ["detached": true]
             }
             return NSNull()

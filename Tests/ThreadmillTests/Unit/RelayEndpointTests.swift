@@ -10,6 +10,7 @@ final class RelayEndpointTests: XCTestCase {
             channelID: 9,
             threadID: "thread-1",
             preset: "terminal",
+            sessionID: "terminal",
             connectionManager: connection,
             surfaceHost: MockSurfaceHost()
         )
@@ -30,6 +31,7 @@ final class RelayEndpointTests: XCTestCase {
             channelID: 0,
             threadID: "thread-1",
             preset: "terminal",
+            sessionID: "terminal",
             connectionManager: connection,
             surfaceHost: MockSurfaceHost()
         )
@@ -53,6 +55,7 @@ final class RelayEndpointTests: XCTestCase {
             channelID: 4,
             threadID: "thread-1",
             preset: "terminal",
+            sessionID: "terminal",
             connectionManager: connection,
             surfaceHost: MockSurfaceHost()
         )

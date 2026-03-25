@@ -63,6 +63,7 @@ final class TerminalMultiplexer: TerminalMultiplexing {
             channelID: 0,
             threadID: threadID,
             preset: preset,
+            sessionID: sessionID,
             connectionManager: connectionManager,
             surfaceHost: surfaceHost
         )
@@ -137,6 +138,7 @@ final class TerminalMultiplexer: TerminalMultiplexing {
                 let channelID = try await requestAttachChannel(
                     threadID: endpoint.threadID,
                     preset: endpoint.preset,
+                    sessionID: endpoint.sessionID,
                     connectionManager: connectionManager
                 )
                 endpoint.setChannelID(channelID)
@@ -155,6 +157,7 @@ final class TerminalMultiplexer: TerminalMultiplexing {
         let channelID = try await requestAttachChannel(
             threadID: endpoint.threadID,
             preset: endpoint.preset,
+            sessionID: endpoint.sessionID,
             connectionManager: connectionManager
         )
 
@@ -186,6 +189,7 @@ final class TerminalMultiplexer: TerminalMultiplexing {
         let threadID = endpoint.threadID
         let preset = endpoint.preset
         let channelID = endpoint.channelID
+        let sessionID = endpoint.sessionID
         if let attachmentKey = endpointsByAttachment.first(where: { $0.value === endpoint })?.key {
             endpointsByAttachment.removeValue(forKey: attachmentKey)
         }
@@ -209,6 +213,7 @@ final class TerminalMultiplexer: TerminalMultiplexing {
                     params: [
                         "thread_id": threadID,
                         "preset": preset,
+                        "session_id": sessionID,
                     ],
                     timeout: 5
                 )
@@ -228,6 +233,7 @@ final class TerminalMultiplexer: TerminalMultiplexing {
     private func requestAttachChannel(
         threadID: String,
         preset: String,
+        sessionID: String,
         connectionManager: any ConnectionManaging
     ) async throws -> UInt16 {
         let result = try await connectionManager.request(
@@ -235,6 +241,7 @@ final class TerminalMultiplexer: TerminalMultiplexing {
             params: [
                 "thread_id": threadID,
                 "preset": preset,
+                "session_id": sessionID,
             ],
             timeout: 10
         )

@@ -7,6 +7,7 @@ final class RelayEndpoint {
     private(set) var channelID: UInt16
     let threadID: String
     let preset: String
+    let sessionID: String
     let socketPath: String
 
     private let connectionManager: any ConnectionManaging
@@ -45,12 +46,14 @@ final class RelayEndpoint {
         channelID: UInt16,
         threadID: String,
         preset: String,
+        sessionID: String,
         connectionManager: any ConnectionManaging,
         surfaceHost: any SurfaceHosting
     ) {
         self.channelID = channelID
         self.threadID = threadID
         self.preset = preset
+        self.sessionID = sessionID
         self.connectionManager = connectionManager
         self.surfaceHost = surfaceHost
         socketPath = "/tmp/threadmill-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString).sock"
@@ -203,6 +206,7 @@ final class RelayEndpoint {
                 params: [
                     "thread_id": threadID,
                     "preset": preset,
+                    "session_id": sessionID,
                     "cols": size.columns,
                     "rows": size.rows,
                 ],
@@ -432,6 +436,7 @@ final class RelayEndpoint {
                 params: [
                     "thread_id": threadID,
                     "preset": preset,
+                    "session_id": sessionID,
                     "cols": desiredColumns ?? Int(size.columns),
                     "rows": desiredRows ?? Int(size.rows),
                 ],

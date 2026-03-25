@@ -40,4 +40,11 @@ struct Preset: Identifiable, Hashable, Codable {
             }
             .map(\.element)
     }
+
+    static func baseName(forSessionID sessionID: String) -> String {
+        if sessionID.hasPrefix("terminal-"), sessionID.dropFirst("terminal-".count).allSatisfy(\.isNumber) {
+            return "terminal"
+        }
+        return sessionID
+    }
 }

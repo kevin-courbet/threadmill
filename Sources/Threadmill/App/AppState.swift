@@ -109,10 +109,7 @@ final class AppState {
 
         /// The daemon preset name derived from the session ID.
         var presetName: String {
-            if sessionID.hasPrefix("terminal-"), sessionID.dropFirst("terminal-".count).allSatisfy(\.isNumber) {
-                return "terminal"
-            }
-            return sessionID
+            Preset.baseName(forSessionID: sessionID)
         }
     }
 
@@ -609,7 +606,7 @@ final class AppState {
             return
         }
 
-        let daemonPreset = AttachmentKey(threadID: threadID, sessionID: sessionID).presetName
+        let daemonPreset = Preset.baseName(forSessionID: sessionID)
         guard presets.contains(where: { $0.name == daemonPreset }) else {
             Logger.state.info("attachPreset BAIL — daemon preset '\(daemonPreset, privacy: .public)' not in presets [\(self.presets.map(\.name).joined(separator: ","), privacy: .public)]")
             selectedPreset = presets.first?.name
@@ -637,7 +634,7 @@ final class AppState {
                 return
             }
             defer { self.pendingAttachTasks.removeValue(forKey: key) }
-            await self.performAttachPreset(threadID: threadID, daemonPreset: daemonPreset, key: key)
+            await self.performAttachPreset(threadID: threadID, key: key)
         }
         pendingAttachTasks[key] = task
         await task.value
@@ -653,7 +650,7 @@ final class AppState {
 
     /// Start a preset and attach. sessionID defaults to preset name for named presets.
     func startPreset(threadID: String, preset sessionID: String) async {
-        let daemonPreset = AttachmentKey(threadID: threadID, sessionID: sessionID).presetName
+        let daemonPreset = Preset.baseName(forSessionID: sessionID)
 
         guard selectedThreadID == threadID,
               let connectionManager = connectionForThread(id: threadID)
@@ -672,12 +669,13 @@ final class AppState {
                 params: [
                     "thread_id": threadID,
                     "preset": daemonPreset,
+                    "session_id": sessionID,
                 ],
                 timeout: 20
             )
             lastPresetStartErrors.removeValue(forKey: key)
         } catch {
-            if isPresetAlreadyRunningError(error, preset: daemonPreset) {
+            if isPresetAlreadyRunningError(error, preset: sessionID) {
                 lastPresetStartErrors[key] = String(describing: error)
                 selectedPreset = sessionID
                 await attachPreset(threadID: threadID, preset: sessionID)
@@ -716,13 +714,15 @@ final class AppState {
         }
 
         let key = AttachmentKey(threadID: threadID, sessionID: preset)
+        let baseName = Preset.baseName(forSessionID: preset)
 
         do {
             _ = try await connectionManager.request(
                 method: "preset.stop",
                 params: [
                     "thread_id": threadID,
-                    "preset": preset,
+                    "preset": baseName,
+                    "session_id": preset,
                 ],
                 timeout: 20
             )
@@ -752,9 +752,10 @@ final class AppState {
         }
     }
 
-    private func performAttachPreset(threadID requestedThreadID: String, daemonPreset: String, key: AttachmentKey) async {
+    private func performAttachPreset(threadID requestedThreadID: String, key: AttachmentKey) async {
         let requestedSessionID = key.sessionID
-        Logger.state.info("performAttachPreset START thread=\(requestedThreadID, privacy: .public) preset=\(daemonPreset, privacy: .public) session=\(requestedSessionID, privacy: .public)")
+        let baseName = Preset.baseName(forSessionID: requestedSessionID)
+        Logger.state.info("performAttachPreset START thread=\(requestedThreadID, privacy: .public) preset=\(baseName, privacy: .public) session=\(requestedSessionID, privacy: .public)")
         guard canAttemptAttach(threadID: requestedThreadID, key: key) else {
             Logger.state.info("performAttachPreset BAIL canAttemptAttach=false")
             if selectedThreadID == requestedThreadID && selectedPreset == requestedSessionID {
@@ -788,7 +789,7 @@ final class AppState {
                     let reattachedEndpoint = try await multiplexer.attach(
                         threadID: requestedThreadID,
                         sessionID: requestedSessionID,
-                        preset: requestedSessionID
+                        preset: baseName
                     )
                     guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
                         return
@@ -805,15 +806,13 @@ final class AppState {
         }
 
         do {
-            // Send the session ID (e.g. "terminal-2") as the preset so
-            // Spindle creates a separate tmux window per terminal tab.
-            // Spindle resolves "terminal-2" to the "terminal" preset config.
             do {
                 _ = try await connectionManager.request(
                     method: "preset.start",
                     params: [
                         "thread_id": requestedThreadID,
-                        "preset": requestedSessionID,
+                        "preset": baseName,
+                        "session_id": requestedSessionID,
                     ],
                     timeout: 20
                 )
@@ -829,7 +828,7 @@ final class AppState {
             let endpoint = try await multiplexer.attach(
                 threadID: requestedThreadID,
                 sessionID: requestedSessionID,
-                preset: requestedSessionID
+                preset: baseName
             )
             guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
                 return
@@ -1370,7 +1369,7 @@ final class AppState {
     }
 
     private func daemonPresetName(forSessionID sessionID: String) -> String {
-        AttachmentKey(threadID: selectedThreadID ?? "", sessionID: sessionID).presetName
+        Preset.baseName(forSessionID: sessionID)
     }
 
     private func openPresetNames(for threadID: String) -> Set<String> {
