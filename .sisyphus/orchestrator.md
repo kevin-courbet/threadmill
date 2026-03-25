@@ -1,23 +1,24 @@
 # Orchestrator State
 
-status: SPAWNING
+status: READY
 goal_version: 1
-next_worker_id: W011
-active_batch_id: B010
-last_integrated_commit: fc43504
+next_worker_id: W001
+active_batch_id: none
+last_integrated_commit: none
 
 ## Active Workers
-- worker_id: W010
-  batch_id: B010
-  task: "Fix all runtime issues: thread creation, terminal attach, chat session creation, model picker"
-  handoff_file: /Users/kevincourbet/dev/threadmill.acp-chat/.sisyphus/workers/W010.md
-  status: assigned
+- worker_id: none
+  batch_id: none
+  task: none
+  handoff_file: none
+  status: none
 
 ## Pending Integration
-- worker_id: W001-W009, H1-H4
-  status: integrated
+- worker_id: none
+  batch_id: none
+  stop_reason: none
+  handoff_file: none
+  status: none
 
 ## Notes
-- App runs but nothing works: thread creation fails, terminal stuck on Starting, chat + button broken, model picker wrong
-- Tests pass with mocks but real integration is broken
-- Need to debug actual Spindle communication and fix UI flows
+- Shared worktree mode: workers do not commit; orchestrator owns git integration.
