@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 @MainActor
 final class SyncService: SyncServicing {
@@ -21,15 +22,20 @@ final class SyncService: SyncServicing {
 
     func syncFromDaemon() async {
         do {
+            Logger.sync.info("syncFromDaemon START")
             let projectsResult = try await connectionManager.request(method: "project.list", params: nil, timeout: 10)
             let threadsResult = try await connectionManager.request(method: "thread.list", params: [:], timeout: 10)
 
             let projects = parseProjects(projectsResult)
             let threads = parseThreads(threadsResult)
+            let presetCount = projects.flatMap(\.presets).count
+            Logger.sync.info("Parsed \(projects.count) projects, \(threads.count) threads, \(presetCount) presets — writing to DB")
             try databaseManager.replaceAllFromDaemon(projects: projects, threads: threads, remoteId: remoteId)
+            Logger.sync.info("DB write done — calling reloadFromDatabase")
             appState.reloadFromDatabase()
+            Logger.sync.info("syncFromDaemon DONE — appState.presets.count=\(self.appState.presets.count)")
         } catch {
-            NSLog("threadmill-sync: sync failed: %@", "\(error)")
+            Logger.sync.error("Sync failed: \(error)")
         }
     }
 

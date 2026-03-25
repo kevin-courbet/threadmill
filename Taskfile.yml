@@ -52,7 +52,7 @@ tasks:
   test:swift:
     desc: Run Threadmill Swift unit tests
     cmds:
-      - swift test
+      - swift test --verbose
 
   test:integration:
     desc: Run real Spindle integration tests (requires beast + SSH tunnel)
@@ -65,7 +65,12 @@ tasks:
           ssh -N -f -L 127.0.0.1:19990:127.0.0.1:19990 beast
           sleep 1
         fi
-      - swift test --filter IntegrationTests
+      - swift test --filter IntegrationTests --verbose
+
+  lint:
+    desc: Check for banned logging patterns (NSLog, print in Sources/)
+    cmds:
+      - bash Scripts/lint_logging.sh
 
   test:spindle:
     desc: Run Spindle integration tests on beast
@@ -77,6 +82,7 @@ tasks:
     env:
       THREADMILL_RUN_UI_E2E: "1"
     cmds:
+      - pkill -9 -f "Threadmill.app/Contents/MacOS/Threadmill" || true
       - swift build --product Threadmill
       - bash Scripts/package_app.sh
       - bash Scripts/sync_xcodeproj.sh

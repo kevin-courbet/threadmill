@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 enum AppStateError: LocalizedError {
     case connectionManagerUnavailable
@@ -118,11 +119,15 @@ final class AppState {
     var connectionStatus: ConnectionStatus = .disconnected {
         didSet {
             if case .connected = connectionStatus, oldValue != connectionStatus {
-                if shouldRetrySelectedPresetAttach() {
+                Logger.state.info("connectionStatus → connected (presets=\(self.presets.count), selectedThread=\(self.selectedThreadID ?? "nil", privacy: .public), selectedPreset=\(self.selectedPreset ?? "nil", privacy: .public))")
+                let shouldRetry = shouldRetrySelectedPresetAttach()
+                Logger.state.info("shouldRetrySelectedPresetAttach=\(shouldRetry)")
+                if shouldRetry {
                     scheduleAttachSelectedPreset()
                 }
                 startStatsTimer()
             } else if connectionStatus == .disconnected {
+                Logger.state.info("connectionStatus → disconnected")
                 pendingScheduledAttachTask?.cancel()
                 pendingScheduledAttachTask = nil
                 stopStatsTimer()
@@ -457,6 +462,7 @@ final class AppState {
             projects = try databaseManager.allProjects()
             normalizeDefaultWorkspaceProjects()
             threads = try databaseManager.allThreads()
+            Logger.state.info("reloadFromDatabase — projects=\(self.projects.count), threads=\(self.threads.count), presets=\(self.presets.count), selectedThread=\(self.selectedThreadID ?? "nil", privacy: .public), selectedPreset=\(self.selectedPreset ?? "nil", privacy: .public), connected=\(self.connectionStatus.isConnected)")
             if selectedWorkspaceRemoteID == nil {
                 selectedWorkspaceRemoteID = remotes.first?.id
             }
@@ -465,11 +471,13 @@ final class AppState {
             ensureSelectedPresetIsValid()
             refreshSelectedEndpoint()
             updateActiveRemoteConnection()
-            if connectionStatus.isConnected, shouldRetrySelectedPresetAttach() {
+            let shouldRetry = shouldRetrySelectedPresetAttach()
+            Logger.state.info("post-reload: presets=\(self.presets.count), shouldRetry=\(shouldRetry)")
+            if connectionStatus.isConnected, shouldRetry {
                 scheduleAttachSelectedPreset()
             }
         } catch {
-            NSLog("threadmill-state: failed to load cache: %@", "\(error)")
+            Logger.state.error("Failed to load cache: \(error)")
         }
     }
 
@@ -537,11 +545,14 @@ final class AppState {
     }
 
     func scheduleAttachSelectedPreset() {
+        let hadPrevious = pendingScheduledAttachTask != nil
         pendingScheduledAttachTask?.cancel()
         pendingScheduledAttachToken += 1
         let token = pendingScheduledAttachToken
+        Logger.state.info("scheduleAttachSelectedPreset token=\(token) cancelledPrevious=\(hadPrevious)")
         let task = Task { @MainActor [weak self] in
             guard !Task.isCancelled else {
+                Logger.state.info("scheduleAttach token=\(token) — cancelled before execution")
                 return
             }
             defer {
@@ -555,26 +566,32 @@ final class AppState {
     }
 
     func attachSelectedPreset() async {
+        Logger.state.info("attachSelectedPreset START — selectedThread=\(self.selectedThread?.id ?? "nil", privacy: .public), selectedPreset=\(self.selectedPreset ?? "nil", privacy: .public), presets=\(self.presets.count)")
         guard let selectedThread else {
+            Logger.state.info("attachSelectedPreset BAIL — no selectedThread")
             cancelPendingAttachTasks()
             selectedEndpoint = nil
             return
         }
 
         if selectedPreset == TerminalTabModel.chatTabSelectionID {
+            Logger.state.info("attachSelectedPreset BAIL — chat mode selected")
             cancelPendingAttachTasks(threadID: selectedThread.id)
             selectedEndpoint = nil
             return
         }
 
         guard let preset = selectedPreset ?? selectedTerminalSessionIDToRecover(threadID: selectedThread.id) ?? presets.first?.name else {
+            Logger.state.info("attachSelectedPreset BAIL — no preset resolved (selectedPreset=nil, recover=nil, presets.first=nil)")
             selectedEndpoint = nil
             return
         }
 
         let availablePresetNames = Set(presets.map(\.name))
         let normalizedPreset = daemonPresetName(forSessionID: preset)
+        Logger.state.info("attachSelectedPreset preset=\(preset, privacy: .public), normalized=\(normalizedPreset, privacy: .public), available=\(availablePresetNames.joined(separator: ","), privacy: .public)")
         guard availablePresetNames.contains(normalizedPreset) else {
+            Logger.state.info("attachSelectedPreset BAIL — normalized preset '\(normalizedPreset, privacy: .public)' not in available presets")
             selectedPreset = presets.first?.name
             selectedEndpoint = nil
             return
@@ -586,12 +603,15 @@ final class AppState {
     /// Attach to a terminal session. sessionID is the local tab identifier
     /// (e.g. "terminal-1", "dev-server"). The daemon preset name is derived from it.
     func attachPreset(threadID: String, preset sessionID: String) async {
+        Logger.state.info("attachPreset(thread=\(threadID, privacy: .public), session=\(sessionID, privacy: .public)) presets=\(self.presets.count)")
         guard selectedThreadID == threadID else {
+            Logger.state.info("attachPreset BAIL — selectedThreadID=\(self.selectedThreadID ?? "nil", privacy: .public) != threadID=\(threadID, privacy: .public)")
             return
         }
 
         let daemonPreset = AttachmentKey(threadID: threadID, sessionID: sessionID).presetName
         guard presets.contains(where: { $0.name == daemonPreset }) else {
+            Logger.state.info("attachPreset BAIL — daemon preset '\(daemonPreset, privacy: .public)' not in presets [\(self.presets.map(\.name).joined(separator: ","), privacy: .public)]")
             selectedPreset = presets.first?.name
             selectedEndpoint = nil
             return
@@ -664,7 +684,7 @@ final class AppState {
                 return
             }
             lastPresetStartErrors[key] = String(describing: error)
-            NSLog("threadmill-state: preset.start failed (%@/%@): %@", threadID, daemonPreset, "\(error)")
+            Logger.state.error("preset.start failed (\(threadID)/\(daemonPreset)): \(error)")
             return
         }
 
@@ -729,13 +749,15 @@ final class AppState {
                 }
             }
         } catch {
-            NSLog("threadmill-state: preset.stop failed (%@/%@): %@", threadID, daemonPreset, "\(error)")
+            Logger.state.error("preset.stop failed (\(threadID)/\(daemonPreset)): \(error)")
         }
     }
 
     private func performAttachPreset(threadID requestedThreadID: String, daemonPreset: String, key: AttachmentKey) async {
         let requestedSessionID = key.sessionID
+        Logger.state.info("performAttachPreset START thread=\(requestedThreadID, privacy: .public) preset=\(daemonPreset, privacy: .public) session=\(requestedSessionID, privacy: .public)")
         guard canAttemptAttach(threadID: requestedThreadID, key: key) else {
+            Logger.state.info("performAttachPreset BAIL canAttemptAttach=false")
             if selectedThreadID == requestedThreadID && selectedPreset == requestedSessionID {
                 selectedEndpoint = attachedEndpoints[key]
             }
@@ -747,14 +769,17 @@ final class AppState {
         }
 
         guard selectionMatchesRequest() else {
+            Logger.state.info("performAttachPreset BAIL selectionMatchesRequest=false (selectedThread=\(self.selectedThreadID ?? "nil", privacy: .public) selectedPreset=\(self.selectedPreset ?? "nil", privacy: .public))")
             return
         }
 
         guard let connectionManager = connectionForThread(id: requestedThreadID), let multiplexer else {
+            Logger.state.info("performAttachPreset BAIL no connectionManager or multiplexer")
             return
         }
 
         if let endpoint = attachedEndpoints[key] {
+            Logger.state.info("performAttachPreset existing endpoint found, channel=\(endpoint.channelID)")
             guard selectionMatchesRequest() else {
                 return
             }
@@ -774,7 +799,7 @@ final class AppState {
                     selectedEndpoint = reattachedEndpoint
                 } catch {
                     handleAttachError(error, key: key, threadID: requestedThreadID)
-                    NSLog("threadmill-state: reattach failed: %@", "\(error)")
+                    Logger.state.error("Reattach failed: \(error)")
                 }
             }
             return
@@ -811,10 +836,12 @@ final class AppState {
             attachedEndpoints[key] = endpoint
             lastAttachErrors.removeValue(forKey: key)
             selectedEndpoint = endpoint
+            Logger.state.info("performAttachPreset SUCCESS endpoint channel=\(endpoint.channelID)")
         } catch {
+            Logger.state.error("performAttachPreset FAILED: \(error)")
             handleAttachError(error, key: key, threadID: requestedThreadID)
             lastAttachErrors[key] = String(describing: error)
-            NSLog("threadmill-state: attach failed: %@", "\(error)")
+            Logger.state.error("Attach failed: \(error)")
         }
     }
 
@@ -852,7 +879,7 @@ final class AppState {
             )
             await syncService?.syncFromDaemon()
         } catch {
-            NSLog("threadmill-state: thread.hide failed (%@): %@", threadID, "\(error)")
+            Logger.state.error("thread.hide failed (\(threadID)): \(error)")
         }
     }
 
@@ -873,7 +900,7 @@ final class AppState {
             )
             await syncService?.syncFromDaemon()
         } catch {
-            NSLog("threadmill-state: thread.close failed (%@): %@", threadID, "\(error)")
+            Logger.state.error("thread.close failed (\(threadID)): \(error)")
         }
     }
 
@@ -890,7 +917,7 @@ final class AppState {
             )
             await syncService?.syncFromDaemon()
         } catch {
-            NSLog("threadmill-state: thread.cancel failed (%@): %@", threadID, "\(error)")
+            Logger.state.error("thread.cancel failed (\(threadID)): \(error)")
         }
     }
 
@@ -975,7 +1002,7 @@ final class AppState {
             )
             await syncService?.syncFromDaemon()
         } catch {
-            NSLog("threadmill-state: thread.reopen failed (%@): %@", threadID, "\(error)")
+            Logger.state.error("thread.reopen failed (\(threadID)): \(error)")
         }
     }
 
@@ -1030,7 +1057,7 @@ final class AppState {
             )
             await syncService?.syncFromDaemon()
         } catch {
-            NSLog("threadmill-state: project.remove failed (%@): %@", projectID, "\(error)")
+            Logger.state.error("project.remove failed (\(projectID)): \(error)")
         }
     }
 
@@ -1072,21 +1099,14 @@ final class AppState {
         branch: String?,
         prURL: String? = nil
     ) async throws {
-        NSLog(
-            "threadmill-state: createThread start project=%@ name=%@ source=%@ branch=%@ pr_url=%@",
-            projectID,
-            name,
-            sourceType,
-            branch ?? "<nil>",
-            prURL ?? "<nil>"
-        )
+        Logger.state.info("createThread start project=\(projectID, privacy: .public) name=\(name, privacy: .public) source=\(sourceType, privacy: .public) branch=\(branch ?? "<nil>", privacy: .public) pr_url=\(prURL ?? "<nil>", privacy: .public)")
 
         guard let connectionManager = connectionForProject(id: projectID) else {
-            NSLog("threadmill-state: createThread aborted, connection manager unavailable")
+            Logger.state.error("createThread aborted, connection manager unavailable")
             throw AppStateError.connectionManagerUnavailable
         }
         guard connectionManager.state == .connected else {
-            NSLog("threadmill-state: createThread aborted, connection not ready")
+            Logger.state.error("createThread aborted, connection not ready")
             throw AppStateError.connectionNotReady
         }
 
@@ -1106,11 +1126,11 @@ final class AppState {
 
         do {
             _ = try await connectionManager.request(method: "thread.create", params: params, timeout: 30)
-            NSLog("threadmill-state: createThread request sent")
+            Logger.state.info("createThread request sent")
             await syncRemoteState(forProjectID: projectID, using: connectionManager)
-            NSLog("threadmill-state: createThread sync complete")
+            Logger.state.info("createThread sync complete")
         } catch {
-            NSLog("threadmill-state: createThread failed: %@", "\(error)")
+            Logger.state.error("createThread failed: \(error)")
             throw error
         }
     }
@@ -1122,7 +1142,7 @@ final class AppState {
             let statusRaw = params["new"] as? String,
             let status = ThreadStatus(rawValue: statusRaw)
         else {
-            NSLog("threadmill-state: invalid thread.status_changed payload: %@", "\(params ?? [:])")
+            Logger.state.error("Invalid thread.status_changed payload: \(String(describing: params))")
             return
         }
 
@@ -1146,7 +1166,7 @@ final class AppState {
 
     private func handleThreadProgress(_ params: [String: Any]?) {
         guard let params else {
-            NSLog("threadmill-state: thread.progress payload missing")
+            Logger.state.error("thread.progress payload missing")
             return
         }
 
@@ -1166,15 +1186,15 @@ final class AppState {
         }
 
         if let errorText, !errorText.isEmpty {
-            NSLog("threadmill-state: thread.progress thread=%@ step=%@ message=%@ error=%@", threadID, step, message, errorText)
+            Logger.state.error("thread.progress thread=\(threadID, privacy: .public) step=\(step, privacy: .public) message=\(message, privacy: .public) error=\(errorText)")
         } else {
-            NSLog("threadmill-state: thread.progress thread=%@ step=%@ message=%@", threadID, step, message)
+            Logger.state.info("thread.progress thread=\(threadID, privacy: .public) step=\(step, privacy: .public) message=\(message, privacy: .public)")
         }
     }
 
     private func handleProjectCloneProgress(_ params: [String: Any]?) {
         guard let params else {
-            NSLog("threadmill-state: project.clone_progress payload missing")
+            Logger.state.error("project.clone_progress payload missing")
             return
         }
 
@@ -1184,9 +1204,9 @@ final class AppState {
         let errorText = params["error"] as? String
 
         if let errorText, !errorText.isEmpty {
-            NSLog("threadmill-state: project.clone_progress clone=%@ step=%@ message=%@ error=%@", cloneID, step, message, errorText)
+            Logger.state.error("project.clone_progress clone=\(cloneID, privacy: .public) step=\(step, privacy: .public) message=\(message, privacy: .public) error=\(errorText)")
         } else {
-            NSLog("threadmill-state: project.clone_progress clone=%@ step=%@ message=%@", cloneID, step, message)
+            Logger.state.info("project.clone_progress clone=\(cloneID, privacy: .public) step=\(step, privacy: .public) message=\(message, privacy: .public)")
         }
     }
 
@@ -1197,11 +1217,11 @@ final class AppState {
             let agentName = params["agent_name"] as? String,
             let event = params["event"] as? String
         else {
-            NSLog("threadmill-state: invalid agent.status_changed payload: %@", "\(params ?? [:])")
+            Logger.state.error("Invalid agent.status_changed payload: \(String(describing: params))")
             return
         }
 
-        NSLog("threadmill-state: agent.status_changed channel=%@ agent=%@ event=%@", "\(channelID)", agentName, event)
+        Logger.state.info("agent.status_changed channel=\(String(describing: channelID)) agent=\(agentName, privacy: .public) event=\(event, privacy: .public)")
         scheduleEventSync()
     }
 
@@ -1231,7 +1251,7 @@ final class AppState {
             }
             return hasLocalRow || persisted
         } catch {
-            NSLog("threadmill-state: failed to persist thread status (%@): %@", threadID, "\(error)")
+            Logger.state.error("Failed to persist thread status (\(threadID)): \(error)")
             scheduleEventSync()
             return hasLocalRow
         }
@@ -1495,7 +1515,7 @@ final class AppState {
         do {
             _ = try databaseManager?.linkProject(projectID: projectID, repoID: repoID, remoteID: remoteID)
         } catch {
-            NSLog("threadmill-state: failed to link project metadata (%@): %@", projectID, "\(error)")
+            Logger.state.error("Failed to link project metadata (\(projectID)): \(error)")
         }
     }
 
@@ -1528,11 +1548,7 @@ final class AppState {
             }
 
             guard let project = projectsByID[thread.projectId] else {
-                NSLog(
-                    "threadmill-state: main_checkout thread %@ references unknown project %@",
-                    thread.id,
-                    thread.projectId
-                )
+                Logger.state.error("main_checkout thread \(thread.id) references unknown project \(thread.projectId)")
                 return false
             }
 
@@ -1550,7 +1566,7 @@ final class AppState {
                 try connectionPool.activate(remoteId: remoteID)
                 try await connectionPool.ensureConnected(remoteId: remoteID)
             } catch {
-                NSLog("threadmill-state: failed to activate remote connection (%@): %@", remoteID, "\(error)")
+                Logger.state.error("Failed to activate remote connection (\(remoteID)): \(error)")
             }
 
             if let activeConnection = self?.connectionPool?.connection(for: remoteID) {
@@ -1583,7 +1599,7 @@ final class AppState {
         do {
             try databaseManager?.saveRepo(.defaultWorkspace)
         } catch {
-            NSLog("threadmill-state: failed to persist default workspace repo: %@", "\(error)")
+            Logger.state.error("Failed to persist default workspace repo: \(error)")
         }
     }
 
@@ -1620,11 +1636,7 @@ final class AppState {
                let existingRepoID = existingProject.repoId,
                existingRepoID != Repo.defaultWorkspaceID
             {
-                NSLog(
-                    "threadmill-state: refusing to relink project %@ already linked to repo %@ as cross-project workspace",
-                    existingProjectID,
-                    existingRepoID
-                )
+                Logger.state.error("Refusing to relink project \(existingProjectID) already linked to repo \(existingRepoID) as cross-project workspace")
                 throw AppStateError.defaultWorkspaceProjectAlreadyLinked(
                     projectID: existingProjectID,
                     repoID: existingRepoID
@@ -1707,7 +1719,7 @@ final class AppState {
             systemStats = try JSONDecoder().decode(SystemStatsResult.self, from: payload)
         } catch {
             systemStats = nil
-            NSLog("threadmill-state: failed to refresh system stats: %@", "\(error)")
+            Logger.state.error("Failed to refresh system stats: \(error)")
         }
     }
 
@@ -1724,7 +1736,7 @@ final class AppState {
             )
             await refreshSystemStats()
         } catch {
-            NSLog("threadmill-state: failed to cleanup system: %@", "\(error)")
+            Logger.state.error("Failed to cleanup system: \(error)")
         }
     }
 
@@ -1793,7 +1805,7 @@ final class AppState {
                     timeout: 20
                 )
             } catch {
-                NSLog("threadmill-state: preset.restart failed: %@", "\(error)")
+                Logger.state.error("preset.restart failed: \(error)")
             }
         }
     }

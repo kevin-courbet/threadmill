@@ -1,4 +1,5 @@
 import AppKit
+import os
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -22,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_: Notification) {
         NSApp.activate(ignoringOtherApps: true)
+        Logger.boot.info("applicationDidFinishLaunching — args: \(ProcessInfo.processInfo.arguments, privacy: .public)")
+        Logger.boot.info("env THREADMILL keys: \(ProcessInfo.processInfo.environment.filter { $0.key.hasPrefix("THREADMILL") }, privacy: .public)")
     }
 
     func bootstrap(appState: AppState) {
@@ -35,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 try databaseManager.syncRemotesFromConfigFile()
             } catch {
-                NSLog("threadmill-bootstrap: failed to sync remotes from config file: %@", "\(error)")
+                Logger.boot.error("Failed to sync remotes from config file: \(error)")
             }
 
             let defaultRemote = try databaseManager.ensureDefaultRemoteExists()
@@ -129,9 +132,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         connection.onConnected = { [weak self] in
             Task { @MainActor [weak self] in
+                Logger.conn.info("onConnected — starting reattach + sync")
                 await self?.multiplexer?.reattachAll()
                 await self?.syncService?.syncFromDaemon()
                 await self?.agentSessionManager?.handleConnectionReconnected(on: connection)
+                Logger.conn.info("onConnected — sync complete")
             }
         }
 

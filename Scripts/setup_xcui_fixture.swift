@@ -50,7 +50,8 @@ func main() async throws {
     let threads = threadsResp["result"] as? [[String: Any]] ?? []
     let existing = threads.first(where: {
         ($0["project_id"] as? String) == projectID &&
-        ($0["status"] as? String) == "active"
+        ($0["status"] as? String) == "active" &&
+        ($0["name"] as? String)?.hasPrefix("test-xcui-") == true
     })
 
     if let existing, let name = existing["name"] as? String {

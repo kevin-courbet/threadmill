@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum ConnectionManagerError: LocalizedError {
     case sessionNotReady
@@ -263,13 +264,13 @@ final class ConnectionManager: ConnectionManaging {
         }
 
         state = initial ? .connecting : .reconnecting(attempt: reconnectAttempt)
-        NSLog("threadmill-conn: connecting (initial=%d)", initial ? 1 : 0)
+        Logger.conn.info("Connecting (initial=\(initial, privacy: .public))")
 
         do {
             if config.useSSHTunnel {
-                NSLog("threadmill-conn: starting SSH tunnel")
+                Logger.conn.info("Starting SSH tunnel")
                 try await tunnelManager.start()
-                NSLog("threadmill-conn: SSH tunnel up")
+                Logger.conn.info("SSH tunnel up")
             }
 
             guard let url = URL(string: "ws://\(config.webSocketHost):\(config.daemonPort)") else {
@@ -277,12 +278,12 @@ final class ConnectionManager: ConnectionManaging {
                 return
             }
 
-            NSLog("threadmill-conn: connecting WebSocket to %@", url.absoluteString)
+            Logger.conn.info("Connecting WebSocket to \(url.absoluteString, privacy: .public)")
             webSocketClient.connect(to: url)
 
-            NSLog("threadmill-conn: sending ping")
+            Logger.conn.info("Sending ping")
             _ = try await request(method: "ping", timeout: 10)
-            NSLog("threadmill-conn: negotiating session")
+            Logger.conn.info("Negotiating session")
             _ = try await request(
                 method: "session.hello",
                 params: [
@@ -299,10 +300,10 @@ final class ConnectionManager: ConnectionManaging {
             sessionReady = true
             lastErrorDescription = nil
             state = .connected
-            NSLog("threadmill-conn: CONNECTED")
+            Logger.conn.notice("CONNECTED")
             startPingLoop()
         } catch {
-            NSLog("threadmill-conn: connect failed: %@", "\(error)")
+            Logger.conn.error("Connect failed: \(error)")
             stopPingLoop()
             sessionReady = false
             lastErrorDescription = String(describing: error)

@@ -1,3 +1,4 @@
+import os
 import SwiftUI
 
 struct TerminalModeContent: View {
@@ -218,13 +219,16 @@ enum TerminalModeActions {
         threadID: String? = nil
     ) {
         guard let selectedTerminalSessionID else {
+            Logger.view.info("attachSelectedTerminalIfNeeded BAIL — no selectedTerminalSessionID")
             return
         }
 
         guard let threadID = threadID ?? appState.selectedThreadID else {
+            Logger.view.info("attachSelectedTerminalIfNeeded BAIL — no threadID")
             return
         }
 
+        Logger.view.info("attachSelectedTerminalIfNeeded → attachPreset(thread=\(threadID, privacy: .public), preset=\(selectedTerminalSessionID, privacy: .public))")
         Task {
             await appState.attachPreset(threadID: threadID, preset: selectedTerminalSessionID)
         }

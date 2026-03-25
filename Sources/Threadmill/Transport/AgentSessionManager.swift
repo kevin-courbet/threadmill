@@ -1,6 +1,7 @@
 import ACPModel
 import Foundation
 import Observation
+import os
 
 enum AgentSessionManagerError: LocalizedError {
     case unknownThread(String)
@@ -324,7 +325,7 @@ final class AgentSessionManager {
             }
 
             guard let projectID = projectIDResolver(context.threadID) else {
-                NSLog("threadmill-agent: unable to reattach session %@, thread missing: %@", sessionID, context.threadID)
+                Logger.agent.error("Unable to reattach session \(sessionID), thread missing: \(context.threadID)")
                 continue
             }
 
@@ -332,7 +333,7 @@ final class AgentSessionManager {
                 try await attachSession(&context, projectID: projectID)
                 sessionsByID[sessionID] = context
             } catch {
-                NSLog("threadmill-agent: failed to reattach session %@: %@", sessionID, "\(error)")
+                Logger.agent.error("Failed to reattach session \(sessionID): \(error)")
             }
         }
     }
@@ -370,7 +371,7 @@ final class AgentSessionManager {
                 let message = try JSONDecoder().decode(Message.self, from: line)
                 handleMessage(message, channelID: channelID)
             } catch {
-                NSLog("threadmill-agent: failed to decode ACP message on channel %hu: %@", channelID, "\(error)")
+                Logger.agent.error("Failed to decode ACP message on channel \(channelID): \(error)")
             }
         }
 
@@ -511,7 +512,7 @@ final class AgentSessionManager {
                 do {
                     try await sendRPCResponse(id: request.id, result: response, channelID: channelID)
                 } catch {
-                    NSLog("threadmill-agent: failed to send request_permission response on channel %hu: %@", channelID, "\(error)")
+                    Logger.agent.error("Failed to send request_permission response on channel \(channelID): \(error)")
                 }
             }
             return
@@ -522,7 +523,7 @@ final class AgentSessionManager {
                 do {
                     try await sendRPCMethodNotFound(id: request.id, method: request.method, channelID: channelID)
                 } catch {
-                    NSLog("threadmill-agent: failed to send unsupported method error on channel %hu: %@", channelID, "\(error)")
+                    Logger.agent.error("Failed to send unsupported method error on channel \(channelID): \(error)")
                 }
             }
             return
@@ -532,7 +533,7 @@ final class AgentSessionManager {
             do {
                 try await sendRPCMethodNotFound(id: request.id, method: request.method, channelID: channelID)
             } catch {
-                NSLog("threadmill-agent: failed to send unknown method error on channel %hu: %@", channelID, "\(error)")
+                Logger.agent.error("Failed to send unknown method error on channel \(channelID): \(error)")
             }
         }
     }
@@ -575,7 +576,7 @@ final class AgentSessionManager {
             }
             onSessionUpdate?(sessionID, update)
         } catch {
-            NSLog("threadmill-agent: failed to decode session/update on channel %hu: %@", channelID, "\(error)")
+            Logger.agent.error("Failed to decode session/update on channel \(channelID): \(error)")
         }
     }
 

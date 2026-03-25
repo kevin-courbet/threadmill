@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import os
 import Security
 
 // Register a GitHub OAuth App and replace this client ID (or set THREADMILL_GITHUB_CLIENT_ID in env).
@@ -202,7 +203,7 @@ final class GitHubAuthManager {
         do {
             try deleteToken()
         } catch {
-            NSLog("threadmill-github-auth: failed to delete keychain token: %@", "\(error)")
+            Logger.github.error("Failed to delete keychain token: \(error)")
         }
         token = nil
         isAuthenticated = false
@@ -223,7 +224,7 @@ final class GitHubAuthManager {
             isAuthenticated = true
             return true
         } catch {
-            NSLog("threadmill-github-auth: failed to load keychain token: %@", "\(error)")
+            Logger.github.error("Failed to load keychain token: \(error)")
             self.token = nil
             isAuthenticated = false
             return false

@@ -74,6 +74,7 @@
 		C1AA221F202D41C30A131C36 /* ToolCallGroup.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2AA221F202D41C30A131C36 /* ToolCallGroup.swift */; };
 		C15EB25CEA19B1948C9E8D88 /* ProvisioningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25EB25CEA19B1948C9E8D88 /* ProvisioningService.swift */; };
 		C13654E69AA54A72FF9376AA /* Abstractions.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23654E69AA54A72FF9376AA /* Abstractions.swift */; };
+		C1819258C0A25C1C7F3F34A0 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2819258C0A25C1C7F3F34A0 /* Log.swift */; };
 		C17E235957232068C546650A /* RelayBinaryLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27E235957232068C546650A /* RelayBinaryLocator.swift */; };
 		C12D878AECB4D1C75EF833A2 /* GhosttyKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22D878AECB4D1C75EF833A2 /* GhosttyKeyInput.swift */; };
 		C14ACC96B8B1CDCB0866DDB4 /* GhosttyNSView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24ACC96B8B1CDCB0866DDB4 /* GhosttyNSView.swift */; };
@@ -98,9 +99,7 @@
 		C167B23BF60C42480133CAA1 /* TabLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C267B23BF60C42480133CAA1 /* TabLabel.swift */; };
 		C136AD69D689DD988AA8BDF9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C236AD69D689DD988AA8BDF9 /* ContentView.swift */; };
 		A1E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift */; };
-		A1DC991BA299935A06D939E7 /* TerminalCreationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2DC991BA299935A06D939E7 /* TerminalCreationTests.swift */; };
-		A12790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift */; };
-		A1E1B358652A7A4128E87D28 /* TerminalPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E1B358652A7A4128E87D28 /* TerminalPromptTests.swift */; };
+		A1026710510B159C625584B0 /* ThreadmillUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2026710510B159C625584B0 /* ThreadmillUITests.swift */; };
 		A10000000000000000000004 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* XCTest.framework */; };
 		A1000000000000000000000D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000001 /* GRDB */; };
 		A1000000000000000000000F /* GhosttyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* GhosttyKit.xcframework */; };
@@ -178,6 +177,7 @@
 		C2AA221F202D41C30A131C36 /* ToolCallGroup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ToolCallGroup.swift"; path = "../Sources/Threadmill/Models/ToolCallGroup.swift"; sourceTree = SOURCE_ROOT; };
 		C25EB25CEA19B1948C9E8D88 /* ProvisioningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ProvisioningService.swift"; path = "../Sources/Threadmill/Services/ProvisioningService.swift"; sourceTree = SOURCE_ROOT; };
 		C23654E69AA54A72FF9376AA /* Abstractions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Abstractions.swift"; path = "../Sources/Threadmill/Support/Abstractions.swift"; sourceTree = SOURCE_ROOT; };
+		C2819258C0A25C1C7F3F34A0 /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Log.swift"; path = "../Sources/Threadmill/Support/Log.swift"; sourceTree = SOURCE_ROOT; };
 		C27E235957232068C546650A /* RelayBinaryLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RelayBinaryLocator.swift"; path = "../Sources/Threadmill/Support/RelayBinaryLocator.swift"; sourceTree = SOURCE_ROOT; };
 		C22D878AECB4D1C75EF833A2 /* GhosttyKeyInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "GhosttyKeyInput.swift"; path = "../Sources/Threadmill/Terminal/GhosttyKeyInput.swift"; sourceTree = SOURCE_ROOT; };
 		C24ACC96B8B1CDCB0866DDB4 /* GhosttyNSView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "GhosttyNSView.swift"; path = "../Sources/Threadmill/Terminal/GhosttyNSView.swift"; sourceTree = SOURCE_ROOT; };
@@ -202,9 +202,7 @@
 		C267B23BF60C42480133CAA1 /* TabLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TabLabel.swift"; path = "../Sources/Threadmill/Views/Components/TabLabel.swift"; sourceTree = SOURCE_ROOT; };
 		C236AD69D689DD988AA8BDF9 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ContentView.swift"; path = "../Sources/Threadmill/Views/ContentView.swift"; sourceTree = SOURCE_ROOT; };
 		A2E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealSpindleHarness.swift; sourceTree = "<group>"; };
-		A2DC991BA299935A06D939E7 /* TerminalCreationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalCreationTests.swift; sourceTree = "<group>"; };
-		A22790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalPresetBehaviorTests.swift; sourceTree = "<group>"; };
-		A2E1B358652A7A4128E87D28 /* TerminalPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalPromptTests.swift; sourceTree = "<group>"; };
+		A2026710510B159C625584B0 /* ThreadmillUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadmillUITests.swift; sourceTree = "<group>"; };
 		A20000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000005 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A20000000000000000000006 /* ThreadmillUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ThreadmillUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -243,9 +241,7 @@
 			isa = PBXGroup;
 			children = (
 				A2E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift */,
-				A2DC991BA299935A06D939E7 /* TerminalCreationTests.swift */,
-				A22790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift */,
-				A2E1B358652A7A4128E87D28 /* TerminalPromptTests.swift */,				A20000000000000000000004 /* Info.plist */,
+				A2026710510B159C625584B0 /* ThreadmillUITests.swift */,				A20000000000000000000004 /* Info.plist */,
 			);
 			path = ThreadmillUITests;
 			sourceTree = "<group>";
@@ -405,6 +401,7 @@
 				C1AA221F202D41C30A131C36 /* ToolCallGroup.swift in Sources */,
 				C15EB25CEA19B1948C9E8D88 /* ProvisioningService.swift in Sources */,
 				C13654E69AA54A72FF9376AA /* Abstractions.swift in Sources */,
+				C1819258C0A25C1C7F3F34A0 /* Log.swift in Sources */,
 				C17E235957232068C546650A /* RelayBinaryLocator.swift in Sources */,
 				C12D878AECB4D1C75EF833A2 /* GhosttyKeyInput.swift in Sources */,
 				C14ACC96B8B1CDCB0866DDB4 /* GhosttyNSView.swift in Sources */,
@@ -429,9 +426,7 @@
 				C167B23BF60C42480133CAA1 /* TabLabel.swift in Sources */,
 				C136AD69D689DD988AA8BDF9 /* ContentView.swift in Sources */,
 				A1E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift in Sources */,
-				A1DC991BA299935A06D939E7 /* TerminalCreationTests.swift in Sources */,
-				A12790405B6BD309DE25F839 /* TerminalPresetBehaviorTests.swift in Sources */,
-				A1E1B358652A7A4128E87D28 /* TerminalPromptTests.swift in Sources */,			);
+				A1026710510B159C625584B0 /* ThreadmillUITests.swift in Sources */,			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

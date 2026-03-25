@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import os
 import WebKit
 
 @MainActor
@@ -72,7 +73,7 @@ final class BrowserSessionManager: ObservableObject {
             sessions.append(session)
             selectSession(session.id)
         } catch {
-            NSLog("threadmill-browser: failed to create browser session: %@", "\(error)")
+            Logger.browser.error("Failed to create browser session: \(error)")
         }
     }
 
@@ -89,7 +90,7 @@ final class BrowserSessionManager: ObservableObject {
             try databaseManager.deleteBrowserSession(id: sessionID)
             persistSessionOrder()
         } catch {
-            NSLog("threadmill-browser: failed to close browser session %@: %@", sessionID, "\(error)")
+            Logger.browser.error("Failed to close browser session \(sessionID): \(error)")
         }
 
         if sessions.isEmpty {
@@ -223,7 +224,7 @@ final class BrowserSessionManager: ObservableObject {
         do {
             sessions = try databaseManager.listBrowserSessions(threadID: threadID)
         } catch {
-            NSLog("threadmill-browser: failed to list browser sessions: %@", "\(error)")
+            Logger.browser.error("Failed to list browser sessions: \(error)")
             sessions = []
         }
 
@@ -250,7 +251,7 @@ final class BrowserSessionManager: ObservableObject {
         do {
             try databaseManager.saveBrowserSession(session)
         } catch {
-            NSLog("threadmill-browser: failed to save browser session %@: %@", session.id, "\(error)")
+            Logger.browser.error("Failed to save browser session \(session.id): \(error)")
         }
     }
 

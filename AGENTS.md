@@ -100,6 +100,7 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 | `Models/ChatConversation.swift` | GRDB record for chat sessions per thread (agentSessionID + agentType) |
 | `Models/BrowserSession.swift` | GRDB record for browser tabs per thread |
 | `Support/Abstractions.swift` | DI protocols: ConnectionManaging, DatabaseManaging, FileBrowsing, etc. |
+| `Support/Log.swift` | os.Logger category extensions (subsystem: dev.threadmill) |
 | `Features/Projects/SidebarView.swift` | Sidebar with project sections |
 | `Features/Projects/ProjectSection.swift` | Per-project disclosure group + thread rows |
 | `Features/Projects/AddProjectSheet.swift` | Open existing project on beast |
@@ -143,7 +144,7 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 | **Tests/ThreadmillTests/Unit/** | ~186 unit tests with mock doubles |
 | **Tests/ThreadmillTests/Integration/** | Real Spindle integration tests (beast + SSH tunnel) |
 | `Integration/Protocol/SpindleConnection.swift` | Lightweight WebSocket client for test harness |
-| `Integration/Protocol/IntegrationTestCase.swift` | Base class: setUp sweep, tearDown cleanup, shared helpers |
+| `Integration/Protocol/IntegrationTestCase.swift` | Base class: setUp sweep, tearDown cleanup, OSLogStore dump-on-failure |
 | `Integration/Protocol/{Project,Thread,Terminal,Preset,Chat}IntegrationTests.swift` | One file per domain |
 | `Integration/AppStack/AppStackTestCase.swift` | Base class using real AppState + ConnectionManager + GRDB |
 | **UITests/ThreadmillUITests/** | XCUITest e2e harness with MockSpindleServer (opt-in) |
@@ -237,6 +238,12 @@ Every tmux session gets these env vars:
 
 ---
 
+## Logging
+
+All production logging uses `os.Logger` (subsystem `dev.threadmill`). Categories defined in `Sources/Threadmill/Support/Log.swift`. `NSLog` and `print()` are banned in `Sources/` — enforced by pre-commit hook and `task lint`. See `docs/agents/debugging.md` for the full logging policy, log levels, and test debugging workflow.
+
+---
+
 ## Testing Conventions
 
 - **One test per feature.** Not more.
@@ -244,6 +251,7 @@ Every tmux session gets these env vars:
 - Spindle tests are integration tests against a real daemon instance (test helpers in `tests/common/`).
 - UI e2e tests use `MockSpindleServer` and require `THREADMILL_RUN_UI_E2E=1`.
 - All tests `@MainActor` on the Swift side (AppState and most components are MainActor-bound).
+- **Integration test log capture**: `IntegrationTestCase` auto-dumps `dev.threadmill` logs on failure via `OSLogStore`.
 
 ---
 
@@ -251,6 +259,7 @@ Every tmux session gets these env vars:
 
 | File | Description |
 |---|---|
+| `docs/agents/debugging.md` | Logging architecture, os.Logger categories, test debugging workflow, enforcement rules |
 | `docs/agents/communication-protocol.md` | WebSocket JSON-RPC protocol, activity diagrams, RPC methods, events, binary frames |
 | `docs/agents/validation.md` | Build/test commands, test suites, CI expectations |
 | `docs/architecture.md` | Full architecture spec, module structure, milestone status |

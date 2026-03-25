@@ -1,5 +1,6 @@
 import AppKit
 import GhosttyKit
+import os
 
 @MainActor
 final class GhosttySurfaceHost: SurfaceHosting {
@@ -28,7 +29,7 @@ final class GhosttySurfaceHost: SurfaceHosting {
     func createSurface(in view: GhosttyNSView, socketPath: String) -> ghostty_surface_t? {
         guard let ghosttyApp else { return nil }
         guard let relayPath = relayBinaryPath() else {
-            NSLog("threadmill: threadmill-relay binary not found")
+            Logger.ghostty.error("threadmill-relay binary not found")
             return nil
         }
 
@@ -57,7 +58,7 @@ final class GhosttySurfaceHost: SurfaceHosting {
             envVars.append(ghostty_env_var_s(key: k, value: v))
         }
 
-        NSLog("threadmill: relay=%@", relayPath)
+        Logger.ghostty.info("relay=\(relayPath, privacy: .public)")
 
         var createdSurface: ghostty_surface_t?
         relayPath.withCString { cmdPtr in
@@ -124,7 +125,7 @@ final class GhosttySurfaceHost: SurfaceHosting {
 
     func shutdown() {
         if !activeSurfaces.isEmpty {
-            NSLog("threadmill: freeing %d active ghostty surfaces before shutdown", activeSurfaces.count)
+            Logger.ghostty.info("Freeing \(self.activeSurfaces.count) active ghostty surfaces before shutdown")
             let surfaces = Array(activeSurfaces)
             for surface in surfaces {
                 freeSurface(surface)
@@ -222,7 +223,7 @@ final class GhosttySurfaceHost: SurfaceHosting {
 
     private func loadThemeDefaults(into config: ghostty_config_t) {
         guard let filePath = writeThemeDefaultsFile() else {
-            NSLog("threadmill: failed to write ghostty theme defaults")
+            Logger.ghostty.error("Failed to write ghostty theme defaults")
             return
         }
 
@@ -246,7 +247,7 @@ final class GhosttySurfaceHost: SurfaceHosting {
 
             return fileURL.path
         } catch {
-            NSLog("threadmill: unable to persist ghostty theme defaults: %@", String(describing: error))
+            Logger.ghostty.error("Unable to persist ghostty theme defaults: \(error)")
             return nil
         }
     }
@@ -276,34 +277,29 @@ final class GhosttySurfaceHost: SurfaceHosting {
     private func handleChildExited(target: ghostty_target_s) {
         guard target.tag == GHOSTTY_TARGET_SURFACE,
               let surface = target.target.surface else {
-            NSLog("threadmill: child exited for unknown surface")
+            Logger.ghostty.info("Child exited for unknown surface")
             return
         }
         guard let endpoint = endpointBySurface[surface]?.value else {
-            NSLog("threadmill: child exited for unregistered surface")
+            Logger.ghostty.info("Child exited for unregistered surface")
             return
         }
-        NSLog("threadmill: child exited for endpoint %@/%@", endpoint.threadID, endpoint.preset)
+        Logger.ghostty.info("Child exited for endpoint \(endpoint.threadID)/\(endpoint.preset)")
         endpoint.relayChildExited(surface: surface)
     }
 
     private func handleCloseSurface(userdata: UnsafeMutableRawPointer?, processAlive: Bool) {
         guard let userdata,
               let surface = surfaceByUserdata[userdata] else {
-            NSLog("threadmill: close_surface callback without registered userdata")
+            Logger.ghostty.info("close_surface callback without registered userdata")
             return
         }
 
         let endpoint = endpointBySurface[surface]?.value
         if let endpoint {
-            NSLog(
-                "threadmill: closing surface for endpoint %@/%@ process_alive=%d",
-                endpoint.threadID,
-                endpoint.preset,
-                processAlive
-            )
+            Logger.ghostty.info("Closing surface for endpoint \(endpoint.threadID)/\(endpoint.preset) process_alive=\(processAlive)")
         } else {
-            NSLog("threadmill: closing unregistered surface process_alive=%d", processAlive)
+            Logger.ghostty.info("Closing unregistered surface process_alive=\(processAlive)")
         }
 
         freeSurface(surface)

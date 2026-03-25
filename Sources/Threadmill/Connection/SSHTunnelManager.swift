@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import os
 
 enum SSHTunnelError: LocalizedError {
     case failedToStart(host: String)
@@ -44,7 +45,7 @@ final class SSHTunnelManager: ObservableObject, TunnelManaging {
 
         // If the port is already open (previous tunnel or ControlMaster), just use it.
         if isPortOpen(localPort) {
-            NSLog("threadmill-tunnel: port %d already open, reusing existing tunnel", localPort)
+            Logger.tunnel.info("Port \(self.localPort) already open, reusing existing tunnel")
             isRunning = true
             usingPreExistingTunnel = true
             return

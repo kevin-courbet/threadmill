@@ -1,5 +1,6 @@
 import Foundation
 import GhosttyKit
+import os
 
 @MainActor
 final class RelayEndpoint {
@@ -83,7 +84,7 @@ final class RelayEndpoint {
         guard surface == nil else { return }
 
         guard let createdSurface = surfaceHost.createSurface(in: view, socketPath: socketPath) else {
-            NSLog("threadmill-relay: failed to create ghostty surface for endpoint %@/%@", threadID, preset)
+            Logger.relay.error("Failed to create ghostty surface for endpoint \(self.threadID)/\(self.preset)")
             return
         }
         surface = createdSurface
@@ -108,7 +109,7 @@ final class RelayEndpoint {
     func relayChildExited(surface exitedSurface: ghostty_surface_t) {
         guard surface == exitedSurface else { return }
         channelID = 0
-        NSLog("threadmill-relay: relay exited for endpoint %@/%@", threadID, preset)
+        Logger.relay.info("Relay exited for endpoint \(self.threadID)/\(self.preset)")
     }
 
     func surfaceClosed(_ closedSurface: ghostty_surface_t, processAlive: Bool) {
@@ -116,12 +117,7 @@ final class RelayEndpoint {
         channelID = 0
         surface = nil
         mountedView?.surface = nil
-        NSLog(
-            "threadmill-relay: surface closed for endpoint %@/%@ process_alive=%d",
-            threadID,
-            preset,
-            processAlive
-        )
+        Logger.relay.info("Surface closed for endpoint \(self.threadID)/\(self.preset) process_alive=\(processAlive)")
     }
 
     func stop() {
@@ -163,9 +159,16 @@ final class RelayEndpoint {
         }
 
         guard clientFD >= 0 else {
-            #if DEBUG
-            NSLog("threadmill-relay: BUFFERING %d bytes for %@/%@ (clientFD=-1, pending=%d)", frame.count - 2, threadID, preset, pendingFrames.count)
-            #endif
+            Logger.relay.debug("BUFFERING \(frame.count - 2) bytes for \(self.threadID)/\(self.preset) (clientFD=-1, pending=\(self.pendingFrames.count))")
+            // Accumulate for accessibility even while buffering — the surface
+            // may query terminalText before the relay socket connects.
+            let payload = frame.dropFirst(2)
+            if !payload.isEmpty {
+                terminalTextBuffer.append(contentsOf: payload)
+                if terminalTextBuffer.count > terminalTextBufferMax {
+                    terminalTextBuffer.removeFirst(terminalTextBuffer.count - terminalTextBufferMax)
+                }
+            }
             enqueuePendingFrame(frame)
             return
         }
@@ -206,7 +209,7 @@ final class RelayEndpoint {
                 timeout: 5
             )
         } catch {
-            NSLog("threadmill-relay: resize replay failed for %@/%@: %@", threadID, preset, "\(error)")
+            Logger.relay.error("Resize replay failed for \(self.threadID)/\(self.preset): \(error)")
         }
     }
 
@@ -215,7 +218,7 @@ final class RelayEndpoint {
 
         listenFD = socket(AF_UNIX, SOCK_STREAM, 0)
         guard listenFD >= 0 else {
-            NSLog("threadmill-relay: socket() failed: %s", String(cString: strerror(errno)))
+            Logger.relay.error("socket() failed: \(String(cString: strerror(errno)))")
             return
         }
 
@@ -233,14 +236,14 @@ final class RelayEndpoint {
             }
         }
         guard bindResult == 0 else {
-            NSLog("threadmill-relay: bind(%@) failed: %s", socketPath, String(cString: strerror(errno)))
+            Logger.relay.error("bind(\(self.socketPath)) failed: \(String(cString: strerror(errno)))")
             Darwin.close(listenFD)
             listenFD = -1
             return
         }
 
         guard listen(listenFD, 1) == 0 else {
-            NSLog("threadmill-relay: listen() failed: %s", String(cString: strerror(errno)))
+            Logger.relay.error("listen() failed: \(String(cString: strerror(errno)))")
             Darwin.close(listenFD)
             listenFD = -1
             return
@@ -324,19 +327,8 @@ final class RelayEndpoint {
             do {
                 try await connectionManager.sendBinaryFrame(frame)
             } catch {
-                NSLog(
-                    "threadmill-relay: binary send failed thread_id=%@ preset=%@ channel=%hu error=%@",
-                    threadID,
-                    preset,
-                    activeChannelID,
-                    "\(error)"
-                )
-                NSLog(
-                    "threadmill-relay: forcing transport recovery thread_id=%@ preset=%@ channel=%hu",
-                    threadID,
-                    preset,
-                    activeChannelID
-                )
+                Logger.relay.error("Binary send failed thread_id=\(self.threadID) preset=\(self.preset) channel=\(activeChannelID): \(error)")
+                Logger.relay.error("Forcing transport recovery thread_id=\(self.threadID) preset=\(self.preset) channel=\(activeChannelID)")
                 connectionManager.stop()
                 connectionManager.start()
             }
@@ -360,7 +352,7 @@ final class RelayEndpoint {
 
     private func enqueuePendingFrame(_ frame: Data) {
         if frame.count > maxPendingBytes {
-            NSLog("threadmill-relay: dropping oversized frame (%d bytes) for %@/%@", frame.count, threadID, preset)
+            Logger.relay.error("Dropping oversized frame (\(frame.count) bytes) for \(self.threadID)/\(self.preset)")
             return
         }
 
@@ -379,9 +371,7 @@ final class RelayEndpoint {
         guard clientFD >= 0, !pendingFrames.isEmpty else {
             return
         }
-        #if DEBUG
-        NSLog("threadmill-relay: FLUSHING %d pending frames (%d bytes) for %@/%@", pendingFrames.count, pendingFrameBytes, threadID, preset)
-        #endif
+        Logger.relay.debug("FLUSHING \(self.pendingFrames.count) pending frames (\(self.pendingFrameBytes) bytes) for \(self.threadID)/\(self.preset)")
         let frames = pendingFrames
         pendingFrames.removeAll(keepingCapacity: false)
         pendingFrameBytes = 0
@@ -448,7 +438,7 @@ final class RelayEndpoint {
                 timeout: 5
             )
         } catch {
-            NSLog("threadmill-relay: resize failed for %@/%@: %@", threadID, preset, "\(error)")
+            Logger.relay.error("Resize failed for \(self.threadID)/\(self.preset): \(error)")
         }
     }
 }

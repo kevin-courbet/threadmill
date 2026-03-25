@@ -1,20 +1,31 @@
 import ACPModel
 import Foundation
+import os
+import OSLog
 import XCTest
 @testable import Threadmill
 
 /// Base class for Spindle integration tests.
 /// Provides connection helpers, thread lifecycle management, and ACP session setup.
 /// Sweeps stale test- threads on first run, cleans up created threads in tearDown.
+///
+/// On test failure, automatically dumps all `dev.threadmill` os.Logger output
+/// captured during the test to stdout via OSLogStore. This makes structured
+/// logs visible in `swift test --verbose` output for Red-phase debugging.
 class IntegrationTestCase: XCTestCase {
     static let fixtureRepoPath = "/home/wsl/dev/threadmill-test-fixture"
     static let testPrefix = "test-"
 
     private nonisolated(unsafe) static var hasSweptStaleThreads = false
     var createdThreadIDs: [String] = []
+    private nonisolated(unsafe) var logStore: OSLogStore?
+    private nonisolated(unsafe) var testStartDate: Date?
 
     override func setUp() async throws {
         try await super.setUp()
+
+        testStartDate = Date()
+        logStore = try? OSLogStore(scope: .currentProcessIdentifier)
 
         if !Self.hasSweptStaleThreads {
             Self.hasSweptStaleThreads = true
@@ -40,6 +51,10 @@ class IntegrationTestCase: XCTestCase {
     }
 
     override func tearDown() async throws {
+        if let failureCount = testRun?.failureCount, failureCount > 0 {
+            dumpThreadmillLogs()
+        }
+
         let threadIDs = createdThreadIDs
         createdThreadIDs.removeAll()
 
@@ -288,5 +303,77 @@ class IntegrationTestCase: XCTestCase {
             .appendingPathComponent("threadmill-integration-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appendingPathComponent("threadmill.db", isDirectory: false).path
+    }
+
+    // MARK: - Log capture
+
+    /// Dumps all dev.threadmill os.Logger output from test start to now.
+    /// Called automatically on test failure via addTeardownBlock.
+    private func dumpThreadmillLogs() {
+        guard let logStore, let testStartDate else {
+            return
+        }
+
+        do {
+            let position = logStore.position(date: testStartDate)
+            let predicate = NSPredicate(format: "subsystem == 'dev.threadmill'")
+            let entries = try logStore.getEntries(at: position, matching: predicate)
+
+            var lines: [String] = []
+            for entry in entries {
+                guard let log = entry as? OSLogEntryLog else {
+                    continue
+                }
+                let level: String
+                switch log.level {
+                case .debug: level = "DEBUG"
+                case .info: level = "INFO"
+                case .notice: level = "NOTICE"
+                case .error: level = "ERROR"
+                case .fault: level = "FAULT"
+                default: level = "LOG"
+                }
+                lines.append("  [\(log.category)] \(level): \(log.composedMessage)")
+            }
+
+            if lines.isEmpty {
+                print("--- threadmill logs: (none captured) ---")
+            } else {
+                print("--- threadmill logs (\(lines.count) entries) ---")
+                for line in lines {
+                    print(line)
+                }
+                print("--- end threadmill logs ---")
+            }
+        } catch {
+            print("--- threadmill logs: OSLogStore query failed: \(error) ---")
+        }
+    }
+
+    /// Manually dump logs for a specific category. Useful in test body for debugging.
+    func dumpLogs(category: String? = nil) {
+        guard let logStore, let testStartDate else {
+            return
+        }
+
+        do {
+            let position = logStore.position(date: testStartDate)
+            let predicate: NSPredicate
+            if let category {
+                predicate = NSPredicate(format: "subsystem == 'dev.threadmill' AND category == %@", category)
+            } else {
+                predicate = NSPredicate(format: "subsystem == 'dev.threadmill'")
+            }
+            let entries = try logStore.getEntries(at: position, matching: predicate)
+
+            for entry in entries {
+                guard let log = entry as? OSLogEntryLog else {
+                    continue
+                }
+                print("  [\(log.category)] \(log.composedMessage)")
+            }
+        } catch {
+            print("OSLogStore query failed: \(error)")
+        }
     }
 }

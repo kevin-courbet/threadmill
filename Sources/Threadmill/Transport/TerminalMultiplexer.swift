@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum TerminalMultiplexerError: LocalizedError {
     case connectionUnavailable(threadID: String)
@@ -143,7 +144,7 @@ final class TerminalMultiplexer: TerminalMultiplexing {
                 flushPreRegistrationBuffer(channelID: channelID, to: endpoint)
                 await endpoint.replayResizeIfAvailable()
             } catch {
-                NSLog("threadmill-mux: reattach failed for %@/%@: %@", endpoint.threadID, endpoint.preset, "\(error)")
+                Logger.mux.error("Reattach failed for \(endpoint.threadID)/\(endpoint.preset): \(error)")
             }
         }
 
@@ -199,12 +200,7 @@ final class TerminalMultiplexer: TerminalMultiplexing {
 
         Task {
             guard let connectionManager = connectionResolver(threadID) else {
-                NSLog(
-                    "threadmill-mux: detach RPC skipped, no connection thread_id=%@ preset=%@ channel=%hu",
-                    threadID,
-                    preset,
-                    channelID
-                )
+                Logger.mux.info("Detach RPC skipped, no connection thread_id=\(threadID) preset=\(preset) channel=\(channelID)")
                 return
             }
             do {
@@ -217,13 +213,7 @@ final class TerminalMultiplexer: TerminalMultiplexing {
                     timeout: 5
                 )
             } catch {
-                NSLog(
-                    "threadmill-mux: detach RPC failed thread_id=%@ preset=%@ channel=%hu error=%@",
-                    threadID,
-                    preset,
-                    channelID,
-                    "\(error)"
-                )
+                Logger.mux.error("Detach RPC failed thread_id=\(threadID) preset=\(preset) channel=\(channelID): \(error)")
             }
         }
     }

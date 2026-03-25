@@ -1,3 +1,4 @@
+import os
 import SwiftUI
 struct ThreadDetailView: View {
     @Environment(AppState.self) private var appState
@@ -67,7 +68,10 @@ struct ThreadDetailView: View {
                     let modeID = normalizedModeID(nextModeID)
                     if modeID != nextModeID { selectedTab = modeID; return }
                     tabStateManager.setSelectedMode(modeID, threadID: thread.id)
-                    if modeID == TabItem.terminal.id { TerminalModeActions.attachSelectedTerminalIfNeeded(appState: appState, selectedTerminalSessionID: selectedTerminalSessionID) }
+                    if modeID == TabItem.terminal.id {
+                        Logger.view.info("onChange(selectedTab→terminal) terminalSessionIDs=\(self.terminalSessionIDs.joined(separator: ","), privacy: .public) selectedTerminalSessionID=\(self.selectedTerminalSessionID ?? "nil", privacy: .public) presets=\(self.appState.presets.count)")
+                        TerminalModeActions.attachSelectedTerminalIfNeeded(appState: appState, selectedTerminalSessionID: selectedTerminalSessionID)
+                    }
                     if modeID == TabItem.chat.id, selectedChatConversationID == nil { selectedChatConversationID = chatConversations.first?.id }
                 }
                 .onChange(of: selectedTerminalSessionID) { _, _ in
@@ -195,18 +199,22 @@ struct ThreadDetailView: View {
 
         var persistedTerminalSessions = tabStateManager.terminalSessionIDs(threadID: thread.id)
         let availablePresetNames = Set(appState.presets.map(\.name))
+        Logger.view.info("restoreThreadState thread=\(thread.id, privacy: .public) selectedTab=\(self.selectedTab, privacy: .public) persistedSessions=\(persistedTerminalSessions.joined(separator: ","), privacy: .public) availablePresets=\(availablePresetNames.joined(separator: ","), privacy: .public) presetCount=\(self.appState.presets.count)")
         persistedTerminalSessions = persistedTerminalSessions.filter { availablePresetNames.contains(TerminalModeActions.presetName(forSessionID: $0)) }
         if persistedTerminalSessions.isEmpty, TerminalModeActions.defaultTerminalPresetName(appState: appState) != nil {
             persistedTerminalSessions = ["terminal-1"]
         }
         terminalSessionIDs = persistedTerminalSessions
+        Logger.view.info("restoreThreadState result: terminalSessionIDs=\(self.terminalSessionIDs.joined(separator: ","), privacy: .public) selectedTerminalSessionID=\(self.selectedTerminalSessionID ?? "nil", privacy: .public)")
         tabStateManager.setTerminalSessionIDs(persistedTerminalSessions, threadID: thread.id)
         let persistedTerminalSelection = tabStateManager.selectedSessionID(modeID: TabItem.terminal.id, threadID: thread.id)
         selectedTerminalSessionID = (persistedTerminalSelection != nil && terminalSessionIDs.contains(persistedTerminalSelection!)) ? persistedTerminalSelection : terminalSessionIDs.first
         selectedChatConversationID = tabStateManager.selectedSessionID(modeID: TabItem.chat.id, threadID: thread.id)
+        Logger.view.info("restoreThreadState final: selectedTerminalSessionID=\(self.selectedTerminalSessionID ?? "nil", privacy: .public) selectedTab=\(self.selectedTab, privacy: .public)")
         await ChatModeActions.refreshChatConversations(for: thread, appState: appState, chatConversations: $chatConversations, selectedChatConversationIDBinding: $selectedChatConversationID, tabStateManager: tabStateManager)
         guard !Task.isCancelled, appState.selectedThread?.id == expectedThreadID else { return }
         if selectedTab == TabItem.terminal.id {
+            Logger.view.info("restoreThreadState — calling attachSelectedTerminalIfNeeded(preset=\(self.selectedTerminalSessionID ?? "nil", privacy: .public))")
             TerminalModeActions.attachSelectedTerminalIfNeeded(appState: appState, selectedTerminalSessionID: selectedTerminalSessionID)
         }
     }
