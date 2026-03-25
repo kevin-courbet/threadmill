@@ -1,5 +1,19 @@
 import os
 import SwiftUI
+
+// MARK: - Close-tab trigger (environment key for file/browser modes)
+
+private struct CloseActiveTabTriggerKey: EnvironmentKey {
+    static let defaultValue: Int = 0
+}
+
+extension EnvironmentValues {
+    var closeActiveTabTrigger: Int {
+        get { self[CloseActiveTabTriggerKey.self] }
+        set { self[CloseActiveTabTriggerKey.self] = newValue }
+    }
+}
+
 struct ThreadDetailView: View {
     @Environment(AppState.self) private var appState
     @AppStorage("threadmill.show-chat-tab") private var showChatTab = true
@@ -15,6 +29,7 @@ struct ThreadDetailView: View {
     @State private var chatReloadToken = 0
     private let chatHarnesses = ChatHarness.allCases
     @State private var tabStateManager = ThreadTabStateManager()
+    @State private var closeActiveTabTrigger = 0
     private var isMockTerminalEnabled: Bool {
         let value = ProcessInfo.processInfo.environment["THREADMILL_USE_MOCK_TERMINAL"]?.lowercased() ?? ""
         return value == "1" || value == "true" || value == "yes"
@@ -48,7 +63,13 @@ struct ThreadDetailView: View {
                     }
                 }
 
-                .background { ThreadModeKeyboardShortcuts(selectedTab: $selectedTab, visibleModeIDs: visibleModeIDs) }
+                .environment(\.closeActiveTabTrigger, closeActiveTabTrigger)
+                .background {
+                    ThreadModeKeyboardShortcuts(selectedTab: $selectedTab, visibleModeIDs: visibleModeIDs)
+                    Button("") { closeActiveTab() }
+                        .keyboardShortcut("w", modifiers: .command)
+                        .hidden()
+                }
                 .task(id: thread.id) {
                     selectedTab = normalizedModeID(tabStateManager.selectedMode(threadID: thread.id))
                     terminalSessionIDs = []
@@ -177,6 +198,36 @@ struct ThreadDetailView: View {
             EmptyView()
         }
     }
+    private func closeActiveTab() {
+        guard appState.selectedThread != nil else { return }
+        switch selectedTab {
+        case TabItem.chat.id:
+            guard let id = selectedChatConversationID else { return }
+            ChatModeActions.archiveChatConversations(
+                [id],
+                appState: appState,
+                chatConversations: { chatConversations },
+                selectedChatConversationIDBinding: $selectedChatConversationID,
+                chatReloadToken: $chatReloadToken,
+                tabStateManager: tabStateManager
+            )
+        case TabItem.terminal.id:
+            guard let id = selectedTerminalSessionID else { return }
+            TerminalModeActions.closeTerminalSessions(
+                [id],
+                appState: appState,
+                terminalSessionIDs: $terminalSessionIDs,
+                selectedTerminalSessionIDBinding: $selectedTerminalSessionID,
+                isTerminalModeSelected: { selectedTab == TabItem.terminal.id },
+                tabStateManager: tabStateManager
+            )
+        case TabItem.files.id, TabItem.browser.id:
+            closeActiveTabTrigger += 1
+        default:
+            break
+        }
+    }
+
     private var visibleModeTabs: [TabItem] {
         let tabs = TabItem.modeDefaults.filter { tab in
             switch tab.id {

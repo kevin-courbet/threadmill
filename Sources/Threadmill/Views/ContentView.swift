@@ -95,11 +95,6 @@ struct ContentView: View {
             .keyboardShortcut("t", modifiers: [.command, .shift])
             .hidden()
 
-        // Cmd+W: close selected thread
-        Button("") { appState.closeSelectedThread() }
-            .keyboardShortcut("w", modifiers: .command)
-            .hidden()
-
         // Cmd+Shift+R: restart current preset
         Button("") { appState.restartCurrentPreset() }
             .keyboardShortcut("r", modifiers: [.command, .shift])

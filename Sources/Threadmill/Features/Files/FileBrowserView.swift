@@ -4,6 +4,7 @@ struct FileBrowserView: View {
     @AppStorage("fileBrowserShowTree") private var showTree = true
     @AppStorage("fileBrowserTreeWidth") private var treeWidth: Double = 250
     @StateObject private var viewModel: FileBrowserViewModel
+    @Environment(\.closeActiveTabTrigger) private var closeActiveTabTrigger
 
     let connectionStatus: ConnectionStatus
 
@@ -59,6 +60,10 @@ struct FileBrowserView: View {
                     await viewModel.reloadAfterConnect()
                 }
             }
+        }
+        .onChange(of: closeActiveTabTrigger) { _, _ in
+            guard let fileID = viewModel.selectedFileId else { return }
+            viewModel.closeFile(id: fileID)
         }
     }
 

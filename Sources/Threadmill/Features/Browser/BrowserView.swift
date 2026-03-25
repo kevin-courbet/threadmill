@@ -3,6 +3,7 @@ import SwiftUI
 struct BrowserView: View {
     @StateObject private var manager: BrowserSessionManager
     @State private var hoveredTabID: String?
+    @Environment(\.closeActiveTabTrigger) private var closeActiveTabTrigger
 
     init(thread: ThreadModel, databaseManager: any DatabaseManaging) {
         _manager = StateObject(wrappedValue: BrowserSessionManager(databaseManager: databaseManager, thread: thread))
@@ -89,6 +90,10 @@ struct BrowserView: View {
             if manager.sessions.isEmpty {
                 manager.createSession()
             }
+        }
+        .onChange(of: closeActiveTabTrigger) { _, _ in
+            guard let sessionID = manager.activeSessionId else { return }
+            manager.closeSession(sessionID)
         }
     }
 
