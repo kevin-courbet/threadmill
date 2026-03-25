@@ -963,6 +963,9 @@
           },
           "preset": {
             "type": "string"
+          },
+          "session_id": {
+            "type": "string"
           }
         }
       },
@@ -995,6 +998,9 @@
           },
           "preset": {
             "type": "string"
+          },
+          "session_id": {
+            "type": "string"
           }
         }
       },
@@ -1023,6 +1029,9 @@
             "format": "uuid"
           },
           "preset": {
+            "type": "string"
+          },
+          "session_id": {
             "type": "string"
           },
           "cols": {
@@ -1059,6 +1068,9 @@
           },
           "preset": {
             "type": "string"
+          },
+          "session_id": {
+            "type": "string"
           }
         }
       },
@@ -1088,6 +1100,9 @@
             "format": "uuid"
           },
           "preset": {
+            "type": "string"
+          },
+          "session_id": {
             "type": "string"
           }
         }
