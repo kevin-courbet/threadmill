@@ -716,14 +716,13 @@ final class AppState {
         }
 
         let key = AttachmentKey(threadID: threadID, sessionID: preset)
-        let daemonPreset = key.presetName
 
         do {
             _ = try await connectionManager.request(
                 method: "preset.stop",
                 params: [
                     "thread_id": threadID,
-                    "preset": daemonPreset,
+                    "preset": preset,
                 ],
                 timeout: 20
             )
@@ -749,7 +748,7 @@ final class AppState {
                 }
             }
         } catch {
-            Logger.state.error("preset.stop failed (\(threadID)/\(daemonPreset)): \(error)")
+            Logger.state.error("preset.stop failed (\(threadID)/\(preset)): \(error)")
         }
     }
 
@@ -789,7 +788,7 @@ final class AppState {
                     let reattachedEndpoint = try await multiplexer.attach(
                         threadID: requestedThreadID,
                         sessionID: requestedSessionID,
-                        preset: daemonPreset
+                        preset: requestedSessionID
                     )
                     guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
                         return
@@ -806,17 +805,20 @@ final class AppState {
         }
 
         do {
+            // Send the session ID (e.g. "terminal-2") as the preset so
+            // Spindle creates a separate tmux window per terminal tab.
+            // Spindle resolves "terminal-2" to the "terminal" preset config.
             do {
                 _ = try await connectionManager.request(
                     method: "preset.start",
                     params: [
                         "thread_id": requestedThreadID,
-                        "preset": daemonPreset,
+                        "preset": requestedSessionID,
                     ],
                     timeout: 20
                 )
             } catch {
-                if !isPresetAlreadyRunningError(error, preset: daemonPreset) {
+                if !isPresetAlreadyRunningError(error, preset: requestedSessionID) {
                     throw error
                 }
             }
@@ -827,7 +829,7 @@ final class AppState {
             let endpoint = try await multiplexer.attach(
                 threadID: requestedThreadID,
                 sessionID: requestedSessionID,
-                preset: daemonPreset
+                preset: requestedSessionID
             )
             guard selectionMatchesRequest(), canAttemptAttach(threadID: requestedThreadID, key: key) else {
                 return

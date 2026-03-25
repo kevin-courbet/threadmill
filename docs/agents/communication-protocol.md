@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-22
+updated: 2026-03-25
 ---
 
 # Communication Protocol
@@ -260,6 +260,7 @@ Server notification (event):
 `preset.start`
 - Params: `{"thread_id":"<uuid>","preset":"<name>"}`
 - Result: `{"ok":true}`
+- If the preset name has a numeric suffix (e.g. "terminal-2"), Spindle resolves the base name ("terminal") from project config and creates a tmux window named after the full requested name. See **Multi-instance terminal tabs** below.
 
 `preset.stop`
 - Params: `{"thread_id":"<uuid>","preset":"<name>"}`
@@ -343,6 +344,31 @@ Server notification (event):
 }
 ```
 
+## Multi-instance Terminal Tabs
+
+The Mac app supports multiple terminal session tabs per thread (Terminal 1, Terminal 2, ...). Each tab must map to its **own tmux window and channel** on Spindle. This requires careful coordination between Mac-side session IDs and Spindle-side preset names.
+
+### How it works
+
+Mac-side session IDs like `"terminal-1"`, `"terminal-2"` are sent **directly** as the `preset` parameter in `preset.start` and `terminal.attach` RPCs. Spindle uses the full preset name as the target key (`{thread_id}:{preset}`), so each tab gets a unique attachment with its own tmux window, pipe-pane relay, channel ID, and scrollback replay.
+
+When `preset.start("terminal-2")` is called, Spindle resolves the base preset name by stripping the `-N` suffix: `"terminal-2"` → `"terminal"`. It then uses the `"terminal"` preset config (command, cwd) from `.threadmill.yml` to create a tmux window named `"terminal-2"`.
+
+### Why this matters
+
+If all terminal tabs sent the same `preset: "terminal"` to Spindle, they would share one tmux pane and one channel. The second tab's `terminal.attach` would hit the early-return path (target already in `by_target`), returning the same `channel_id` without scrollback replay. The new ghostty surface would start empty, showing only macOS's "Last login" PTY text. The prompt would not appear until the user pressed Enter.
+
+### Scrollback replay on attach
+
+Every `terminal.attach` for a **new** target sends a scrollback replay: `tmux capture-pane -e -p -J -S -200`, sanitized (leading blank lines stripped, one trailing newline preserved), and CR+LF normalized. A 150ms delay before capture gives the shell time to draw its prompt for freshly created windows. The pipe-pane command uses `cat -u` to disable BSD stdio buffering on macOS, ensuring live terminal output flows immediately through the FIFO relay.
+
+### Key invariants
+
+- Mac `AttachmentKey.presetName` maps `"terminal-N"` → `"terminal"` only for **local validation** (checking the preset exists in the project's config). RPCs always use the session ID.
+- Spindle `resolve_base_preset_name` strips numeric suffixes: `"terminal-2"` → `"terminal"`, `"dev-server"` → `"dev-server"` (no suffix).
+- Named presets (e.g. `"dev-server"`) are single-instance: the Mac enforces one tab per preset by selecting existing tabs.
+- `sanitize_scrollback` preserves exactly one trailing newline so the cursor lands below the prompt, not on it.
+
 ## Binary Frame Format
 
 - Bytes: `[channel_id_be_u16][payload_bytes...]`
@@ -354,7 +380,7 @@ Server notification (event):
 - Daemon -> client: tmux pane output payload via pipe-pane -O.
 - Acquired via `terminal.attach`, reacquired on reconnect.
 - Pre-registration buffering: binary frames arriving before `terminal.attach` response are buffered by `TerminalMultiplexer` and flushed when the endpoint is registered.
-- Scrollback replay: on attach, Spindle sends `tmux capture-pane` output with CRLF line endings (bare LF converted to CRLF for correct terminal rendering).
+- Scrollback replay: on attach, Spindle sends `tmux capture-pane -S -200` output with CRLF line endings (bare LF → CRLF). A 150ms delay before capture ensures the shell prompt is in the pane buffer for freshly created windows. `sanitize_scrollback` preserves one trailing newline for correct cursor positioning. See **Multi-instance terminal tabs** above.
 
 ### Agent binary frames (ACP)
 - Client <-> daemon: relay agent process stdin/stdout as raw bytes.

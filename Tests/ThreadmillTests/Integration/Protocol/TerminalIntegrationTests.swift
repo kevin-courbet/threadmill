@@ -50,20 +50,27 @@ final class TerminalIntegrationTests: IntegrationTestCase {
 
         // Collect all binary frames for this channel without sending any input.
         // The shell prompt (e.g. "%" or "$" or "❯") must arrive from the
-        // capture-pane visible screen replay.
+        // scrollback replay.
         let deadline = Date().addingTimeInterval(5)
-        var received = ""
+        var receivedData = Data()
         while Date() < deadline {
             do {
                 let frame = try await conn.waitForBinaryFrame(channelID: channelID, timeout: 2.0)
-                let payload = Data(frame.dropFirst(2))
-                received.append(String(decoding: payload, as: UTF8.self))
+                receivedData.append(contentsOf: frame.dropFirst(2))
             } catch {
                 break
             }
         }
 
+        let received = String(decoding: receivedData, as: UTF8.self)
         let trimmed = received.trimmingCharacters(in: .whitespacesAndNewlines)
         XCTAssertFalse(trimmed.isEmpty, "Expected shell prompt on first attach without input, but received nothing. Full output: \(received)")
+
+        // The replay must end with \r\n so the cursor lands below the prompt,
+        // not on the prompt line itself.
+        XCTAssertTrue(
+            receivedData.suffix(2) == Data([0x0D, 0x0A]),
+            "Scrollback replay must end with CR+LF for correct cursor positioning. Last bytes: \(Array(receivedData.suffix(20)))"
+        )
     }
 }

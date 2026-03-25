@@ -163,8 +163,8 @@ Beast's `/home/wsl/dev` is NFS-mounted at `/Volumes/wsl-dev`. **Edit Spindle fil
 | `src/tmux.rs` | tmux command helpers |
 | `src/services/project.rs` | project.add/list/remove/branches/clone + .threadmill.yml parsing |
 | `src/services/thread.rs` | thread.create/close/hide/reopen/list + env var setup |
-| `src/services/terminal.rs` | terminal.attach/detach/resize, channel allocation, pipe-pane relay |
-| `src/services/preset.rs` | preset.start/stop/restart, process monitoring, config-driven commands |
+| `src/services/terminal.rs` | terminal.attach/detach/resize, channel allocation, pipe-pane relay, scrollback replay |
+| `src/services/preset.rs` | preset.start/stop/restart, process monitoring, config-driven commands, base preset name resolution for multi-instance tabs |
 | `src/services/file.rs` | file.list/file.read/file.git_status, path authorization, TOCTOU hardening |
 | `src/bin/threadmill-cli.rs` | CLI for agent-side automation (clap) |
 | `tests/` | Integration tests (project, thread, terminal, preset, file, sync, binary, CLI) |
