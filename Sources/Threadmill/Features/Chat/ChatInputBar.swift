@@ -63,7 +63,10 @@ struct ChatInputBar: View {
                 ExpandingTextView(
                     text: $text,
                     measuredHeight: $measuredHeight,
-                    onSubmit: send
+                    onSubmit: send,
+                    onCancel: viewModel.isStreaming ? {
+                        Task { await viewModel.cancelCurrentPrompt() }
+                    } : nil
                 )
                 .frame(height: editorHeight)
             }
@@ -158,6 +161,7 @@ private struct ExpandingTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var measuredHeight: CGFloat
     let onSubmit: () -> Void
+    let onCancel: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -173,6 +177,7 @@ private struct ExpandingTextView: NSViewRepresentable {
         let textView = SubmitTextView()
         textView.delegate = context.coordinator
         textView.onSubmit = onSubmit
+        textView.onCancel = onCancel
         textView.isRichText = false
         textView.drawsBackground = false
         textView.font = .systemFont(ofSize: NSFont.systemFontSize)
@@ -194,6 +199,7 @@ private struct ExpandingTextView: NSViewRepresentable {
             textView.string = text
         }
         textView.onSubmit = onSubmit
+        textView.onCancel = onCancel
         context.coordinator.recomputeHeight(for: textView)
     }
 
@@ -224,8 +230,18 @@ private struct ExpandingTextView: NSViewRepresentable {
 
 private final class SubmitTextView: NSTextView {
     var onSubmit: (() -> Void)?
+    var onCancel: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
+        // Escape: cancel streaming when active
+        if event.keyCode == 53 {
+            if let onCancel {
+                onCancel()
+                return
+            }
+            return
+        }
+
         let isReturn = event.keyCode == 36
         let isShift = event.modifierFlags.contains(.shift)
 

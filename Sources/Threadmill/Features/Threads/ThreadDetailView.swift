@@ -1,16 +1,29 @@
 import os
 import SwiftUI
 
-// MARK: - Close-tab trigger (environment key for file/browser modes)
+// MARK: - Tab action triggers (environment keys for file/browser modes)
 
-private struct CloseActiveTabTriggerKey: EnvironmentKey {
-    static let defaultValue: Int = 0
-}
+private struct CloseActiveTabTriggerKey: EnvironmentKey { static let defaultValue: Int = 0 }
+private struct SelectNextTabTriggerKey: EnvironmentKey { static let defaultValue: Int = 0 }
+private struct SelectPreviousTabTriggerKey: EnvironmentKey { static let defaultValue: Int = 0 }
+private struct NewTabTriggerKey: EnvironmentKey { static let defaultValue: Int = 0 }
 
 extension EnvironmentValues {
     var closeActiveTabTrigger: Int {
         get { self[CloseActiveTabTriggerKey.self] }
         set { self[CloseActiveTabTriggerKey.self] = newValue }
+    }
+    var selectNextTabTrigger: Int {
+        get { self[SelectNextTabTriggerKey.self] }
+        set { self[SelectNextTabTriggerKey.self] = newValue }
+    }
+    var selectPreviousTabTrigger: Int {
+        get { self[SelectPreviousTabTriggerKey.self] }
+        set { self[SelectPreviousTabTriggerKey.self] = newValue }
+    }
+    var newTabTrigger: Int {
+        get { self[NewTabTriggerKey.self] }
+        set { self[NewTabTriggerKey.self] = newValue }
     }
 }
 
@@ -30,6 +43,9 @@ struct ThreadDetailView: View {
     private let chatHarnesses = ChatHarness.allCases
     @State private var tabStateManager = ThreadTabStateManager()
     @State private var closeActiveTabTrigger = 0
+    @State private var selectNextTabTrigger = 0
+    @State private var selectPreviousTabTrigger = 0
+    @State private var newTabTrigger = 0
     private var isMockTerminalEnabled: Bool {
         let value = ProcessInfo.processInfo.environment["THREADMILL_USE_MOCK_TERMINAL"]?.lowercased() ?? ""
         return value == "1" || value == "true" || value == "yes"
@@ -64,10 +80,26 @@ struct ThreadDetailView: View {
                 }
 
                 .environment(\.closeActiveTabTrigger, closeActiveTabTrigger)
+                .environment(\.selectNextTabTrigger, selectNextTabTrigger)
+                .environment(\.selectPreviousTabTrigger, selectPreviousTabTrigger)
+                .environment(\.newTabTrigger, newTabTrigger)
                 .background {
                     ThreadModeKeyboardShortcuts(selectedTab: $selectedTab, visibleModeIDs: visibleModeIDs)
+                    // Cmd+W: close active session tab
                     Button("") { closeActiveTab() }
                         .keyboardShortcut("w", modifiers: .command)
+                        .hidden()
+                    // Cmd+T: new tab in current mode
+                    Button("") { newActiveTab() }
+                        .keyboardShortcut("t", modifiers: .command)
+                        .hidden()
+                    // Cmd+Shift+]: next session tab
+                    Button("") { selectNextSessionTab() }
+                        .keyboardShortcut("]", modifiers: [.command, .shift])
+                        .hidden()
+                    // Cmd+Shift+[: previous session tab
+                    Button("") { selectPreviousSessionTab() }
+                        .keyboardShortcut("[", modifiers: [.command, .shift])
                         .hidden()
                 }
                 .task(id: thread.id) {
@@ -198,6 +230,8 @@ struct ThreadDetailView: View {
             EmptyView()
         }
     }
+    // MARK: - Tab keyboard actions
+
     private func closeActiveTab() {
         guard appState.selectedThread != nil else { return }
         switch selectedTab {
@@ -223,6 +257,70 @@ struct ThreadDetailView: View {
             )
         case TabItem.files.id, TabItem.browser.id:
             closeActiveTabTrigger += 1
+        default:
+            break
+        }
+    }
+
+    private func newActiveTab() {
+        guard let thread = appState.selectedThread else { return }
+        switch selectedTab {
+        case TabItem.chat.id:
+            ChatModeActions.createChatConversation(
+                thread: thread,
+                appState: appState,
+                selectedChatConversationIDBinding: $selectedChatConversationID,
+                chatReloadToken: $chatReloadToken,
+                tabStateManager: tabStateManager,
+                harness: nil
+            )
+        case TabItem.terminal.id:
+            TerminalModeActions.addDefaultTerminalSession(
+                appState: appState,
+                terminalSessionIDs: $terminalSessionIDs,
+                selectedTerminalSessionIDBinding: $selectedTerminalSessionID,
+                tabStateManager: tabStateManager
+            )
+        case TabItem.browser.id:
+            newTabTrigger += 1
+        default:
+            break
+        }
+    }
+
+    private func selectNextSessionTab() {
+        switch selectedTab {
+        case TabItem.chat.id:
+            guard let currentID = selectedChatConversationID,
+                  let index = chatConversations.firstIndex(where: { $0.id == currentID }),
+                  index + 1 < chatConversations.count else { return }
+            selectedChatConversationID = chatConversations[index + 1].id
+        case TabItem.terminal.id:
+            guard let currentID = selectedTerminalSessionID,
+                  let index = terminalSessionIDs.firstIndex(of: currentID),
+                  index + 1 < terminalSessionIDs.count else { return }
+            selectedTerminalSessionID = terminalSessionIDs[index + 1]
+        case TabItem.files.id, TabItem.browser.id:
+            selectNextTabTrigger += 1
+        default:
+            break
+        }
+    }
+
+    private func selectPreviousSessionTab() {
+        switch selectedTab {
+        case TabItem.chat.id:
+            guard let currentID = selectedChatConversationID,
+                  let index = chatConversations.firstIndex(where: { $0.id == currentID }),
+                  index > 0 else { return }
+            selectedChatConversationID = chatConversations[index - 1].id
+        case TabItem.terminal.id:
+            guard let currentID = selectedTerminalSessionID,
+                  let index = terminalSessionIDs.firstIndex(of: currentID),
+                  index > 0 else { return }
+            selectedTerminalSessionID = terminalSessionIDs[index - 1]
+        case TabItem.files.id, TabItem.browser.id:
+            selectPreviousTabTrigger += 1
         default:
             break
         }

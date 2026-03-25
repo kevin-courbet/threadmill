@@ -21,5 +21,14 @@ struct ChatSessionView: View {
                 .padding(.bottom, 12)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .background {
+            // Cmd+.: cancel streaming (macOS standard cancel)
+            Button("") {
+                guard viewModel.isStreaming else { return }
+                Task { await viewModel.cancelCurrentPrompt() }
+            }
+            .keyboardShortcut(".", modifiers: .command)
+            .hidden()
+        }
     }
 }

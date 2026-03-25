@@ -4,9 +4,10 @@ struct ContentView: View {
     @Environment(AppState.self) private var appState
     @Environment(GitHubAuthManager.self) private var gitHubAuthManager
     @State private var showingAddRepoSheet = false
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(showingAddRepoSheet: $showingAddRepoSheet)
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 400)
         } detail: {
@@ -81,18 +82,19 @@ struct ContentView: View {
 
     @ViewBuilder
     private var keyboardShortcuts: some View {
-        // Cmd+T: new terminal tab
-        Button("") {
-            Task {
-                await appState.startPreset(named: "terminal")
-            }
-        }
-            .keyboardShortcut("t", modifiers: .command)
+        // Cmd+N: new thread
+        Button("") { appState.openNewThreadSheet() }
+            .keyboardShortcut("n", modifiers: .command)
             .hidden()
 
-        // Cmd+Shift+T: new thread
+        // Cmd+Shift+T: new thread (legacy alias)
         Button("") { appState.openNewThreadSheet() }
             .keyboardShortcut("t", modifiers: [.command, .shift])
+            .hidden()
+
+        // Cmd+Shift+W: close selected thread
+        Button("") { appState.closeSelectedThread() }
+            .keyboardShortcut("w", modifiers: [.command, .shift])
             .hidden()
 
         // Cmd+Shift+R: restart current preset
@@ -100,10 +102,18 @@ struct ContentView: View {
             .keyboardShortcut("r", modifiers: [.command, .shift])
             .hidden()
 
-        // Cmd+K: toggle connection
+        // Cmd+Shift+K: toggle connection
         Button("") { appState.toggleConnection() }
             .keyboardShortcut("k", modifiers: [.command, .shift])
             .hidden()
 
+        // Cmd+B: toggle sidebar
+        Button("") {
+            withAnimation {
+                columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+            }
+        }
+            .keyboardShortcut("b", modifiers: .command)
+            .hidden()
     }
 }

@@ -3,7 +3,11 @@ import SwiftUI
 struct BrowserView: View {
     @StateObject private var manager: BrowserSessionManager
     @State private var hoveredTabID: String?
+    @State private var focusURLTrigger = 0
     @Environment(\.closeActiveTabTrigger) private var closeActiveTabTrigger
+    @Environment(\.selectNextTabTrigger) private var selectNextTabTrigger
+    @Environment(\.selectPreviousTabTrigger) private var selectPreviousTabTrigger
+    @Environment(\.newTabTrigger) private var newTabTrigger
 
     init(thread: ThreadModel, databaseManager: any DatabaseManaging) {
         _manager = StateObject(wrappedValue: BrowserSessionManager(databaseManager: databaseManager, thread: thread))
@@ -20,6 +24,7 @@ struct BrowserView: View {
                 canGoForward: manager.canGoForward,
                 isLoading: manager.isLoading,
                 loadingProgress: manager.loadingProgress,
+                focusURLTrigger: focusURLTrigger,
                 onBack: { manager.goBack() },
                 onForward: { manager.goForward() },
                 onReload: { manager.reload() },
@@ -94,6 +99,35 @@ struct BrowserView: View {
         .onChange(of: closeActiveTabTrigger) { _, _ in
             guard let sessionID = manager.activeSessionId else { return }
             manager.closeSession(sessionID)
+        }
+        .onChange(of: selectNextTabTrigger) { _, _ in
+            guard let nextSessionID else { return }
+            manager.selectSession(nextSessionID)
+        }
+        .onChange(of: selectPreviousTabTrigger) { _, _ in
+            guard let previousSessionID else { return }
+            manager.selectSession(previousSessionID)
+        }
+        .onChange(of: newTabTrigger) { _, _ in
+            manager.createSession()
+        }
+        .background {
+            // Cmd+L: focus URL bar
+            Button("") { focusURLTrigger += 1 }
+                .keyboardShortcut("l", modifiers: .command)
+                .hidden()
+            // Cmd+R: reload page
+            Button("") { manager.reload() }
+                .keyboardShortcut("r", modifiers: .command)
+                .hidden()
+            // Cmd+[: back
+            Button("") { manager.goBack() }
+                .keyboardShortcut("[", modifiers: .command)
+                .hidden()
+            // Cmd+]: forward
+            Button("") { manager.goForward() }
+                .keyboardShortcut("]", modifiers: .command)
+                .hidden()
         }
     }
 

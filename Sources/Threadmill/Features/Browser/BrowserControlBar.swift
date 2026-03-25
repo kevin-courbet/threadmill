@@ -7,6 +7,7 @@ struct BrowserControlBar: View {
     let isLoading: Bool
     let loadingProgress: Double
 
+    let focusURLTrigger: Int
     let onBack: () -> Void
     let onForward: () -> Void
     let onReload: () -> Void
@@ -39,6 +40,9 @@ struct BrowserControlBar: View {
                     }
                 }
                 .onSubmit(handleURLSubmit)
+                .onChange(of: focusURLTrigger) { _, _ in
+                    isURLFieldFocused = true
+                }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)

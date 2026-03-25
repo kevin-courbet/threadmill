@@ -5,6 +5,8 @@ struct FileBrowserView: View {
     @AppStorage("fileBrowserTreeWidth") private var treeWidth: Double = 250
     @StateObject private var viewModel: FileBrowserViewModel
     @Environment(\.closeActiveTabTrigger) private var closeActiveTabTrigger
+    @Environment(\.selectNextTabTrigger) private var selectNextTabTrigger
+    @Environment(\.selectPreviousTabTrigger) private var selectPreviousTabTrigger
 
     let connectionStatus: ConnectionStatus
 
@@ -64,6 +66,12 @@ struct FileBrowserView: View {
         .onChange(of: closeActiveTabTrigger) { _, _ in
             guard let fileID = viewModel.selectedFileId else { return }
             viewModel.closeFile(id: fileID)
+        }
+        .onChange(of: selectNextTabTrigger) { _, _ in
+            viewModel.selectNextFile()
+        }
+        .onChange(of: selectPreviousTabTrigger) { _, _ in
+            viewModel.selectPreviousFile()
         }
     }
 
