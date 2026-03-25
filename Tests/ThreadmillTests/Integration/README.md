@@ -24,7 +24,7 @@ Full end-to-end: launches real app, connects to real Spindle, interacts via XCUI
 
 ### XCUI fixture procedure
 
-All XCUI tests use `RealSpindleHarness` (in `UITests/ThreadmillUITests/RealSpindleHarness.swift`):
+All XCUI tests use `TestHarness` (in `UITests/ThreadmillUITests/TestHarness.swift`):
 
 1. **Fresh DB** — `THREADMILL_DB_PATH` → temp directory. App sees ONLY fixture data.
 2. **Seeded Remote** — `ensureDefaultRemoteExists()` (app's own bootstrap), then host/tunnel updated to `127.0.0.1:19990`.
@@ -37,11 +37,11 @@ All XCUI tests use `RealSpindleHarness` (in `UITests/ThreadmillUITests/RealSpind
 ```swift
 @MainActor
 final class MyFeatureTests: XCTestCase {
-    private var harness: RealSpindleHarness?
+    private var harness: TestHarness?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        harness = try RealSpindleHarness.launch()
+        harness = try TestHarness.launch()
     }
 
     override func tearDownWithError() throws {

@@ -98,8 +98,8 @@
 		C12F6BBB3A502FAFF5DB8ADB /* TabContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22F6BBB3A502FAFF5DB8ADB /* TabContainer.swift */; };
 		C167B23BF60C42480133CAA1 /* TabLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C267B23BF60C42480133CAA1 /* TabLabel.swift */; };
 		C136AD69D689DD988AA8BDF9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C236AD69D689DD988AA8BDF9 /* ContentView.swift */; };
-		A1E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift */; };
-		A1026710510B159C625584B0 /* ThreadmillUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2026710510B159C625584B0 /* ThreadmillUITests.swift */; };
+		A1E9E8DF1370DC28B0F6474F /* TestHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E9E8DF1370DC28B0F6474F /* TestHarness.swift */; };
+		A1026710510B159C625584B0 /* TerminalE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2026710510B159C625584B0 /* TerminalE2ETests.swift */; };
 		A10000000000000000000004 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* XCTest.framework */; };
 		A1000000000000000000000D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000001 /* GRDB */; };
 		A1000000000000000000000F /* GhosttyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* GhosttyKit.xcframework */; };
@@ -201,8 +201,8 @@
 		C22F6BBB3A502FAFF5DB8ADB /* TabContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TabContainer.swift"; path = "../Sources/Threadmill/Views/Components/TabContainer.swift"; sourceTree = SOURCE_ROOT; };
 		C267B23BF60C42480133CAA1 /* TabLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TabLabel.swift"; path = "../Sources/Threadmill/Views/Components/TabLabel.swift"; sourceTree = SOURCE_ROOT; };
 		C236AD69D689DD988AA8BDF9 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ContentView.swift"; path = "../Sources/Threadmill/Views/ContentView.swift"; sourceTree = SOURCE_ROOT; };
-		A2E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealSpindleHarness.swift; sourceTree = "<group>"; };
-		A2026710510B159C625584B0 /* ThreadmillUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadmillUITests.swift; sourceTree = "<group>"; };
+		A2E9E8DF1370DC28B0F6474F /* TestHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHarness.swift; sourceTree = "<group>"; };
+		A2026710510B159C625584B0 /* TerminalE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalE2ETests.swift; sourceTree = "<group>"; };
 		A20000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000005 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A20000000000000000000006 /* ThreadmillUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ThreadmillUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -240,8 +240,8 @@
 		A40000000000000000000002 /* ThreadmillUITests */ = {
 			isa = PBXGroup;
 			children = (
-				A2E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift */,
-				A2026710510B159C625584B0 /* ThreadmillUITests.swift */,				A20000000000000000000004 /* Info.plist */,
+				A2E9E8DF1370DC28B0F6474F /* TestHarness.swift */,
+				A2026710510B159C625584B0 /* TerminalE2ETests.swift */,				A20000000000000000000004 /* Info.plist */,
 			);
 			path = ThreadmillUITests;
 			sourceTree = "<group>";
@@ -425,8 +425,8 @@
 				C12F6BBB3A502FAFF5DB8ADB /* TabContainer.swift in Sources */,
 				C167B23BF60C42480133CAA1 /* TabLabel.swift in Sources */,
 				C136AD69D689DD988AA8BDF9 /* ContentView.swift in Sources */,
-				A1E9E8DF1370DC28B0F6474F /* RealSpindleHarness.swift in Sources */,
-				A1026710510B159C625584B0 /* ThreadmillUITests.swift in Sources */,			);
+				A1E9E8DF1370DC28B0F6474F /* TestHarness.swift in Sources */,
+				A1026710510B159C625584B0 /* TerminalE2ETests.swift in Sources */,			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

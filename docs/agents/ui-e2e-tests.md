@@ -147,7 +147,7 @@ button.click()
 
 ```bash
 task test:ui                    # all tests
-task test:ui -- -only-testing:ThreadmillUITests/ThreadmillUITests/testTerminalShowsPromptWithoutEnterPress
+task test:ui -- -only-testing:ThreadmillUITests/TerminalE2ETests/test01_TerminalShowsPromptWithoutInteraction
 ```
 
 ## Debugging Failures

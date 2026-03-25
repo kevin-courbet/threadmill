@@ -1,14 +1,14 @@
 import Foundation
 import XCTest
 
-/// All XCUI e2e tests — single class, shared app instance.
+/// Terminal XCUI e2e tests — shared app instance across tests.
 ///
 /// Launches the real app against real Spindle on beast. Tests find the fixture
 /// thread (test-xcui-*) in the sidebar and interact with it.
 ///
 /// On failure, filter Console.app with `subsystem:dev.threadmill` for diagnostics.
 @MainActor
-final class ThreadmillUITests: XCTestCase {
+final class TerminalE2ETests: XCTestCase {
     /// All actions must complete within this. No exceptions.
     private static let timeout: TimeInterval = 0.5
 

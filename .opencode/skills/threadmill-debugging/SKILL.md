@@ -294,7 +294,7 @@ dumpLogs(category: "conn")     // specific category
 
 ```bash
 task test:ui                   # all e2e tests
-task test:ui -- -only-testing:ThreadmillUITests/ThreadmillUITests/testTerminalShowsPromptWithoutEnterPress
+task test:ui -- -only-testing:ThreadmillUITests/TerminalE2ETests/test01_TerminalShowsPromptWithoutInteraction
 ```
 
 **Prerequisites**: SSH tunnel, Spindle running, fixture thread (`test-xcui-*`), Accessibility permission for Terminal. `task test:ui` handles everything except Accessibility.

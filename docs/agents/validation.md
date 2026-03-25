@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-23
+updated: 2026-03-25
 ---
 
 # Validation Process
@@ -16,7 +16,7 @@ updated: 2026-03-23
 - `task test:swift`: run Threadmill Swift unit tests.
 - `task test:integration`: run real Spindle integration tests (requires beast + SSH tunnel).
 - `task test:spindle`: run Spindle Rust tests on beast over SSH.
-- `task test:ui`: run UI e2e tests (`THREADMILL_RUN_UI_E2E=1`), requires macOS Accessibility permission.
+- `task test:ui`: run XCUI e2e tests (requires beast + SSH tunnel + Accessibility permission).
 - `task test`: run `test:swift` and `test:spindle`.
 - `task validate`: run `build:all` and `test`.
 
@@ -25,36 +25,39 @@ updated: 2026-03-23
 ```
 Tests/ThreadmillTests/
 ├── Shared/          # TestDoubles.swift — mock doubles shared by unit + integration
-├── Unit/            # ~186 unit tests with mock doubles
+├── Unit/            # Behavioral unit tests with mock doubles
 └── Integration/     # Real Spindle integration tests (beast + SSH tunnel)
-    ├── SpindleConnection.swift       # Lightweight WebSocket client for test harness
-    ├── IntegrationTestCase.swift     # Base class: setUp sweep, tearDown cleanup, helpers
-    ├── ProjectIntegrationTests.swift
-    ├── ThreadIntegrationTests.swift
-    ├── TerminalIntegrationTests.swift
-    ├── PresetIntegrationTests.swift
-    └── ChatIntegrationTests.swift
+
+UITests/
+└── ThreadmillUITests/           # XCUI e2e tests (Xcode project, real Spindle)
+    └── ThreadmillUITests.xcodeproj
 ```
 
 ## Test Suites
 
-- **Swift unit tests** (~186 tests in `Unit/`):
-  - `TerminalMultiplexer` (pre-registration buffer)
-  - `AppState` events, attach behavior, project management, remote connections
-  - `RelayEndpoint` bounds
-  - `ConnectionManager` reconnect behavior
-  - `ThreadTabStateManager` mode switching + persistence
-  - `BrowserSessionManager` session lifecycle
-  - `FileBrowserViewModel` directory listing, error states
-  - `ChatConversation` GRDB persistence
-  - `ChatSessionViewModel` ACP streaming + timeline building
-  - `AgentSessionManager` channel lifecycle, binary frame routing, reconnect
-  - `TimelineModel` item types, exploration clustering, turn summaries
-  - `IntegrationFlow` mock-based end-to-end validation (repo, thread, terminals, ACP chat)
-  - `DatabaseMigrationV6` remote/repo model migrations
-  - Source-level structural tests (window chrome, tab styling, syntax highlighting)
+- **Swift unit tests** (`Tests/ThreadmillTests/Unit/`):
+  - `TerminalMultiplexer` — channel routing, pre-registration buffer, reconnect remapping
+  - `AppState` — events, attach behavior, project management, remote connections, thread lifecycle
+  - `RelayEndpoint` — bounded frame buffer, channel gate
+  - `ConnectionManager` — reconnect with backoff, state transitions
+  - `ThreadTabStateManager` — mode switching, persistence, stale fallback
+  - `BrowserSessionManager` — CRUD lifecycle, selection
+  - `FileBrowserViewModel` — directory listing, git status, error states
+  - `ChatConversation` — GRDB persistence lifecycle
+  - `ChatSessionViewModel` — ACP streaming, timeline building, agent/mode selection
+  - `AgentSessionManager` — channel lifecycle, binary frame deframing, reconnect
+  - `TimelineModel` — item types, exploration clustering, turn summaries, streaming deltas
+  - `IntegrationFlow` — mock-based end-to-end (repo, thread, terminals, ACP chat)
+  - `DatabaseMigration` — remote/repo model migrations, column renames
+  - `GitHubClient` — pagination, 401 handling, SSH clone URL preference
+  - `GitHubAuthManager` — device flow, token persistence
+  - `ProvisioningService` — repo registration, clone, error paths
+  - `FileSyntaxHighlighting` — tree-sitter loading, language detection
+  - `KeyboardShortcut` — thread selection, preset tab cycling
+  - `RemoteConnectionPool` — lifecycle, activation, add/update/remove
+  - `SyncService` — daemon sync RPC delegation
 
-- **Spindle integration tests** (6 tests in `Integration/`, one file per domain):
+- **Spindle integration tests** (`Tests/ThreadmillTests/Integration/`, one file per domain):
   - `ProjectIntegrationTests` — project.add, project.list with fixture repo
   - `ThreadIntegrationTests` — thread.create, wait for status_changed event, verify worktree via SSH
   - `TerminalIntegrationTests` — terminal.attach, binary frame echo round-trip
@@ -71,15 +74,18 @@ Tests/ThreadmillTests/
   - agent process management
   - CLI commands
 
-- **UI e2e tests** cover full app flow with a mock daemon; opt-in and requires Accessibility permission.
+- **UI e2e tests** (`UITests/ThreadmillUITests/`, Xcode project):
+  - Launches real app against real Spindle on beast
+  - Fixture thread created via `Scripts/setup_xcui_fixture.swift`
+  - Tests: terminal prompt, session creation, named preset via dropdown
 
 ## Adding New Tests
 
-- Unit tests go in `Tests/ThreadmillTests/Unit/`.
+- Unit tests go in `Tests/ThreadmillTests/Unit/`. See `docs/agents/unit-testing.md` for standards.
 - Integration tests go in `Tests/ThreadmillTests/Integration/`, one file per domain. Subclass `IntegrationTestCase` for connection helpers, thread lifecycle, and ACP setup.
 - Shared test doubles go in `Tests/ThreadmillTests/Shared/`.
 - Spindle Rust tests are maintained on beast under `/home/wsl/dev/spindle/tests/`.
-- UI e2e tests live under `UITests/ThreadmillUITests/`.
+- UI e2e tests go in `UITests/ThreadmillUITests/`.
 
 ## CI Expectation
 

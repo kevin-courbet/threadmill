@@ -141,13 +141,13 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 | **Sources/threadmill-relay/** | |
 | `main.c` | ~30-line C PTY bridge: stdin/stdout ↔ Unix socket |
 | **Tests/ThreadmillTests/Shared/** | TestDoubles.swift — mock doubles shared by unit + integration |
-| **Tests/ThreadmillTests/Unit/** | ~186 unit tests with mock doubles |
+| **Tests/ThreadmillTests/Unit/** | Behavioral unit tests with mock doubles |
 | **Tests/ThreadmillTests/Integration/** | Real Spindle integration tests (beast + SSH tunnel) |
 | `Integration/Protocol/SpindleConnection.swift` | Lightweight WebSocket client for test harness |
 | `Integration/Protocol/IntegrationTestCase.swift` | Base class: setUp sweep, tearDown cleanup, OSLogStore dump-on-failure |
 | `Integration/Protocol/{Project,Thread,Terminal,Preset,Chat}IntegrationTests.swift` | One file per domain |
 | `Integration/AppStack/AppStackTestCase.swift` | Base class using real AppState + ConnectionManager + GRDB |
-| **UITests/ThreadmillUITests/** | XCUITest e2e harness with MockSpindleServer (opt-in) |
+| **UITests/ThreadmillUITests/** | XCUI e2e tests (Xcode project, real Spindle on beast) |
 
 ### Spindle (on beast) — Rust daemon
 
@@ -246,10 +246,11 @@ All production logging uses `os.Logger` (subsystem `dev.threadmill`). Categories
 
 ## Testing Conventions
 
-- **One test per feature.** Not more.
+- **Every test must verify behavior** — state transitions, error paths, protocol contracts, or business logic. See `docs/agents/unit-testing.md`.
+- **Never write source-reading tests** — reading `.swift` files and asserting on string contents is banned.
+- **Never write trivially shallow tests** — don't test struct init field assignment or mock recording.
 - Swift tests use `XCTest`, mock doubles in `TestDoubles.swift`, DI via protocols in `Abstractions.swift`.
 - Spindle tests are integration tests against a real daemon instance (test helpers in `tests/common/`).
-- UI e2e tests use `MockSpindleServer` and require `THREADMILL_RUN_UI_E2E=1`.
 - All tests `@MainActor` on the Swift side (AppState and most components are MainActor-bound).
 - **Integration test log capture**: `IntegrationTestCase` auto-dumps `dev.threadmill` logs on failure via `OSLogStore`.
 
@@ -261,6 +262,7 @@ All production logging uses `os.Logger` (subsystem `dev.threadmill`). Categories
 |---|---|
 | `docs/agents/debugging.md` | Logging architecture, os.Logger categories, test debugging workflow, enforcement rules |
 | `docs/agents/communication-protocol.md` | WebSocket JSON-RPC protocol, activity diagrams, RPC methods, events, binary frames |
+| `docs/agents/unit-testing.md` | Unit testing standards, banned patterns, what makes a good test, test organization |
 | `docs/agents/validation.md` | Build/test commands, test suites, CI expectations |
 | `docs/architecture.md` | Full architecture spec, module structure, milestone status |
 | `docs/vision.md` | Product vision, feature status, milestone checklist |

@@ -1,17 +1,10 @@
+import CodeEditLanguages
 import Foundation
+import SwiftTreeSitter
 import XCTest
 @testable import Threadmill
-import CodeEditLanguages
-import SwiftTreeSitter
 
-final class FileSyntaxHighlightingSourceTests: XCTestCase {
-    func testFileContentTabViewUsesCodeEditorView() throws {
-        let source = try loadSource(at: "Sources/Threadmill/Features/Files/FileContentTabView.swift")
-
-        XCTAssertTrue(source.contains("CodeEditorView("))
-        XCTAssertFalse(source.contains("Text(content)"))
-    }
-
+final class FileSyntaxHighlightingTests: XCTestCase {
     func testTreeSitterTypescriptLoadsAndParses() throws {
         let lang = CodeLanguage.typescript
         XCTAssertNotNil(lang.language, "TypeScript tree-sitter language failed to load from xcframework")
@@ -42,15 +35,5 @@ final class FileSyntaxHighlightingSourceTests: XCTestCase {
     func testLanguageDetectionReturnsTypescriptForTsExtension() {
         let lang = LanguageDetection.language(for: "/some/path/file.ts")
         XCTAssertEqual(lang.id, .typescript)
-    }
-
-    private func loadSource(at relativePath: String) throws -> String {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            let sourcePath = repositoryRoot.appendingPathComponent(relativePath)
-        return try String(contentsOf: sourcePath, encoding: .utf8)
     }
 }
