@@ -1,81 +1,86 @@
 # Goal
 
-Issue: #14 - Add session_id to terminal/preset RPCs
-URL: https://github.com/kevin-courbet/threadmill/issues/14
+Issue: #21 - Spindle: Chat service core - RPCs, events, state snapshot
+URL: https://github.com/kevin-courbet/threadmill/issues/21
 
 ## Problem
 
-The protocol conflates preset names and session IDs. The Mac app sends client-generated session IDs like `"terminal-2"` through the `preset` field, and Spindle reverse-engineers the base preset name by stripping the `-N` suffix via `resolve_base_preset_name`. This is fragile (strips suffixes from any preset, e.g. `"api-v2"` becomes `"api"`), confuses the protocol contract, and leads to three independent copies of name resolution logic across Swift and Rust.
+Spindle has no awareness of chat sessions. It blindly relays ACP binary frames between Mac and agent processes. There are no RPCs to create, list, attach to, or manage chat sessions. The state snapshot does not include chat session information. This means clients cannot discover existing sessions on reconnect, multiple clients cannot coordinate, and chat sessions do not survive client disconnects.
 
 ## Solution
 
-Add an optional `session_id` parameter to `preset.start`, `preset.stop`, `terminal.attach`, `terminal.detach`, and `terminal.resize`. Spindle uses `preset` for config lookup and `session_id` for tmux window naming and target key differentiation. Remove `resolve_base_preset_name` entirely.
+Add a new `chat` service to Spindle mirroring the terminal/preset architecture. Spindle manages the full ACP agent lifecycle (spawn, initialize, session/new, session/load) and exposes it through JSON-RPC methods. Chat sessions become first-class state tracked in the snapshot and communicated via events.
 
 ## Requirements
 
-- [ ] `preset.start` accepts `{ thread_id, preset, session_id? }` — uses `preset` for config, `session_id` (defaulting to `preset`) for tmux window name
-- [ ] `terminal.attach` accepts `{ thread_id, preset, session_id? }` — target key is `{thread_id}:{session_id}`, not `{thread_id}:{preset}`
-- [ ] `terminal.detach`, `terminal.resize`, `preset.stop` accept `session_id?` and use it for target/window lookup
-- [ ] `resolve_base_preset_name` is removed from `preset.rs`
-- [ ] Mac sends both `preset` (base name from `AttachmentKey.presetName`) and `session_id` (the session ID) in all RPCs
-- [ ] `daemonPreset` parameter removed from `performAttachPreset` — derive locally for validation only
-- [ ] Consolidate the two Swift copies of preset name resolution (`AttachmentKey.presetName` and `TerminalModeActions.presetName(forSessionID:)`) into a single static method
-- [ ] `protocol/threadmill-rpc.schema.json` updated with new param
-- [ ] Backward compatible: omitting `session_id` defaults to `preset` value (single-instance presets work unchanged)
+- [ ] `chat.start(thread_id, agent_name)` RPC: spawns agent process, begins ACP handshake async, returns `{ session_id, status: "starting" }` immediately
+- [ ] `chat.load(thread_id, session_id)` RPC: reconnects to existing session via `agent.start` (if needed) -> `initialize` -> `session/load`, returns `{ session_id, status: "starting" }`
+- [ ] `chat.stop(thread_id, session_id)` RPC: stops agent process, marks session archived
+- [ ] `chat.list(thread_id)` RPC: returns all sessions for a thread with metadata (session_id, agent_type, status, title, model_id, created_at)
+- [ ] `chat.attach(thread_id, session_id)` RPC: allocates binary channel for ACP frame relay, returns `{ channel_id }`. Multiple clients can attach simultaneously.
+- [ ] `chat.detach(channel_id)` RPC: releases binary channel, agent keeps running
+- [ ] `chat.session_created` event emitted when `chat.start` is accepted (agent spawning)
+- [ ] `chat.session_ready` event emitted after ACP handshake completes, includes `{ thread_id, session_id, modes?, models?, config_options? }`
+- [ ] `chat.session_failed` event emitted if agent start or ACP handshake fails, includes `{ thread_id, session_id, error }`
+- [ ] `chat.session_ended` event emitted when agent exits or session is stopped, includes `{ thread_id, session_id, reason }`
+- [ ] State snapshot `threads[].chat_sessions` array with: `session_id, agent_type, status, title, model_id, created_at`
+- [ ] State delta support for chat session additions/removals/updates
+- [ ] `chat.start` times out the ACP handshake after 30s, emitting `chat.session_failed`
+- [ ] Thread close (`thread.close`) stops all chat sessions for that thread
+- [ ] Binary frame relay fans out to all attached clients for the same session
 
 ## Technical Approach
 
 ### Architecture
 
+New `src/services/chat.rs` following the pattern of `src/services/terminal.rs` and `src/services/preset.rs`.
+
+Internal state per chat session:
+```rust
+struct ChatSession {
+    session_id: String,
+    thread_id: String,
+    agent_type: String,       // "opencode", "claude", etc.
+    acp_session_id: String,   // from session/new or session/load response
+    status: ChatSessionStatus, // Starting, Ready, Failed, Ended
+    model_id: Option<String>,
+    title: Option<String>,
+    modes: Option<Vec<ModeInfo>>,
+    models: Option<Vec<ModelInfo>>,
+    created_at: DateTime<Utc>,
+    attached_channels: HashSet<u16>, // multiple clients
+}
 ```
-Mac                                     Spindle
-────                                    ───────
-preset.start({                          1. Look up config by `preset` ("terminal")
-  preset: "terminal",                   2. Create tmux window named `session_id` ("terminal-2")
-  session_id: "terminal-2"              3. target_key = "{thread_id}:terminal-2"
-})
 
-terminal.attach({                       1. Find window by `session_id` name
-  preset: "terminal",                   2. Unique channel per session_id
-  session_id: "terminal-2"              3. Scrollback replay sent
-})
-```
+### ACP handshake
 
-- `preset` = config identity (what command to run, what cwd)
-- `session_id` = instance identity (which tmux window, which channel)
-- Named presets (`dev-server`) send no `session_id` — defaults to preset name, single-instance as before
+`chat.start` spawns the agent process (reusing existing `agent.start` infrastructure), then performs the ACP `initialize` + `session/new` handshake in a background task. On success, updates session status to `Ready` and emits `chat.session_ready` with capabilities extracted from the `session/new` response (modes, models, config_options). On failure, emits `chat.session_failed`.
 
-### Protocol Changes
+`chat.load` follows the same pattern but uses `session/load` instead of `session/new`, passing the stored ACP session ID.
 
-All five RPCs gain optional `session_id: string`:
-- `preset.start`, `preset.stop`: window name = `session_id ?? preset`
-- `terminal.attach`, `terminal.detach`, `terminal.resize`: target key uses `session_id ?? preset`
+### Multi-client attach
 
-## Implementation Phases
+`chat.attach` adds a channel ID to the session's `attached_channels` set. The binary frame relay path checks this set and fans out outbound frames (agent -> clients) to all attached channels. Inbound frames (client -> agent) from any attached client are forwarded to the agent.
 
-### Phase 1: Spindle protocol + params
-- Add `session_id: Option<String>` to `PresetStartParams`, `PresetStopParams`, `TerminalAttachParams`, `TerminalDetachParams`, `TerminalResizeParams` in `protocol.rs`
-- In each service function, compute `effective_id = params.session_id.unwrap_or(params.preset.clone())`
-- `preset.start`: look up config by `params.preset`, create window named `effective_id`
-- `terminal.attach`: target key = `{thread_id}:{effective_id}`, window lookup by `effective_id`
-- Remove `resolve_base_preset_name` from `preset.rs`
-- Update `threadmill-rpc.schema.json`
-- **Verify:** `cargo test` — all existing tests pass (they omit `session_id`, so default kicks in)
+### RPC dispatch
 
-### Phase 2: Mac sends session_id
-- Consolidate `AttachmentKey.presetName` and `TerminalModeActions.presetName(forSessionID:)` into `Preset.baseName(forSessionID:)`
-- `performAttachPreset`: send `preset: baseName, session_id: sessionID` in `preset.start` and `terminal.attach`
-- `stopPreset`: send `preset: baseName, session_id: sessionID` in `preset.stop`
-- Remove `daemonPreset` parameter from `performAttachPreset`
-- **Verify:** `swift test` passes, manual test: create Terminal 2 tab, verify separate shell
+Add new method constants to `protocol.rs` and dispatch entries in `rpc_router.rs`, following the existing patterns for `terminal.*` and `preset.*` methods.
+
+### State snapshot
+
+Extend the thread payload in `state_store.rs` to include `chat_sessions`. State version increments on session create/ready/fail/end. Delta operations follow the existing `state.delta.operations.v1` pattern.
 
 ## Edge Cases & Error Handling
 
-- `session_id` containing special characters (slashes, spaces): Spindle should validate it's a safe tmux window name
-- `preset.stop` with `session_id` that doesn't match any window: return `{ ok: false }` (existing behavior)
+- `chat.start` for a thread that doesn't exist: return RPC error
+- `chat.attach` for a session that isn't ready: return RPC error with status info
+- `chat.attach` for a session in "starting" state: queue the attach, fulfill when ready
+- Agent process crashes after `chat.session_ready`: detect via process monitor, emit `chat.session_ended`, notify all attached channels
+- `chat.load` for a session ID that the agent doesn't recognize: `session/load` fails, emit `chat.session_failed`
+- Spindle restart: sessions in memory are lost, but JSONL files on disk survive (scrollback issue handles replay)
 
 ## Out of Scope
 
-- Terminal lifecycle changes (ephemeral vs long-lived) — separate issue
-- Cmd+T flow fix — separate issue
-- `restartCurrentPreset` fix — separate issue
+- Scrollback persistence (separate issue)
+- Agent status tracking / busy/idle/stalled (separate issue)
+- Mac-side client changes
