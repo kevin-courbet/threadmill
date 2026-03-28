@@ -18,6 +18,7 @@ struct ChatModeContent: View {
             let selectedConversation = selectedConversation
             let selectedChannelID = selectedConversation.flatMap { channelByConversationID[$0.id] }
             let capabilities = appState.chatCapabilitiesByThreadID[thread.id] ?? ChatSessionCapabilities()
+            let sessionState = resolveSessionState(for: selectedConversation)
             let selectedProjectAgents = appState.selectedProject?.agents ?? []
             let availableAgents = selectedProjectAgents.isEmpty
                 ? [AgentConfig(name: "opencode", command: "opencode", cwd: nil)]
@@ -30,10 +31,14 @@ struct ChatModeContent: View {
                         sessionID: selectedConversation?.agentSessionID,
                         channelID: selectedChannelID,
                         threadID: thread.id,
+                        sessionState: sessionState,
                         availableModes: capabilities.modes.map { ModeInfo(id: $0.id, name: $0.title ?? $0.id) },
                         availableModels: capabilities.models.map { ModelInfo(modelId: $0.id, name: $0.title ?? $0.id) },
                         selectedAgentName: selectedConversation?.agentType ?? availableAgents.first?.name ?? "opencode",
-                        availableAgents: availableAgents
+                        availableAgents: availableAgents,
+                        historyProvider: { threadID, sessionID, cursor in
+                            try await appState.chatHistory(threadID: threadID, sessionID: sessionID, cursor: cursor)
+                        }
                     )
                 }
             )
@@ -41,6 +46,13 @@ struct ChatModeContent: View {
             ChatSessionView(viewModel: viewModel)
                 .task(id: "\(selectedConversation?.agentSessionID ?? ""):\(selectedChannelID?.description ?? "")") {
                     viewModel.configureSession(sessionID: selectedConversation?.agentSessionID, channelID: selectedChannelID)
+                }
+                .task(id: sessionStateTaskID(sessionState: sessionState, conversationID: selectedConversation?.id)) {
+                    viewModel.updateSessionState(sessionState)
+                    viewModel.configureCapabilities(
+                        modes: capabilities.modes.map { ModeInfo(id: $0.id, name: $0.title ?? $0.id) },
+                        models: capabilities.models.map { ModelInfo(modelId: $0.id, name: $0.title ?? $0.id) }
+                    )
                 }
                 .task(id: reloadToken) {
                     await refreshConversationState(with: chatConversationService)
@@ -102,6 +114,37 @@ struct ChatModeContent: View {
         } catch {
             return
         }
+    }
+
+    private func resolveSessionState(for conversation: ChatConversation?) -> ChatSessionState {
+        if let state = appState.chatSessionStateByThreadID[thread.id] {
+            return state
+        }
+
+        let status = conversation?.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        switch status {
+        case "ready":
+            return .ready
+        case "failed":
+            return .failed(ChatSessionStateError(message: "Session failed."))
+        case "ended":
+            return .failed(ChatSessionStateError(message: "Session ended."))
+        default:
+            return .starting
+        }
+    }
+
+    private func sessionStateTaskID(sessionState: ChatSessionState, conversationID: String?) -> String {
+        let stateID: String
+        switch sessionState {
+        case .starting:
+            stateID = "starting"
+        case .ready:
+            stateID = "ready"
+        case .failed:
+            stateID = "failed"
+        }
+        return "\(conversationID ?? "none"):\(stateID)"
     }
 }
 

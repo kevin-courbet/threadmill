@@ -139,6 +139,7 @@ final class AppState {
                 systemStats = nil
                 agentStatus = [:]
                 chatCapabilitiesByThreadID = [:]
+                chatSessionStateByThreadID = [:]
             }
         }
     }
@@ -156,6 +157,7 @@ final class AppState {
     var threads: [ThreadModel] = []
     var agentStatus: [String: AgentActivityInfo] = [:]
     var chatCapabilitiesByThreadID: [String: ChatSessionCapabilities] = [:]
+    var chatSessionStateByThreadID: [String: ChatSessionState] = [:]
     var systemStats: SystemStatsResult?
     var pinnedThreadIDs: Set<String> = {
         guard let data = UserDefaults.standard.data(forKey: "pinnedThreadIDs"),
@@ -1330,6 +1332,8 @@ final class AppState {
             return
         }
 
+        chatSessionStateByThreadID[session.threadID] = .starting
+
         upsertConversation(
             threadID: session.threadID,
             sessionID: session.sessionID,
@@ -1357,6 +1361,7 @@ final class AppState {
         if let capabilities = decodeChatCapabilities(from: params) {
             chatCapabilitiesByThreadID[threadID] = capabilities
         }
+        chatSessionStateByThreadID[threadID] = .ready
 
         upsertConversation(
             threadID: threadID,
@@ -1379,6 +1384,18 @@ final class AppState {
         }
 
         chatCapabilitiesByThreadID.removeValue(forKey: threadID)
+        let errorMessage = (params?["error"] as? String) ?? "Session failed."
+        chatSessionStateByThreadID[threadID] = .failed(ChatSessionStateError(message: errorMessage))
+
+        if let sessionID = params?["session_id"] as? String {
+            upsertConversation(
+                threadID: threadID,
+                sessionID: sessionID,
+                status: "failed",
+                archiveIfEnded: false
+            )
+        }
+
         Logger.state.error("chat.session_failed thread=\(threadID, privacy: .public)")
         scheduleEventSync()
     }
@@ -1394,6 +1411,7 @@ final class AppState {
 
         agentStatus.removeValue(forKey: threadID)
         chatCapabilitiesByThreadID.removeValue(forKey: threadID)
+        chatSessionStateByThreadID[threadID] = .failed(ChatSessionStateError(message: "Session ended."))
 
         upsertConversation(
             threadID: threadID,

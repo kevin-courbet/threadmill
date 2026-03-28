@@ -15,6 +15,21 @@ struct ChatSessionView: View {
                     .transition(.opacity)
             }
 
+            switch viewModel.sessionState {
+            case .starting:
+                ChatProcessingIndicator(thoughtText: "Starting chat session…")
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 4)
+            case let .failed(error):
+                Text(error.localizedDescription)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 4)
+            case .ready:
+                EmptyView()
+            }
+
             ChatInputBar(viewModel: viewModel)
                 .padding(.horizontal, 12)
                 .padding(.top, 8)

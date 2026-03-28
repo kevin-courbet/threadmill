@@ -8,7 +8,11 @@ struct ChatInputBar: View {
     @State private var measuredHeight: CGFloat = 44
 
     private var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.isStreaming
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.isStreaming && viewModel.isInputEnabled
+    }
+
+    private var isComposerEnabled: Bool {
+        viewModel.isInputEnabled && !viewModel.isStreaming
     }
 
     private var editorHeight: CGFloat {
@@ -64,6 +68,7 @@ struct ChatInputBar: View {
                     text: $text,
                     measuredHeight: $measuredHeight,
                     onSubmit: send,
+                    isEnabled: isComposerEnabled,
                     onCancel: viewModel.isStreaming ? {
                         Task { await viewModel.cancelCurrentPrompt() }
                     } : nil
@@ -112,7 +117,7 @@ struct ChatInputBar: View {
                 .foregroundStyle(viewModel.availableModels.isEmpty ? .secondary : .primary)
         }
         .menuStyle(.borderlessButton)
-        .disabled(viewModel.isStreaming || viewModel.availableModels.isEmpty)
+        .disabled(!viewModel.isInputEnabled || viewModel.isStreaming || viewModel.availableModels.isEmpty)
     }
 
     private var selectedModelLabel: String {
@@ -142,6 +147,7 @@ struct ChatInputBar: View {
         }
         .pickerStyle(.segmented)
         .frame(maxWidth: 240)
+        .disabled(!viewModel.isInputEnabled)
     }
 
     private func send() {
@@ -161,6 +167,7 @@ private struct ExpandingTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var measuredHeight: CGFloat
     let onSubmit: () -> Void
+    let isEnabled: Bool
     let onCancel: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -200,6 +207,8 @@ private struct ExpandingTextView: NSViewRepresentable {
         }
         textView.onSubmit = onSubmit
         textView.onCancel = onCancel
+        textView.isEditable = isEnabled
+        textView.isSelectable = isEnabled
         context.coordinator.recomputeHeight(for: textView)
     }
 

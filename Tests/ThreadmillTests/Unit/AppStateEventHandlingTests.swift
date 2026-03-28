@@ -104,8 +104,31 @@ final class AppStateEventHandlingTests: XCTestCase {
 
         XCTAssertEqual(appState.chatCapabilitiesByThreadID["thread-1"]?.modes.map(\.id), ["chat", "plan"])
         XCTAssertEqual(appState.chatCapabilitiesByThreadID["thread-1"]?.models.map(\.id), ["gpt-5"])
+        if case .ready = appState.chatSessionStateByThreadID["thread-1"] {
+            XCTAssertTrue(true)
+        } else {
+            XCTFail("Expected chat session state to become ready")
+        }
         let synced = await waitForCondition { syncService.syncCount == 1 }
         XCTAssertTrue(synced)
+    }
+
+    func testHandleDaemonEventChatSessionFailedStoresFailedState() {
+        let (_, _, _, _, _, appState) = makeConfiguredAppStateWithDoubles()
+
+        appState.handleDaemonEvent(
+            method: "chat.session_failed",
+            params: [
+                "thread_id": "thread-1",
+                "session_id": "sess-1",
+                "error": "session crashed",
+            ]
+        )
+
+        guard case let .failed(error) = appState.chatSessionStateByThreadID["thread-1"] else {
+            return XCTFail("Expected failed state")
+        }
+        XCTAssertEqual(error.localizedDescription, "session crashed")
     }
 
     func testHandleDaemonEventChatSessionCreatedTriggersSync() async {
@@ -139,6 +162,7 @@ final class AppStateEventHandlingTests: XCTestCase {
 
         XCTAssertTrue(appState.agentStatus.isEmpty)
         XCTAssertTrue(appState.chatCapabilitiesByThreadID.isEmpty)
+        XCTAssertTrue(appState.chatSessionStateByThreadID.isEmpty)
     }
 
     func testHandleDaemonEventCloneProgressDoesNotTriggerSync() async {

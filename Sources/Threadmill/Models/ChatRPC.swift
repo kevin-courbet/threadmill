@@ -1,3 +1,4 @@
+import ACPModel
 import Foundation
 
 enum AgentStatus: Equatable {
@@ -260,19 +261,12 @@ struct ChatAttachResponse: Codable, Equatable {
     }
 }
 
-struct ChatHistoryEntry: Codable, Equatable {
-    let id: String
-    let role: String
-    let content: String
-    let timestamp: Date?
-}
-
-struct ChatHistoryResponse: Codable, Equatable {
-    let entries: [ChatHistoryEntry]
+struct ChatHistoryResponse: Codable {
+    let updates: [SessionUpdateNotification]
     let nextCursor: UInt64?
 
     enum CodingKeys: String, CodingKey {
-        case entries
+        case updates
         case nextCursor = "next_cursor"
     }
 }
