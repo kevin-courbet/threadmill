@@ -163,6 +163,10 @@ final class AppStateRemoteConnectionTests: XCTestCase {
                     "tmux_session": "tm_feature_b",
                     "port_offset": 0,
                 ]]
+            case "state.snapshot":
+                return ["chat_sessions": [[String: Any]]()]
+            case "chat.start":
+                return ["session_id": "session-b"]
             default:
                 throw TestError.missingStub
             }
@@ -197,7 +201,12 @@ final class AppStateRemoteConnectionTests: XCTestCase {
         try await appState.createThread(projectID: "project-b", name: "feature-b", sourceType: "new_feature", branch: nil)
 
         XCTAssertEqual(database.replaceAllFromDaemonRemoteIDs.last, remoteB.id)
-        XCTAssertEqual(connectionB.requests.map(\.method), ["thread.create", "project.list", "thread.list"])
+        let didStartChat = await waitForCondition {
+            connectionB.requests.contains(where: { $0.method == "chat.start" })
+        }
+
+        XCTAssertTrue(didStartChat)
+        XCTAssertEqual(connectionB.requests.map(\.method), ["thread.create", "project.list", "thread.list", "state.snapshot", "chat.start"])
     }
 
     func testReloadFromDatabaseReconcilesRemoteConnectionPool() {

@@ -159,6 +159,15 @@ final class DatabaseManager {
         }
     }
 
+    func conversation(threadID: String, agentSessionID: String) throws -> ChatConversation? {
+        try dbQueue.read { db in
+            try ChatConversation
+                .filter(ChatConversation.Columns.threadID == threadID)
+                .filter(ChatConversation.Columns.agentSessionID == agentSessionID)
+                .fetchOne(db)
+        }
+    }
+
     func listConversations(threadID: String) throws -> [ChatConversation] {
         try dbQueue.read { db in
             try ChatConversation.listForThread(threadID, in: db)
@@ -370,6 +379,8 @@ final class DatabaseManager {
                 table.column("agentSessionID", .text)
                 table.column("agentType", .text).notNull().defaults(to: "opencode")
                 table.column("title", .text).notNull().defaults(to: "")
+                table.column("status", .text).notNull().defaults(to: "starting")
+                table.column("modelID", .text)
                 table.column("createdAt", .double).notNull()
                 table.column("updatedAt", .double).notNull()
                 table.column("isArchived", .boolean).notNull().defaults(to: false)
@@ -514,6 +525,8 @@ final class DatabaseManager {
                 table.column("agentSessionID", .text)
                 table.column("agentType", .text).notNull().defaults(to: "opencode")
                 table.column("title", .text).notNull().defaults(to: "")
+                table.column("status", .text).notNull().defaults(to: "starting")
+                table.column("modelID", .text)
                 table.column("createdAt", .double).notNull()
                 table.column("updatedAt", .double).notNull()
                 table.column("isArchived", .boolean).notNull().defaults(to: false)
@@ -522,16 +535,16 @@ final class DatabaseManager {
             if hasLegacyColumn {
                 try db.execute(
                     sql: """
-                    INSERT INTO chatConversation (id, threadID, agentSessionID, agentType, title, createdAt, updatedAt, isArchived)
-                    SELECT id, threadID, NULL, 'opencode', title, createdAt, updatedAt, isArchived
+                    INSERT INTO chatConversation (id, threadID, agentSessionID, agentType, title, status, modelID, createdAt, updatedAt, isArchived)
+                    SELECT id, threadID, NULL, 'opencode', title, 'starting', NULL, createdAt, updatedAt, isArchived
                     FROM chatConversation_old
                     """
                 )
             } else {
                 try db.execute(
                     sql: """
-                    INSERT INTO chatConversation (id, threadID, agentSessionID, agentType, title, createdAt, updatedAt, isArchived)
-                    SELECT id, threadID, agentSessionID, COALESCE(agentType, 'opencode'), title, createdAt, updatedAt, isArchived
+                    INSERT INTO chatConversation (id, threadID, agentSessionID, agentType, title, status, modelID, createdAt, updatedAt, isArchived)
+                    SELECT id, threadID, agentSessionID, COALESCE(agentType, 'opencode'), title, 'starting', NULL, createdAt, updatedAt, isArchived
                     FROM chatConversation_old
                     """
                 )
@@ -539,6 +552,29 @@ final class DatabaseManager {
 
             try db.drop(table: "chatConversation_old")
             try db.create(index: "idx_chatConversation_threadID", on: "chatConversation", columns: ["threadID"])
+        }
+
+        migrator.registerMigration("v11_chat_conversation_metadata") { db in
+            let hasStatusColumn = try Int.fetchOne(
+                db,
+                sql: "SELECT 1 FROM pragma_table_info('chatConversation') WHERE name = 'status' LIMIT 1"
+            ) != nil
+            let hasModelIDColumn = try Int.fetchOne(
+                db,
+                sql: "SELECT 1 FROM pragma_table_info('chatConversation') WHERE name = 'modelID' LIMIT 1"
+            ) != nil
+
+            if !hasStatusColumn {
+                try db.alter(table: "chatConversation") { table in
+                    table.add(column: "status", .text).notNull().defaults(to: "starting")
+                }
+            }
+
+            if !hasModelIDColumn {
+                try db.alter(table: "chatConversation") { table in
+                    table.add(column: "modelID", .text)
+                }
+            }
         }
 
         try migrator.migrate(dbQueue)

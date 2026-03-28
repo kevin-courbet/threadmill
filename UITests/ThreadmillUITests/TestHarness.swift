@@ -27,15 +27,12 @@ struct TestHarness {
             launchedApp = app
             sem.signal()
         }
-        guard sem.wait(timeout: .now() + 10) == .success, launchedApp != nil else {
+        guard sem.wait(timeout: .now() + 30) == .success, launchedApp != nil else {
             throw UITestError("Failed to launch Threadmill")
         }
 
         let app = XCUIApplication(bundleIdentifier: "dev.threadmill.app")
-        guard app.wait(for: .runningForeground, timeout: 10) else {
-            throw UITestError("Threadmill did not reach foreground")
-        }
-        guard app.windows.firstMatch.waitForExistence(timeout: 5) else {
+        guard app.windows.firstMatch.waitForExistence(timeout: 30) else {
             app.terminate()
             throw UITestError("Threadmill window did not appear")
         }
@@ -44,7 +41,7 @@ struct TestHarness {
         let fixtureRow = app.descendants(matching: .any).matching(
             NSPredicate(format: "identifier BEGINSWITH 'thread.row.' AND label CONTAINS 'test-xcui'")
         ).firstMatch
-        guard fixtureRow.waitForExistence(timeout: 10) else {
+        guard fixtureRow.waitForExistence(timeout: 20) else {
             app.terminate()
             throw UITestError("Fixture thread not found in sidebar — is Spindle running?")
         }

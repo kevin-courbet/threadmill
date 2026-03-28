@@ -47,6 +47,17 @@ protocol AgentManaging: AnyObject {
 }
 
 @MainActor
+protocol ChatManaging: AnyObject {
+    func chatStart(threadID: String, agentName: String) async throws -> ChatStartResponse
+    func chatLoad(threadID: String, sessionID: String) async throws -> ChatLoadResponse
+    func chatStop(threadID: String, sessionID: String) async throws
+    func chatList(threadID: String) async throws -> [ChatSessionInfo]
+    func chatAttach(threadID: String, sessionID: String) async throws -> UInt16
+    func chatDetach(channelID: UInt16) async throws
+    func chatHistory(threadID: String, sessionID: String, cursor: UInt64?) async throws -> ChatHistoryResponse
+}
+
+@MainActor
 protocol ConnectionManaging: AnyObject {
     var state: ConnectionStatus { get }
     var debugSnapshot: ConnectionDebugSnapshot { get }
@@ -79,6 +90,7 @@ protocol DatabaseManaging: AnyObject {
     func updateThreadStatus(threadID: String, status: ThreadStatus) throws -> Bool
     func saveConversation(_ conversation: ChatConversation) throws
     func conversation(id: String) throws -> ChatConversation?
+    func conversation(threadID: String, agentSessionID: String) throws -> ChatConversation?
     func listConversations(threadID: String) throws -> [ChatConversation]
     func activeConversations(threadID: String) throws -> [ChatConversation]
     func saveBrowserSession(_ session: BrowserSession) throws
@@ -93,6 +105,12 @@ protocol ChatConversationManaging: AnyObject {
     func activeConversations(threadID: String) async throws -> [ChatConversation]
     func archiveConversation(id: String) async throws
     func updateTitle(conversationID: String, title: String) async throws
+}
+
+@MainActor
+protocol NotificationServicing: AnyObject {
+    func requestPermission()
+    func notifyAgentFinished(threadName: String, projectName: String?)
 }
 
 @MainActor

@@ -79,6 +79,7 @@ struct ChatMessageList: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                 }
+                .accessibilityIdentifier("chat.timeline")
 
                 if userScrolledUp {
                     Button {

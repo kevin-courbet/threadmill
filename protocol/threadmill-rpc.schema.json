@@ -340,6 +340,287 @@
         }
       }
     },
+    "ChatAgentStatus": {
+      "type": "object",
+      "required": [
+        "status",
+        "worker_count"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "idle",
+            "busy",
+            "stalled"
+          ]
+        },
+        "worker_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_update_time": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "ChatMode": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "ChatModel": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "ChatCapabilities": {
+      "type": "object",
+      "properties": {
+        "modes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChatMode"
+          }
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChatModel"
+          }
+        }
+      }
+    },
+    "ChatSessionInfo": {
+      "type": "object",
+      "required": [
+        "session_id",
+        "thread_id"
+      ],
+      "properties": {
+        "session_id": {
+          "type": "string"
+        },
+        "thread_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "agent_name": {
+          "type": "string"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/ChatCapabilities"
+        },
+        "agent_status": {
+          "$ref": "#/$defs/ChatAgentStatus"
+        }
+      }
+    },
+    "ChatStartResult": {
+      "type": "object",
+      "required": [
+        "session_id"
+      ],
+      "properties": {
+        "session_id": {
+          "type": "string"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/ChatCapabilities"
+        },
+        "agent_status": {
+          "$ref": "#/$defs/ChatAgentStatus"
+        }
+      }
+    },
+    "ChatLoadResult": {
+      "type": "object",
+      "required": [
+        "session"
+      ],
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/ChatSessionInfo"
+        }
+      }
+    },
+    "ChatAttachResult": {
+      "type": "object",
+      "required": [
+        "channel_id"
+      ],
+      "properties": {
+        "channel_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      }
+    },
+    "ChatHistoryEntry": {
+      "type": "object",
+      "required": [
+        "id",
+        "role",
+        "content"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "ChatHistoryResult": {
+      "type": "object",
+      "required": [
+        "entries"
+      ],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChatHistoryEntry"
+          }
+        },
+        "next_cursor": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "ChatSessionCreated": {
+      "type": "object",
+      "required": [
+        "thread_id",
+        "session"
+      ],
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session": {
+          "$ref": "#/$defs/ChatSessionInfo"
+        }
+      }
+    },
+    "ChatSessionReady": {
+      "type": "object",
+      "required": [
+        "thread_id",
+        "session_id",
+        "capabilities"
+      ],
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/ChatCapabilities"
+        }
+      }
+    },
+    "ChatSessionFailed": {
+      "type": "object",
+      "required": [
+        "thread_id",
+        "error"
+      ],
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "ChatSessionEnded": {
+      "type": "object",
+      "required": [
+        "thread_id",
+        "session_id"
+      ],
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      }
+    },
+    "ChatStatusChanged": {
+      "type": "object",
+      "required": [
+        "thread_id",
+        "agent_status"
+      ],
+      "properties": {
+        "thread_id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "agent_status": {
+          "$ref": "#/$defs/ChatAgentStatus"
+        }
+      }
+    },
     "StateVersion": {
       "type": "integer",
       "minimum": 0,
@@ -366,6 +647,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/Thread"
+          }
+        },
+        "chat_sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ChatSessionInfo"
           }
         }
       }
@@ -1149,6 +1436,162 @@
         }
       }
     },
+    "chat.start": {
+      "description": "Start a chat session for a thread",
+      "params": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "agent_name"
+        ],
+        "properties": {
+          "thread_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agent_name": {
+            "type": "string"
+          }
+        }
+      },
+      "result": {
+        "$ref": "#/$defs/ChatStartResult"
+      }
+    },
+    "chat.load": {
+      "description": "Load existing chat session metadata",
+      "params": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "session_id"
+        ],
+        "properties": {
+          "thread_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "session_id": {
+            "type": "string"
+          }
+        }
+      },
+      "result": {
+        "$ref": "#/$defs/ChatLoadResult"
+      }
+    },
+    "chat.stop": {
+      "description": "Stop chat session runtime",
+      "params": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "session_id"
+        ],
+        "properties": {
+          "thread_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "session_id": {
+            "type": "string"
+          }
+        }
+      },
+      "result": {
+        "type": "object",
+        "maxProperties": 0
+      }
+    },
+    "chat.list": {
+      "description": "List chat sessions for a thread",
+      "params": {
+        "type": "object",
+        "required": [
+          "thread_id"
+        ],
+        "properties": {
+          "thread_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "result": {
+        "type": "array",
+        "items": {
+          "$ref": "#/$defs/ChatSessionInfo"
+        }
+      }
+    },
+    "chat.attach": {
+      "description": "Attach chat stream channel",
+      "params": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "session_id"
+        ],
+        "properties": {
+          "thread_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "session_id": {
+            "type": "string"
+          }
+        }
+      },
+      "result": {
+        "$ref": "#/$defs/ChatAttachResult"
+      }
+    },
+    "chat.detach": {
+      "description": "Detach chat stream channel",
+      "params": {
+        "type": "object",
+        "required": [
+          "channel_id"
+        ],
+        "properties": {
+          "channel_id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          }
+        }
+      },
+      "result": {
+        "type": "object",
+        "maxProperties": 0
+      }
+    },
+    "chat.history": {
+      "description": "Fetch chat history window",
+      "params": {
+        "type": "object",
+        "required": [
+          "thread_id",
+          "session_id"
+        ],
+        "properties": {
+          "thread_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "cursor": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "result": {
+        "$ref": "#/$defs/ChatHistoryResult"
+      }
+    },
     "agent.start": {
       "description": "Start configured ACP agent process",
       "params": {
@@ -1231,6 +1674,36 @@
       "description": "Agent process lifecycle event",
       "params": {
         "$ref": "#/$defs/AgentStatusChanged"
+      }
+    },
+    "chat.session_created": {
+      "description": "Chat session created",
+      "params": {
+        "$ref": "#/$defs/ChatSessionCreated"
+      }
+    },
+    "chat.session_ready": {
+      "description": "Chat session initialized with capabilities",
+      "params": {
+        "$ref": "#/$defs/ChatSessionReady"
+      }
+    },
+    "chat.session_failed": {
+      "description": "Chat session failed to start",
+      "params": {
+        "$ref": "#/$defs/ChatSessionFailed"
+      }
+    },
+    "chat.session_ended": {
+      "description": "Chat session ended",
+      "params": {
+        "$ref": "#/$defs/ChatSessionEnded"
+      }
+    },
+    "chat.status_changed": {
+      "description": "Agent activity status update for thread chat session",
+      "params": {
+        "$ref": "#/$defs/ChatStatusChanged"
       }
     },
     "project.added": {

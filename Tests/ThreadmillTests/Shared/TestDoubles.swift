@@ -68,6 +68,106 @@ final class MockDaemonConnection: ConnectionManaging {
 }
 
 @MainActor
+extension MockDaemonConnection: ChatManaging {
+    func chatStart(threadID: String, agentName: String) async throws -> ChatStartResponse {
+        let result = try await request(
+            method: "chat.start",
+            params: [
+                "thread_id": threadID,
+                "agent_name": agentName,
+            ],
+            timeout: 20
+        )
+        guard JSONSerialization.isValidJSONObject(result) else {
+            throw TestError.missingStub
+        }
+        let data = try JSONSerialization.data(withJSONObject: result)
+        return try JSONDecoder().decode(ChatStartResponse.self, from: data)
+    }
+
+    func chatLoad(threadID: String, sessionID: String) async throws -> ChatLoadResponse {
+        let result = try await request(
+            method: "chat.load",
+            params: [
+                "thread_id": threadID,
+                "session_id": sessionID,
+            ],
+            timeout: 20
+        )
+        guard JSONSerialization.isValidJSONObject(result) else {
+            throw TestError.missingStub
+        }
+        let data = try JSONSerialization.data(withJSONObject: result)
+        return try JSONDecoder().decode(ChatLoadResponse.self, from: data)
+    }
+
+    func chatStop(threadID: String, sessionID: String) async throws {
+        _ = try await request(
+            method: "chat.stop",
+            params: [
+                "thread_id": threadID,
+                "session_id": sessionID,
+            ],
+            timeout: 20
+        )
+    }
+
+    func chatList(threadID: String) async throws -> [ChatSessionInfo] {
+        let result = try await request(
+            method: "chat.list",
+            params: ["thread_id": threadID],
+            timeout: 20
+        )
+        guard JSONSerialization.isValidJSONObject(result) else {
+            throw TestError.missingStub
+        }
+        let data = try JSONSerialization.data(withJSONObject: result)
+        return try JSONDecoder().decode([ChatSessionInfo].self, from: data)
+    }
+
+    func chatAttach(threadID: String, sessionID: String) async throws -> UInt16 {
+        let result = try await request(
+            method: "chat.attach",
+            params: [
+                "thread_id": threadID,
+                "session_id": sessionID,
+            ],
+            timeout: 20
+        )
+        guard JSONSerialization.isValidJSONObject(result) else {
+            throw TestError.missingStub
+        }
+        let data = try JSONSerialization.data(withJSONObject: result)
+        let decoded = try JSONDecoder().decode(ChatAttachResponse.self, from: data)
+        return decoded.channelID
+    }
+
+    func chatDetach(channelID: UInt16) async throws {
+        _ = try await request(
+            method: "chat.detach",
+            params: ["channel_id": Int(channelID)],
+            timeout: 20
+        )
+    }
+
+    func chatHistory(threadID: String, sessionID: String, cursor: UInt64?) async throws -> ChatHistoryResponse {
+        var params: [String: Any] = [
+            "thread_id": threadID,
+            "session_id": sessionID,
+        ]
+        if let cursor {
+            params["cursor"] = cursor
+        }
+        let result = try await request(method: "chat.history", params: params, timeout: 20)
+        guard JSONSerialization.isValidJSONObject(result) else {
+            throw TestError.missingStub
+        }
+        let data = try JSONSerialization.data(withJSONObject: result)
+        return try JSONDecoder().decode(ChatHistoryResponse.self, from: data)
+    }
+}
+
+@MainActor
 final class MockSurfaceHost: SurfaceHosting {
     func createSurface(in _: GhosttyNSView, socketPath _: String) -> ghostty_surface_t? {
         nil
@@ -102,6 +202,20 @@ final class MockSyncService: SyncServicing {
     func syncFromDaemon() async {
         syncCount += 1
         await syncHandler?()
+    }
+}
+
+@MainActor
+final class MockNotificationService: NotificationServicing {
+    private(set) var requestPermissionCallCount = 0
+    private(set) var notifications: [(threadName: String, projectName: String?)] = []
+
+    func requestPermission() {
+        requestPermissionCallCount += 1
+    }
+
+    func notifyAgentFinished(threadName: String, projectName: String?) {
+        notifications.append((threadName, projectName))
     }
 }
 
@@ -231,6 +345,10 @@ final class MockDatabaseManager: DatabaseManaging {
 
     func conversation(id: String) throws -> ChatConversation? {
         conversations.first(where: { $0.id == id })
+    }
+
+    func conversation(threadID: String, agentSessionID: String) throws -> ChatConversation? {
+        conversations.first(where: { $0.threadID == threadID && $0.agentSessionID == agentSessionID })
     }
 
     func listConversations(threadID: String) throws -> [ChatConversation] {
@@ -512,5 +630,3 @@ func makeFrame(channelID: UInt16, payload: [UInt8]) -> Data {
     frame.append(contentsOf: payload)
     return frame
 }
-
-
