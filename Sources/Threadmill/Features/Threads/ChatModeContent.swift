@@ -1,4 +1,5 @@
 import ACPModel
+import os
 import SwiftUI
 
 struct ChatModeContent: View {
@@ -18,6 +19,7 @@ struct ChatModeContent: View {
             let selectedConversation = selectedConversation
             let selectedChannelID = selectedConversation.flatMap { channelByConversationID[$0.id] }
             let reconnectEpoch = appState.agentSessionManager?.reconnectEpoch ?? 0
+            let connectionReady = appState.connectionStatus.isConnected
             let capabilities = selectedConversation?.agentSessionID.flatMap { appState.chatCapabilitiesBySessionID[$0] }
                 ?? ChatSessionCapabilities()
             let sessionState = resolveSessionState(for: selectedConversation)
@@ -66,7 +68,11 @@ struct ChatModeContent: View {
                 .task(id: selectedConversationID) {
                     await refreshConversationState(with: chatConversationService)
                 }
-                .task(id: attachTaskID(conversation: selectedConversation, reconnectEpoch: reconnectEpoch)) {
+                .task(id: attachTaskID(
+                    conversation: selectedConversation,
+                    reconnectEpoch: reconnectEpoch,
+                    connectionReady: connectionReady
+                )) {
                     await attachChannelIfNeeded(for: selectedConversation)
                 }
                 .onChange(of: reconnectEpoch) { _, _ in
@@ -101,8 +107,14 @@ struct ChatModeContent: View {
                 return lhs.createdAt < rhs.createdAt
             }
             let current = sorted.first { $0.id == selectedConversationID }
+            Logger.chat.info(
+                "chat.refresh thread=\(self.thread.id, privacy: .public) conversations=\(sorted.count) selected=\(self.selectedConversationID ?? "nil", privacy: .public)"
+            )
             onConversationStateChange(sorted, current)
         } catch {
+            Logger.chat.error(
+                "chat.refresh failed thread=\(self.thread.id, privacy: .public): \(error)"
+            )
             onConversationStateChange([], nil)
         }
     }
@@ -112,6 +124,17 @@ struct ChatModeContent: View {
             return
         }
 
+        guard appState.connectionStatus.isConnected else {
+            Logger.chat.info(
+                "chat.attach deferred thread=\(self.thread.id, privacy: .public) conversation=\(conversation.id, privacy: .public) reason=connection_not_ready"
+            )
+            return
+        }
+
+        Logger.chat.info(
+            "chat.attach begin thread=\(self.thread.id, privacy: .public) conversation=\(conversation.id, privacy: .public) session=\(conversation.agentSessionID ?? "nil", privacy: .public)"
+        )
+
         let resolvedConversation: ChatConversation
         do {
             resolvedConversation = try await ChatModeActions.ensureConversationSession(
@@ -120,6 +143,9 @@ struct ChatModeContent: View {
                 appState: appState
             )
         } catch {
+            Logger.chat.error(
+                "chat.attach failed to ensure session thread=\(self.thread.id, privacy: .public) conversation=\(conversation.id, privacy: .public): \(error)"
+            )
             return
         }
 
@@ -127,6 +153,9 @@ struct ChatModeContent: View {
             let sessionID = resolvedConversation.agentSessionID,
             !sessionID.isEmpty
         else {
+            Logger.chat.error(
+                "chat.attach aborted thread=\(self.thread.id, privacy: .public) conversation=\(resolvedConversation.id, privacy: .public) reason=missing_session_id"
+            )
             return
         }
 
@@ -139,20 +168,30 @@ struct ChatModeContent: View {
             do {
                 let channelID = try await appState.chatAttach(threadID: thread.id, sessionID: sessionID)
                 channelByConversationID[resolvedConversation.id] = channelID
+                Logger.chat.info(
+                    "chat.attach success thread=\(self.thread.id, privacy: .public) conversation=\(resolvedConversation.id, privacy: .public) session=\(sessionID, privacy: .public) channel=\(channelID)"
+                )
                 return
             } catch {
                 guard appState.connectionStatus.isConnected, attempt < maxRetryAttempts else {
+                    Logger.chat.error(
+                        "chat.attach failed thread=\(self.thread.id, privacy: .public) conversation=\(resolvedConversation.id, privacy: .public) session=\(sessionID, privacy: .public) attempt=\(attempt)/\(maxRetryAttempts): \(error)"
+                    )
                     return
                 }
+                Logger.chat.info(
+                    "chat.attach retrying thread=\(self.thread.id, privacy: .public) conversation=\(resolvedConversation.id, privacy: .public) session=\(sessionID, privacy: .public) next_attempt=\(attempt + 1)/\(maxRetryAttempts)"
+                )
                 let delayNanoseconds = UInt64(200_000_000 * attempt)
                 try? await Task.sleep(nanoseconds: delayNanoseconds)
             }
         }
     }
 
-    private func attachTaskID(conversation: ChatConversation?, reconnectEpoch: UInt64) -> String {
+    private func attachTaskID(conversation: ChatConversation?, reconnectEpoch: UInt64, connectionReady: Bool) -> String {
         let conversationID = conversation?.id ?? "none"
-        return "\(conversationID):\(reconnectEpoch)"
+        let ready = connectionReady ? "connected" : "not-connected"
+        return "\(conversationID):\(reconnectEpoch):\(ready)"
     }
 
     private func resolveSessionState(for conversation: ChatConversation?) -> ChatSessionState {
@@ -218,11 +257,21 @@ enum ChatModeActions {
     ) async throws -> ChatConversation {
         let existingSessionID = conversation.agentSessionID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard existingSessionID.isEmpty else {
+            Logger.chat.info(
+                "chat.ensure_session existing thread=\(threadID, privacy: .public) conversation=\(conversation.id, privacy: .public) session=\(existingSessionID, privacy: .public)"
+            )
             return conversation
         }
 
+        Logger.chat.info(
+            "chat.ensure_session starting thread=\(threadID, privacy: .public) conversation=\(conversation.id, privacy: .public) agent=\(conversation.agentType, privacy: .public)"
+        )
         let startResponse = try await appState.chatStart(threadID: threadID, agentName: conversation.agentType)
-        return try appState.bindConversation(conversation.id, toChatSessionID: startResponse.sessionID)
+        let boundConversation = try appState.bindConversation(conversation.id, toChatSessionID: startResponse.sessionID)
+        Logger.chat.info(
+            "chat.ensure_session started thread=\(threadID, privacy: .public) conversation=\(conversation.id, privacy: .public) session=\(startResponse.sessionID, privacy: .public)"
+        )
+        return boundConversation
     }
 
     static func refreshChatConversations(

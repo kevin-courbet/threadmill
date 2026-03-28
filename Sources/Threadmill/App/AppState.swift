@@ -229,13 +229,13 @@ final class AppState {
     init(
         statsPollingEnabled: Bool = false,
         statsRefreshInterval: TimeInterval = 5,
-        notificationService: any NotificationServicing = NoopNotificationService(),
+        notificationService: (any NotificationServicing)? = nil,
         isAppActive: @escaping () -> Bool = { NSApp.isActive }
     ) {
         self.statsPollingEnabled = statsPollingEnabled
         let refreshInterval = max(statsRefreshInterval, 0.1)
         statsRefreshIntervalNanoseconds = UInt64(refreshInterval * 1_000_000_000)
-        self.notificationService = notificationService
+        self.notificationService = notificationService ?? NoopNotificationService()
         self.isAppActive = isAppActive
     }
 

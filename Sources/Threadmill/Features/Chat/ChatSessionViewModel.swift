@@ -1,6 +1,7 @@
 import ACPModel
 import Foundation
 import Observation
+import os
 
 enum ChatSessionState {
     case starting
@@ -158,6 +159,9 @@ final class ChatSessionViewModel {
 
         self.sessionID = sessionID
         self.channelID = agentSessionManager == nil ? nil : channelID
+        Logger.chat.info(
+            "chat.vm.configure thread=\(self.threadID ?? "nil", privacy: .public) session=\(self.sessionID ?? "nil", privacy: .public) channel=\(self.channelID.map(String.init) ?? "nil", privacy: .public)"
+        )
 
         hydrateTask?.cancel()
         hydrateTask = Task { [weak self] in
@@ -226,22 +230,44 @@ final class ChatSessionViewModel {
 
     func sendPrompt(text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let agentSessionManager else {
+        guard !trimmed.isEmpty else {
+            Logger.chat.info("chat.vm.send_prompt ignored reason=empty_prompt")
+            return
+        }
+
+        guard let agentSessionManager else {
+            Logger.chat.error(
+                "chat.vm.send_prompt ignored thread=\(self.threadID ?? "nil", privacy: .public) reason=agent_manager_unavailable"
+            )
             return
         }
 
         guard let channelID, let sessionID else {
+            Logger.chat.error(
+                "chat.vm.send_prompt ignored thread=\(self.threadID ?? "nil", privacy: .public) reason=session_not_attached session=\(self.sessionID ?? "nil", privacy: .public) channel=\(self.channelID.map(String.init) ?? "nil", privacy: .public)"
+            )
             return
         }
+
+        Logger.chat.info(
+            "chat.vm.send_prompt start thread=\(self.threadID ?? "nil", privacy: .public) session=\(sessionID, privacy: .public) channel=\(channelID)"
+        )
 
         isStreaming = true
 
         do {
             try await agentSessionManager.sendPrompt(text: trimmed, channelID: channelID, sessionID: sessionID)
         } catch {
+            Logger.chat.error(
+                "chat.vm.send_prompt failed thread=\(self.threadID ?? "nil", privacy: .public) session=\(sessionID, privacy: .public) channel=\(channelID): \(error)"
+            )
             finishStreamingCycle(forceRebuild: true)
             return
         }
+
+        Logger.chat.info(
+            "chat.vm.send_prompt submitted thread=\(self.threadID ?? "nil", privacy: .public) session=\(sessionID, privacy: .public) channel=\(channelID)"
+        )
 
         finishStreamingCycle(forceRebuild: false)
     }
