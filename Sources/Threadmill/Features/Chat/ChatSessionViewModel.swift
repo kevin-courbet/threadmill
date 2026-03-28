@@ -74,6 +74,8 @@ final class ChatSessionViewModel {
         sessionState: ChatSessionState = .starting,
         availableModes: [ModeInfo] = [],
         availableModels: [ModelInfo] = [],
+        currentModeID: String? = nil,
+        currentModelID: String? = nil,
         selectedAgentName: String = "opencode",
         availableAgents: [AgentConfig] = [],
         historyProvider: ChatHistoryProvider? = nil
@@ -82,10 +84,17 @@ final class ChatSessionViewModel {
         self.historyProvider = historyProvider
         self.threadID = threadID
         self.sessionState = sessionState
-        self.availableModes = availableModes
-        self.availableModels = availableModels
+        self.availableModes = []
+        self.availableModels = []
         self.selectedAgentName = selectedAgentName
         self.availableAgents = availableAgents
+
+        applyCapabilities(
+            modes: availableModes,
+            models: availableModels,
+            currentModeID: currentModeID,
+            currentModelID: currentModelID
+        )
 
         configureSession(sessionID: sessionID, channelID: channelID)
     }
@@ -102,8 +111,41 @@ final class ChatSessionViewModel {
     }
 
     func configureCapabilities(modes: [ModeInfo], models: [ModelInfo]) {
+        applyCapabilities(modes: modes, models: models, currentModeID: nil, currentModelID: nil)
+    }
+
+    func applyCapabilities(
+        modes: [ModeInfo],
+        models: [ModelInfo],
+        currentModeID: String?,
+        currentModelID: String?
+    ) {
         availableModes = modes
         availableModels = models
+
+        if let currentModeID,
+           modes.contains(where: { $0.id == currentModeID })
+        {
+            currentMode = currentModeID
+        } else if let currentMode,
+                  !modes.contains(where: { $0.id == currentMode })
+        {
+            self.currentMode = modes.first?.id
+        }
+
+        if let currentModelID,
+           models.contains(where: { $0.modelId == currentModelID })
+        {
+            self.currentModelID = currentModelID
+        } else if let currentModelID,
+                  !models.contains(where: { $0.modelId == currentModelID })
+        {
+            self.currentModelID = models.first?.modelId
+        } else if let selectedModelID = self.currentModelID,
+                  !models.contains(where: { $0.modelId == selectedModelID })
+        {
+            self.currentModelID = models.first?.modelId
+        }
     }
 
     func configureSession(sessionID: String?, channelID: UInt16?) {

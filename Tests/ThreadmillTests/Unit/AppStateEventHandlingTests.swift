@@ -96,14 +96,28 @@ final class AppStateEventHandlingTests: XCTestCase {
                 "thread_id": "thread-1",
                 "session_id": "sess-1",
                 "capabilities": [
-                    "modes": ["chat", "plan"],
-                    "models": ["gpt-5"],
+                    "modes": [
+                        "availableModes": [
+                            ["id": "chat", "title": "Chat"],
+                            ["id": "plan", "title": "Plan"],
+                        ],
+                        "currentModeId": "plan",
+                    ],
+                    "models": [
+                        "availableModels": [
+                            ["id": "gpt-5", "title": "GPT-5"],
+                            ["id": "claude-opus-4-6", "title": "Claude Opus 4.6"],
+                        ],
+                        "currentModelId": "claude-opus-4-6",
+                    ],
                 ],
             ]
         )
 
         XCTAssertEqual(appState.chatCapabilitiesByThreadID["thread-1"]?.modes.map(\.id), ["chat", "plan"])
-        XCTAssertEqual(appState.chatCapabilitiesByThreadID["thread-1"]?.models.map(\.id), ["gpt-5"])
+        XCTAssertEqual(appState.chatCapabilitiesByThreadID["thread-1"]?.models.map(\.id), ["gpt-5", "claude-opus-4-6"])
+        XCTAssertEqual(appState.chatCapabilitiesByThreadID["thread-1"]?.currentModeID, "plan")
+        XCTAssertEqual(appState.chatCapabilitiesByThreadID["thread-1"]?.currentModelID, "claude-opus-4-6")
         if case .ready = appState.chatSessionStateByThreadID["thread-1"] {
             XCTAssertTrue(true)
         } else {

@@ -133,6 +133,41 @@ final class ChatSessionViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.currentMode, "chat")
     }
 
+    func testApplyCapabilitiesSetsCurrentSelections() {
+        let viewModel = ChatSessionViewModel(agentSessionManager: nil)
+
+        viewModel.applyCapabilities(
+            modes: [
+                ModeInfo(id: "chat", name: "Chat"),
+                ModeInfo(id: "plan", name: "Plan"),
+            ],
+            models: [
+                ModelInfo(modelId: "gpt-5", name: "GPT-5"),
+                ModelInfo(modelId: "claude-opus-4-6", name: "Claude Opus 4.6"),
+            ],
+            currentModeID: "plan",
+            currentModelID: "claude-opus-4-6"
+        )
+
+        XCTAssertEqual(viewModel.availableModes.map(\.id), ["chat", "plan"])
+        XCTAssertEqual(viewModel.availableModels.map(\.modelId), ["gpt-5", "claude-opus-4-6"])
+        XCTAssertEqual(viewModel.currentMode, "plan")
+        XCTAssertEqual(viewModel.currentModelID, "claude-opus-4-6")
+    }
+
+    func testCurrentModeUpdateFromAgentUpdatesSelection() {
+        let viewModel = ChatSessionViewModel(agentSessionManager: nil)
+
+        viewModel.handleSessionUpdate(
+            SessionUpdateNotification(
+                sessionId: SessionId("session-1"),
+                update: .currentModeUpdate("code")
+            )
+        )
+
+        XCTAssertEqual(viewModel.currentMode, "code")
+    }
+
     private func makeNotificationLine<Params: Encodable>(method: String, params: Params) throws -> Data {
         let payload = JSONRPCNotification(method: method, params: try anyCodable(from: params))
         var data = try JSONEncoder().encode(payload)

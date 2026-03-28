@@ -137,6 +137,29 @@ final class AgentSessionManagerTests: XCTestCase {
         try await setModelTask.value
     }
 
+    func testSetModeSendsRequestAndConsumesResponse() async throws {
+        let connection = MockDaemonConnection(state: .connected)
+        let manager = AgentSessionManager(connectionManager: connection)
+        manager.attachChannel(channelID: 77, sessionID: "acp-session-1") { _ in }
+
+        let setModeTask = Task {
+            try await manager.setMode(channelID: 77, sessionID: "acp-session-1", modeID: "plan")
+        }
+        let didSendSetMode = await waitUntilFrameCount(connection, equals: 1)
+        XCTAssertTrue(didSendSetMode)
+
+        let request = try decodeRequest(from: connection.sentBinaryFrames[0])
+        XCTAssertEqual(request.method, "session/set_mode")
+        let params = try XCTUnwrap(request.params)
+        let paramsData = try JSONEncoder().encode(params)
+        let typedParams = try JSONDecoder().decode(SetModeRequest.self, from: paramsData)
+        XCTAssertEqual(typedParams.sessionId.value, "acp-session-1")
+        XCTAssertEqual(typedParams.modeId, "plan")
+
+        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[0], result: SetModeResponse(success: true)))
+        try await setModeTask.value
+    }
+
     private func makeResponseFrame<ResultPayload: Encodable>(
         channelID: UInt16,
         requestFrame: Data,

@@ -177,10 +177,89 @@ struct ChatModelCapability: Codable, Equatable, Identifiable {
 struct ChatSessionCapabilities: Codable, Equatable {
     let modes: [ChatModeCapability]
     let models: [ChatModelCapability]
+    let currentModeID: String?
+    let currentModelID: String?
 
-    init(modes: [ChatModeCapability] = [], models: [ChatModelCapability] = []) {
+    init(
+        modes: [ChatModeCapability] = [],
+        models: [ChatModelCapability] = [],
+        currentModeID: String? = nil,
+        currentModelID: String? = nil
+    ) {
         self.modes = modes
         self.models = models
+        self.currentModeID = currentModeID
+        self.currentModelID = currentModelID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case modes
+        case models
+    }
+
+    private enum ModesPayloadKeys: String, CodingKey {
+        case availableModes
+        case available_modes
+        case currentModeId
+        case current_mode_id
+    }
+
+    private enum ModelsPayloadKeys: String, CodingKey {
+        case availableModels
+        case available_models
+        case currentModelId
+        case current_model_id
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        if let rawModes = try? container.decode([ChatModeCapability].self, forKey: .modes) {
+            modes = rawModes
+            currentModeID = nil
+        } else if container.contains(.modes) {
+            let nested = try container.nestedContainer(keyedBy: ModesPayloadKeys.self, forKey: .modes)
+            modes = (try? nested.decode([ChatModeCapability].self, forKey: .availableModes))
+                ?? (try? nested.decode([ChatModeCapability].self, forKey: .available_modes))
+                ?? []
+            currentModeID = (try? nested.decodeIfPresent(String.self, forKey: .currentModeId))
+                ?? (try? nested.decodeIfPresent(String.self, forKey: .current_mode_id))
+        } else {
+            modes = []
+            currentModeID = nil
+        }
+
+        if let rawModels = try? container.decode([ChatModelCapability].self, forKey: .models) {
+            models = rawModels
+            currentModelID = nil
+        } else if container.contains(.models) {
+            let nested = try container.nestedContainer(keyedBy: ModelsPayloadKeys.self, forKey: .models)
+            models = (try? nested.decode([ChatModelCapability].self, forKey: .availableModels))
+                ?? (try? nested.decode([ChatModelCapability].self, forKey: .available_models))
+                ?? []
+            currentModelID = (try? nested.decodeIfPresent(String.self, forKey: .currentModelId))
+                ?? (try? nested.decodeIfPresent(String.self, forKey: .current_model_id))
+        } else {
+            models = []
+            currentModelID = nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        struct EncodedModes: Encodable {
+            let availableModes: [ChatModeCapability]
+            let currentModeId: String?
+        }
+
+        struct EncodedModels: Encodable {
+            let availableModels: [ChatModelCapability]
+            let currentModelId: String?
+        }
+
+        try container.encode(EncodedModes(availableModes: modes, currentModeId: currentModeID), forKey: .modes)
+        try container.encode(EncodedModels(availableModels: models, currentModelId: currentModelID), forKey: .models)
     }
 }
 

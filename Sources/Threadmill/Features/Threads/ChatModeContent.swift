@@ -34,6 +34,8 @@ struct ChatModeContent: View {
                         sessionState: sessionState,
                         availableModes: capabilities.modes.map { ModeInfo(id: $0.id, name: $0.title ?? $0.id) },
                         availableModels: capabilities.models.map { ModelInfo(modelId: $0.id, name: $0.title ?? $0.id) },
+                        currentModeID: capabilities.currentModeID,
+                        currentModelID: capabilities.currentModelID,
                         selectedAgentName: selectedConversation?.agentType ?? availableAgents.first?.name ?? "opencode",
                         availableAgents: availableAgents,
                         historyProvider: { threadID, sessionID, cursor in
@@ -49,9 +51,11 @@ struct ChatModeContent: View {
                 }
                 .task(id: sessionStateTaskID(sessionState: sessionState, conversationID: selectedConversation?.id)) {
                     viewModel.updateSessionState(sessionState)
-                    viewModel.configureCapabilities(
+                    viewModel.applyCapabilities(
                         modes: capabilities.modes.map { ModeInfo(id: $0.id, name: $0.title ?? $0.id) },
-                        models: capabilities.models.map { ModelInfo(modelId: $0.id, name: $0.title ?? $0.id) }
+                        models: capabilities.models.map { ModelInfo(modelId: $0.id, name: $0.title ?? $0.id) },
+                        currentModeID: capabilities.currentModeID,
+                        currentModelID: capabilities.currentModelID
                     )
                 }
                 .task(id: reloadToken) {
