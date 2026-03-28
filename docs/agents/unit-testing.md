@@ -61,11 +61,27 @@ If a test requires 5+ mock setup lines to verify one trivial property, the test 
 - Test at a higher level where the wiring is exercised naturally
 - Don't test it — the compiler and integration tests cover wiring
 
-### Banned: Mock server patterns
+### Mock server tests (zero tolerance)
 
-- Any test that stands up a fake server returning hardcoded responses and asserts those responses arrive
-- `MockSpindleServer` was deleted because it implemented its own ACP handshake, event shapes, and channel routing — a parallel universe that drifted silently from production
-- For e2e validation, use `TestHarness` against real Spindle (`UITests/ThreadmillUITests` pattern)
+Never stand up a fake server that reimplements a production protocol and assert that its hardcoded responses arrive in the app:
+
+```swift
+// BANNED — tests the mock's echo, not the app's behavior
+// MockSpindleServer returns "Mock response: {input}"
+let receivedPrompt = await mockServer.waitForPrompt(containing: "Hello")
+try ax.waitForValueContains(identifier: "chat.timeline", value: "Mock response: Hello")
+```
+
+This pattern:
+- Creates a parallel protocol implementation that silently diverges from production
+- Returns hardcoded/echo responses that prove nothing about real server behavior
+- Gives green tests while the real app is broken (the mock's hypotheses were wrong)
+- Requires env vars to disable production subsystems, meaning the test never exercises what users actually see
+
+The correct alternatives:
+- **Integration tests** against real Spindle (`Tests/ThreadmillTests/Integration/`) for protocol correctness
+- **UI e2e tests** via TestHarness against real Spindle (`UITests/ThreadmillUITests/`) for user-visible behavior
+- **Behavioral unit tests** with mock doubles as **stubs** (controllable inputs to production code), never as protocol reimplementations
 
 ## What Makes a Good Unit Test
 
