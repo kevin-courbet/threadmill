@@ -129,6 +129,8 @@ final class AppState {
                 pendingScheduledAttachTask = nil
                 stopStatsTimer()
                 systemStats = nil
+                agentStatus = [:]
+                chatCapabilitiesByThreadID = [:]
             }
         }
     }
@@ -144,6 +146,8 @@ final class AppState {
         }
     }
     var threads: [ThreadModel] = []
+    var agentStatus: [String: AgentActivityInfo] = [:]
+    var chatCapabilitiesByThreadID: [String: ChatSessionCapabilities] = [:]
     var systemStats: SystemStatsResult?
     var pinnedThreadIDs: Set<String> = {
         guard let data = UserDefaults.standard.data(forKey: "pinnedThreadIDs"),
@@ -522,9 +526,23 @@ final class AppState {
             scheduleEventSync()
         case "agent.status_changed":
             handleAgentStatusChanged(params)
+        case "chat.session_created":
+            handleChatSessionCreated(params)
+        case "chat.session_ready":
+            handleChatSessionReady(params)
+        case "chat.session_failed":
+            handleChatSessionFailed(params)
+        case "chat.session_ended":
+            handleChatSessionEnded(params)
+        case "chat.status_changed":
+            handleChatStatusChanged(params)
         default:
             break
         }
+    }
+
+    func replaceAgentStatus(_ snapshot: [String: AgentActivityInfo]) {
+        agentStatus = snapshot
     }
 
     func startAgent(projectID: String, agentName: String) async throws -> UInt16 {
@@ -539,6 +557,55 @@ final class AppState {
             throw AppStateError.connectionManagerUnavailable
         }
         try await connection.stopAgent(channelID: channelID)
+    }
+
+    func chatStart(threadID: String, agentName: String) async throws -> ChatStartResponse {
+        guard let connection = connectionForThread(id: threadID) as? ChatManaging else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+        return try await connection.chatStart(threadID: threadID, agentName: agentName)
+    }
+
+    func chatLoad(threadID: String, sessionID: String) async throws -> ChatLoadResponse {
+        guard let connection = connectionForThread(id: threadID) as? ChatManaging else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+        return try await connection.chatLoad(threadID: threadID, sessionID: sessionID)
+    }
+
+    func chatStop(threadID: String, sessionID: String) async throws {
+        guard let connection = connectionForThread(id: threadID) as? ChatManaging else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+        try await connection.chatStop(threadID: threadID, sessionID: sessionID)
+    }
+
+    func chatList(threadID: String) async throws -> [ChatSessionInfo] {
+        guard let connection = connectionForThread(id: threadID) as? ChatManaging else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+        return try await connection.chatList(threadID: threadID)
+    }
+
+    func chatAttach(threadID: String, sessionID: String) async throws -> UInt16 {
+        guard let connection = connectionForThread(id: threadID) as? ChatManaging else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+        return try await connection.chatAttach(threadID: threadID, sessionID: sessionID)
+    }
+
+    func chatDetach(threadID: String, channelID: UInt16) async throws {
+        guard let connection = connectionForThread(id: threadID) as? ChatManaging else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+        try await connection.chatDetach(channelID: channelID)
+    }
+
+    func chatHistory(threadID: String, sessionID: String, cursor: UInt64? = nil) async throws -> ChatHistoryResponse {
+        guard let connection = connectionForThread(id: threadID) as? ChatManaging else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+        return try await connection.chatHistory(threadID: threadID, sessionID: sessionID, cursor: cursor)
     }
 
     func scheduleAttachSelectedPreset() {
@@ -1224,6 +1291,142 @@ final class AppState {
 
         Logger.state.info("agent.status_changed channel=\(String(describing: channelID)) agent=\(agentName, privacy: .public) event=\(event, privacy: .public)")
         scheduleEventSync()
+    }
+
+    private func handleChatSessionCreated(_ params: [String: Any]?) {
+        guard
+            let threadID = params?["thread_id"] as? String
+        else {
+            Logger.state.error("Invalid chat.session_created payload: \(String(describing: params))")
+            return
+        }
+
+        Logger.state.info("chat.session_created thread=\(threadID, privacy: .public)")
+        scheduleEventSync()
+    }
+
+    private func handleChatSessionReady(_ params: [String: Any]?) {
+        guard
+            let threadID = params?["thread_id"] as? String
+        else {
+            Logger.state.error("Invalid chat.session_ready payload: \(String(describing: params))")
+            return
+        }
+
+        if let capabilities = decodeChatCapabilities(from: params) {
+            chatCapabilitiesByThreadID[threadID] = capabilities
+        }
+
+        Logger.state.info("chat.session_ready thread=\(threadID, privacy: .public)")
+        scheduleEventSync()
+    }
+
+    private func handleChatSessionFailed(_ params: [String: Any]?) {
+        guard
+            let threadID = params?["thread_id"] as? String
+        else {
+            Logger.state.error("Invalid chat.session_failed payload: \(String(describing: params))")
+            return
+        }
+
+        chatCapabilitiesByThreadID.removeValue(forKey: threadID)
+        Logger.state.error("chat.session_failed thread=\(threadID, privacy: .public)")
+        scheduleEventSync()
+    }
+
+    private func handleChatSessionEnded(_ params: [String: Any]?) {
+        guard
+            let threadID = params?["thread_id"] as? String
+        else {
+            Logger.state.error("Invalid chat.session_ended payload: \(String(describing: params))")
+            return
+        }
+
+        agentStatus.removeValue(forKey: threadID)
+        chatCapabilitiesByThreadID.removeValue(forKey: threadID)
+        Logger.state.info("chat.session_ended thread=\(threadID, privacy: .public)")
+        scheduleEventSync()
+    }
+
+    private func handleChatStatusChanged(_ params: [String: Any]?) {
+        guard
+            let params,
+            let threadID = params["thread_id"] as? String,
+            let info = parseAgentActivityInfo(params)
+        else {
+            Logger.state.error("Invalid chat.status_changed payload: \(String(describing: params))")
+            return
+        }
+
+        agentStatus[threadID] = info
+        Logger.state.info("chat.status_changed thread=\(threadID, privacy: .public) workers=\(info.workerCount)")
+    }
+
+    private func parseAgentActivityInfo(_ params: [String: Any]) -> AgentActivityInfo? {
+        if let nested = params["agent_status"] as? [String: Any],
+           let status = nested["status"] as? String
+        {
+            let workerCount = parseInteger(nested["worker_count"] ?? nested["workerCount"]) ?? 0
+            let lastUpdateTime = parseDateValue(nested["last_update_time"] ?? nested["lastUpdateTime"]) ?? Date()
+            return AgentActivityInfo.from(rawStatus: status, workerCount: workerCount, lastUpdateTime: lastUpdateTime)
+        }
+
+        guard let status = params["status"] as? String else {
+            return nil
+        }
+
+        let workerCount = parseInteger(params["worker_count"] ?? params["workerCount"]) ?? 0
+        let lastUpdateTime = parseDateValue(params["last_update_time"] ?? params["lastUpdateTime"]) ?? Date()
+        return AgentActivityInfo.from(rawStatus: status, workerCount: workerCount, lastUpdateTime: lastUpdateTime)
+    }
+
+    private func parseInteger(_ value: Any?) -> Int? {
+        if let intValue = value as? Int {
+            return intValue
+        }
+        if let number = value as? NSNumber {
+            return number.intValue
+        }
+        if let text = value as? String {
+            return Int(text)
+        }
+        return nil
+    }
+
+    private func parseDateValue(_ value: Any?) -> Date? {
+        if let date = value as? Date {
+            return date
+        }
+        if let timestamp = value as? TimeInterval {
+            return Date(timeIntervalSince1970: timestamp)
+        }
+        if let number = value as? NSNumber {
+            return Date(timeIntervalSince1970: number.doubleValue)
+        }
+
+        guard let text = value as? String else {
+            return nil
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let parsed = formatter.date(from: text) {
+            return parsed
+        }
+
+        return ISO8601DateFormatter().date(from: text)
+    }
+
+    private func decodeChatCapabilities(from params: [String: Any]?) -> ChatSessionCapabilities? {
+        guard let payload = params?["capabilities"] else {
+            return nil
+        }
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload)
+        else {
+            return nil
+        }
+        return try? JSONDecoder().decode(ChatSessionCapabilities.self, from: data)
     }
 
     private func threadProgressIndicatesFailure(step: String, errorText: String?) -> Bool {

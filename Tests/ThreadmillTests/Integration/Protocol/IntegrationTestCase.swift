@@ -27,20 +27,25 @@ class IntegrationTestCase: XCTestCase {
         testStartDate = Date()
         logStore = try? OSLogStore(scope: .currentProcessIdentifier)
 
+        let healthConnection = SpindleConnection()
+        do {
+            try await healthConnection.connect()
+            try await healthConnection.handshake()
+        } catch {
+            throw XCTSkip("Skipping integration test: Spindle is unavailable (\(error))")
+        }
+        defer { healthConnection.disconnect() }
+
         if !Self.hasSweptStaleThreads {
             Self.hasSweptStaleThreads = true
-            let conn = SpindleConnection()
-            defer { conn.disconnect() }
-            try await conn.connect()
-            try await conn.handshake()
-            if let threads = try await conn.rpc("thread.list", params: nil) as? [[String: Any]] {
+            if let threads = try await healthConnection.rpc("thread.list", params: nil) as? [[String: Any]] {
                 for thread in threads {
                     guard let name = thread["name"] as? String, name.hasPrefix(Self.testPrefix),
                           let threadID = thread["id"] as? String
                     else {
                         continue
                     }
-                    _ = try? await conn.rpc(
+                    _ = try? await healthConnection.rpc(
                         "thread.close",
                         params: ["thread_id": threadID, "mode": "close"],
                         timeout: 30

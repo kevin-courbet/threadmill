@@ -52,6 +52,76 @@ final class AppStateEventHandlingTests: XCTestCase {
         XCTAssertEqual(syncService.syncCount, 0)
     }
 
+    func testHandleDaemonEventChatStatusChangedUpdatesAgentStatus() {
+        let (_, _, _, _, appState) = makeConfiguredAppStateWithDoubles()
+
+        appState.handleDaemonEvent(
+            method: "chat.status_changed",
+            params: [
+                "thread_id": "thread-1",
+                "agent_status": [
+                    "status": "stalled",
+                    "worker_count": 3,
+                ],
+            ]
+        )
+
+        XCTAssertEqual(appState.agentStatus["thread-1"]?.status, .stalled(workerCount: 3))
+        XCTAssertEqual(appState.agentStatus["thread-1"]?.workerCount, 3)
+    }
+
+    func testHandleDaemonEventChatSessionEndedClearsThreadStatus() async {
+        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+        appState.agentStatus["thread-1"] = AgentActivityInfo.from(rawStatus: "busy", workerCount: 2)
+
+        appState.handleDaemonEvent(
+            method: "chat.session_ended",
+            params: [
+                "thread_id": "thread-1",
+                "session_id": "sess-1",
+            ]
+        )
+
+        XCTAssertNil(appState.agentStatus["thread-1"])
+        let synced = await waitForCondition { syncService.syncCount == 1 }
+        XCTAssertTrue(synced)
+    }
+
+    func testHandleDaemonEventChatSessionReadyStoresCapabilities() async {
+        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+
+        appState.handleDaemonEvent(
+            method: "chat.session_ready",
+            params: [
+                "thread_id": "thread-1",
+                "session_id": "sess-1",
+                "capabilities": [
+                    "modes": ["chat", "plan"],
+                    "models": ["gpt-5"],
+                ],
+            ]
+        )
+
+        XCTAssertEqual(appState.chatCapabilitiesByThreadID["thread-1"]?.modes.map(\.id), ["chat", "plan"])
+        XCTAssertEqual(appState.chatCapabilitiesByThreadID["thread-1"]?.models.map(\.id), ["gpt-5"])
+        let synced = await waitForCondition { syncService.syncCount == 1 }
+        XCTAssertTrue(synced)
+    }
+
+    func testDisconnectResetsAgentStatus() {
+        let (_, _, _, _, appState) = makeConfiguredAppStateWithDoubles()
+        appState.agentStatus["thread-1"] = AgentActivityInfo.from(rawStatus: "busy", workerCount: 1)
+        appState.chatCapabilitiesByThreadID["thread-1"] = ChatSessionCapabilities(
+            modes: [ChatModeCapability(id: "chat")],
+            models: [ChatModelCapability(id: "gpt-5")]
+        )
+
+        appState.connectionStatus = .disconnected
+
+        XCTAssertTrue(appState.agentStatus.isEmpty)
+        XCTAssertTrue(appState.chatCapabilitiesByThreadID.isEmpty)
+    }
+
     func testHandleDaemonEventCloneProgressDoesNotTriggerSync() async {
         let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
 

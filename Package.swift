@@ -45,9 +45,6 @@ let package = Package(
             exclude: [
                 "_Fridge",
             ],
-            resources: [
-                .process("../../Resources/Assets.xcassets")
-            ],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Carbon"),

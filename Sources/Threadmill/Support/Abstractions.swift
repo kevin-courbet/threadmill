@@ -47,6 +47,17 @@ protocol AgentManaging: AnyObject {
 }
 
 @MainActor
+protocol ChatManaging: AnyObject {
+    func chatStart(threadID: String, agentName: String) async throws -> ChatStartResponse
+    func chatLoad(threadID: String, sessionID: String) async throws -> ChatLoadResponse
+    func chatStop(threadID: String, sessionID: String) async throws
+    func chatList(threadID: String) async throws -> [ChatSessionInfo]
+    func chatAttach(threadID: String, sessionID: String) async throws -> UInt16
+    func chatDetach(channelID: UInt16) async throws
+    func chatHistory(threadID: String, sessionID: String, cursor: UInt64?) async throws -> ChatHistoryResponse
+}
+
+@MainActor
 protocol ConnectionManaging: AnyObject {
     var state: ConnectionStatus { get }
     var debugSnapshot: ConnectionDebugSnapshot { get }

@@ -48,6 +48,101 @@ extension ConnectionManager: AgentManaging {
     }
 }
 
+extension ConnectionManager: ChatManaging {
+    func chatStart(threadID: String, agentName: String) async throws -> ChatStartResponse {
+        let result = try await request(
+            method: "chat.start",
+            params: [
+                "thread_id": threadID,
+                "agent_name": agentName,
+            ],
+            timeout: 20
+        )
+        return try decodeRPCResult(result, as: ChatStartResponse.self)
+    }
+
+    func chatLoad(threadID: String, sessionID: String) async throws -> ChatLoadResponse {
+        let result = try await request(
+            method: "chat.load",
+            params: [
+                "thread_id": threadID,
+                "session_id": sessionID,
+            ],
+            timeout: 20
+        )
+        return try decodeRPCResult(result, as: ChatLoadResponse.self)
+    }
+
+    func chatStop(threadID: String, sessionID: String) async throws {
+        _ = try await request(
+            method: "chat.stop",
+            params: [
+                "thread_id": threadID,
+                "session_id": sessionID,
+            ],
+            timeout: 20
+        )
+    }
+
+    func chatList(threadID: String) async throws -> [ChatSessionInfo] {
+        let result = try await request(
+            method: "chat.list",
+            params: ["thread_id": threadID],
+            timeout: 20
+        )
+        return try decodeRPCResult(result, as: [ChatSessionInfo].self)
+    }
+
+    func chatAttach(threadID: String, sessionID: String) async throws -> UInt16 {
+        let result = try await request(
+            method: "chat.attach",
+            params: [
+                "thread_id": threadID,
+                "session_id": sessionID,
+            ],
+            timeout: 20
+        )
+        return try decodeRPCResult(result, as: ChatAttachResponse.self).channelID
+    }
+
+    func chatDetach(channelID: UInt16) async throws {
+        _ = try await request(
+            method: "chat.detach",
+            params: ["channel_id": Int(channelID)],
+            timeout: 20
+        )
+    }
+
+    func chatHistory(threadID: String, sessionID: String, cursor: UInt64?) async throws -> ChatHistoryResponse {
+        var params: [String: Any] = [
+            "thread_id": threadID,
+            "session_id": sessionID,
+        ]
+        if let cursor {
+            params["cursor"] = cursor
+        }
+
+        let result = try await request(
+            method: "chat.history",
+            params: params,
+            timeout: 20
+        )
+        return try decodeRPCResult(result, as: ChatHistoryResponse.self)
+    }
+
+    private func decodeRPCResult<T: Decodable>(_ value: Any, as type: T.Type) throws -> T {
+        guard JSONSerialization.isValidJSONObject(value) else {
+            throw NSError(
+                domain: "Threadmill",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "RPC payload cannot be decoded as \(String(describing: type))"]
+            )
+        }
+        let payload = try JSONSerialization.data(withJSONObject: value)
+        return try JSONDecoder().decode(type, from: payload)
+    }
+}
+
 struct ThreadmillConfig {
     let host: String
     let daemonPort: Int

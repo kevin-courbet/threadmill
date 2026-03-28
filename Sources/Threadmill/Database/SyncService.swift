@@ -25,14 +25,17 @@ final class SyncService: SyncServicing {
             Logger.sync.info("syncFromDaemon START")
             let projectsResult = try await connectionManager.request(method: "project.list", params: nil, timeout: 10)
             let threadsResult = try await connectionManager.request(method: "thread.list", params: [:], timeout: 10)
+            let snapshotResult = try await connectionManager.request(method: "state.snapshot", params: nil, timeout: 10)
 
             let projects = parseProjects(projectsResult)
             let threads = parseThreads(threadsResult)
+            let agentStatus = parseAgentStatusByThread(snapshotResult)
             let presetCount = projects.flatMap(\.presets).count
             Logger.sync.info("Parsed \(projects.count) projects, \(threads.count) threads, \(presetCount) presets — writing to DB")
             try databaseManager.replaceAllFromDaemon(projects: projects, threads: threads, remoteId: remoteId)
             Logger.sync.info("DB write done — calling reloadFromDatabase")
             appState.reloadFromDatabase()
+            appState.replaceAgentStatus(agentStatus)
             Logger.sync.info("syncFromDaemon DONE — appState.presets.count=\(self.appState.presets.count)")
         } catch {
             Logger.sync.error("Sync failed: \(error)")
@@ -161,5 +164,37 @@ final class SyncService: SyncServicing {
             return date
         }
         return ISO8601DateFormatter().date(from: text)
+    }
+
+    private func parseAgentStatusByThread(_ payload: Any) -> [String: AgentActivityInfo] {
+        guard
+            let snapshot = payload as? [String: Any],
+            let sessions = snapshot["chat_sessions"] as? [[String: Any]]
+        else {
+            return [:]
+        }
+
+        var statuses: [String: AgentActivityInfo] = [:]
+
+        for session in sessions {
+            guard
+                let threadID = session["thread_id"] as? String,
+                let statusPayload = session["agent_status"] as? [String: Any],
+                let statusValue = statusPayload["status"] as? String
+            else {
+                continue
+            }
+
+            let workerCount = parseOptionalInt(statusPayload["worker_count"] ?? statusPayload["workerCount"]) ?? 0
+            let lastUpdate = parseDate(statusPayload["last_update_time"] ?? statusPayload["lastUpdateTime"]) ?? Date()
+
+            statuses[threadID] = AgentActivityInfo.from(
+                rawStatus: statusValue,
+                workerCount: workerCount,
+                lastUpdateTime: lastUpdate
+            )
+        }
+
+        return statuses
     }
 }

@@ -343,6 +343,9 @@ private final class FakeSpindleState {
         case "thread.list":
             return threads
 
+        case "state.snapshot":
+            return ["chat_sessions": [[String: Any]]()]
+
         case "terminal.attach":
             defer { nextChannelID += 1 }
             return ["channel_id": nextChannelID]
