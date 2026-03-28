@@ -29,10 +29,12 @@ final class SyncService: SyncServicing {
 
             let projects = parseProjects(projectsResult)
             let threads = parseThreads(threadsResult)
-            let agentStatus = parseAgentStatusByThread(snapshotResult)
+            let chatSessions = parseChatSessions(snapshotResult)
+            let agentStatus = parseAgentStatusByThread(chatSessions)
             let presetCount = projects.flatMap(\.presets).count
             Logger.sync.info("Parsed \(projects.count) projects, \(threads.count) threads, \(presetCount) presets — writing to DB")
             try databaseManager.replaceAllFromDaemon(projects: projects, threads: threads, remoteId: remoteId)
+            try syncChatSessions(chatSessions)
             Logger.sync.info("DB write done — calling reloadFromDatabase")
             appState.reloadFromDatabase()
             appState.replaceAgentStatus(agentStatus)
@@ -166,13 +168,7 @@ final class SyncService: SyncServicing {
         return ISO8601DateFormatter().date(from: text)
     }
 
-    private func parseAgentStatusByThread(_ payload: Any) -> [String: AgentActivityInfo] {
-        guard
-            let snapshot = payload as? [String: Any],
-            let sessions = snapshot["chat_sessions"] as? [[String: Any]]
-        else {
-            return [:]
-        }
+    private func parseAgentStatusByThread(_ sessions: [[String: Any]]) -> [String: AgentActivityInfo] {
 
         var statuses: [String: AgentActivityInfo] = [:]
 
@@ -196,5 +192,115 @@ final class SyncService: SyncServicing {
         }
 
         return statuses
+    }
+
+    private func parseChatSessions(_ payload: Any) -> [[String: Any]] {
+        guard let snapshot = payload as? [String: Any] else {
+            return []
+        }
+
+        var sessions: [[String: Any]] = []
+
+        if let flatSessions = snapshot["chat_sessions"] as? [[String: Any]] {
+            sessions.append(contentsOf: flatSessions)
+        }
+
+        if let threadRows = snapshot["threads"] as? [[String: Any]] {
+            for threadRow in threadRows {
+                guard let threadID = threadRow["id"] as? String,
+                      let threadSessions = threadRow["chat_sessions"] as? [[String: Any]]
+                else {
+                    continue
+                }
+
+                for var session in threadSessions {
+                    if session["thread_id"] == nil {
+                        session["thread_id"] = threadID
+                    }
+                    sessions.append(session)
+                }
+            }
+        }
+
+        return sessions
+    }
+
+    private func syncChatSessions(_ sessions: [[String: Any]]) throws {
+        for session in sessions {
+            guard
+                let threadID = session["thread_id"] as? String,
+                let sessionID = session["session_id"] as? String
+            else {
+                continue
+            }
+
+            var conversation = try databaseManager.conversation(threadID: threadID, agentSessionID: sessionID)
+                ?? ChatConversation(
+                    id: UUID().uuidString,
+                    threadID: threadID,
+                    agentSessionID: sessionID,
+                    agentType: session["agent_type"] as? String ?? "opencode",
+                    title: session["title"] as? String ?? "",
+                    status: sessionStatus(from: session),
+                    modelID: sessionModelID(from: session),
+                    createdAt: parseDate(session["created_at"]) ?? Date(),
+                    updatedAt: parseDate(session["updated_at"]),
+                    isArchived: false
+                )
+
+            conversation.agentSessionID = sessionID
+            conversation.agentType = session["agent_type"] as? String ?? conversation.agentType
+
+            if let title = session["title"] as? String {
+                conversation.title = title
+            }
+
+            conversation.status = sessionStatus(from: session)
+            if let modelID = sessionModelID(from: session) {
+                conversation.modelID = modelID
+            }
+
+            if conversation.status == "ended" {
+                conversation.isArchived = true
+            }
+
+            conversation.updatedAt = Date()
+            try databaseManager.saveConversation(conversation)
+        }
+    }
+
+    private func sessionStatus(from session: [String: Any]) -> String {
+        if let status = session["status"] as? String {
+            return status
+        }
+        return "starting"
+    }
+
+    private func sessionModelID(from payload: [String: Any]) -> String? {
+        if let modelID = payload["model_id"] as? String {
+            return modelID
+        }
+
+        if let models = payload["models"] as? [String: Any] {
+            if let current = models["currentModelId"] as? String {
+                return current
+            }
+            if let current = models["current_model_id"] as? String {
+                return current
+            }
+        }
+
+        if let capabilities = payload["capabilities"] as? [String: Any],
+           let models = capabilities["models"] as? [String: Any]
+        {
+            if let current = models["currentModelId"] as? String {
+                return current
+            }
+            if let current = models["current_model_id"] as? String {
+                return current
+            }
+        }
+
+        return nil
     }
 }

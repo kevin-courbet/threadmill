@@ -71,6 +71,8 @@ final class ChatConversationTests: XCTestCase {
                 table.column("agentSessionID", .text)
                 table.column("agentType", .text).notNull().defaults(to: "opencode")
                 table.column("title", .text).notNull().defaults(to: "")
+                table.column("status", .text).notNull().defaults(to: "starting")
+                table.column("modelID", .text)
                 table.column("createdAt", .double).notNull()
                 table.column("updatedAt", .double).notNull()
                 table.column("isArchived", .boolean).notNull().defaults(to: false)

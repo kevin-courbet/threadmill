@@ -7,6 +7,8 @@ struct ChatConversation: Codable, Identifiable, FetchableRecord, PersistableReco
     var agentSessionID: String?
     var agentType: String
     var title: String
+    var status: String
+    var modelID: String?
     var createdAt: Date
     var updatedAt: Date
     var isArchived: Bool
@@ -19,6 +21,8 @@ struct ChatConversation: Codable, Identifiable, FetchableRecord, PersistableReco
         case agentSessionID
         case agentType
         case title
+        case status
+        case modelID
         case createdAt
         case updatedAt
         case isArchived
@@ -30,6 +34,8 @@ struct ChatConversation: Codable, Identifiable, FetchableRecord, PersistableReco
         agentSessionID = nil
         agentType = "opencode"
         self.title = title
+        status = "starting"
+        modelID = nil
         createdAt = Date()
         updatedAt = Date()
         isArchived = false
@@ -41,6 +47,8 @@ struct ChatConversation: Codable, Identifiable, FetchableRecord, PersistableReco
         agentSessionID: String?,
         agentType: String = "opencode",
         title: String,
+        status: String = "starting",
+        modelID: String? = nil,
         createdAt: Date,
         updatedAt: Date? = nil,
         isArchived: Bool
@@ -50,6 +58,8 @@ struct ChatConversation: Codable, Identifiable, FetchableRecord, PersistableReco
         self.agentSessionID = agentSessionID
         self.agentType = agentType
         self.title = title
+        self.status = status
+        self.modelID = modelID
         self.createdAt = createdAt
         self.updatedAt = updatedAt ?? createdAt
         self.isArchived = isArchived

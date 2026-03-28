@@ -21,6 +21,9 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
             if method == "thread.create" {
                 return ["id": creatingThread.id]
             }
+            if method == "chat.start" {
+                return ["session_id": "session-1"]
+            }
             throw TestError.missingStub
         }
 
@@ -47,6 +50,15 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertTrue(sawCreatingState)
         XCTAssertEqual(appState.threads.first?.status, .active)
         XCTAssertEqual(appState.selectedThreadID, creatingThread.id)
+
+        let didAutoStartChat = await waitForCondition {
+            connection.requests.contains(where: { $0.method == "chat.start" })
+        }
+        XCTAssertTrue(didAutoStartChat)
+
+        let chatStart = connection.requests.first(where: { $0.method == "chat.start" })
+        XCTAssertEqual(chatStart?.params?["thread_id"] as? String, creatingThread.id)
+        XCTAssertEqual(chatStart?.params?["agent_name"] as? String, "opencode")
     }
 
     func testCreateThreadDoesNotSendRPCBeforeConnectionIsReady() async {
@@ -118,6 +130,8 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
                 return ["id": "project-11"]
             case "thread.create":
                 return ["id": "thread-11"]
+            case "chat.start":
+                return ["session_id": "session-11"]
             case "project.list", "thread.list":
                 return []
             default:
@@ -140,6 +154,10 @@ final class AppStateInteractionBehaviorTests: XCTestCase {
         XCTAssertEqual(connection.requests[2].params?["project_id"] as? String, "project-11")
         XCTAssertEqual(connection.requests[2].params?["name"] as? String, "feature-auth")
         XCTAssertEqual(database.linkedProjects.count, 1)
+        let didAutoStartChat = await waitForCondition {
+            connection.requests.contains(where: { $0.method == "chat.start" })
+        }
+        XCTAssertTrue(didAutoStartChat)
     }
 
     func testCreateThreadForCrossProjectWorkspaceRejectsRepoLinkedLookupProject() async {

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import os
@@ -113,6 +114,13 @@ final class AppState {
         }
     }
 
+    private enum ChatDefaults {
+        static let defaultAgentName = "opencode"
+        static let startingStatus = "starting"
+        static let readyStatus = "ready"
+        static let endedStatus = "ended"
+    }
+
     var connectionStatus: ConnectionStatus = .disconnected {
         didSet {
             if case .connected = connectionStatus, oldValue != connectionStatus {
@@ -207,11 +215,20 @@ final class AppState {
     private var lastAttachErrors: [AttachmentKey: String] = [:]
     private var workspacePathsByRemoteID: [String: String] = [:]
     private var projectsByID: [String: Project] = [:]
+    private let notificationService: any NotificationServicing
+    private let isAppActive: () -> Bool
 
-    init(statsPollingEnabled: Bool = false, statsRefreshInterval: TimeInterval = 5) {
+    init(
+        statsPollingEnabled: Bool = false,
+        statsRefreshInterval: TimeInterval = 5,
+        notificationService: any NotificationServicing = NoopNotificationService(),
+        isAppActive: @escaping () -> Bool = { NSApp.isActive }
+    ) {
         self.statsPollingEnabled = statsPollingEnabled
         let refreshInterval = max(statsRefreshInterval, 0.1)
         statsRefreshIntervalNanoseconds = UInt64(refreshInterval * 1_000_000_000)
+        self.notificationService = notificationService
+        self.isAppActive = isAppActive
     }
 
     private var connectionManager: (any ConnectionManaging)? {
@@ -1193,10 +1210,24 @@ final class AppState {
         }
 
         do {
-            _ = try await connectionManager.request(method: "thread.create", params: params, timeout: 30)
+            let response = try await connectionManager.request(method: "thread.create", params: params, timeout: 30)
+            let threadID = (response as? [String: Any])?["id"] as? String
             Logger.state.info("createThread request sent")
             await syncRemoteState(forProjectID: projectID, using: connectionManager)
             Logger.state.info("createThread sync complete")
+            if let threadID {
+                Task { @MainActor [weak self] in
+                    guard let self else {
+                        return
+                    }
+
+                    do {
+                        _ = try await self.chatStart(threadID: threadID, agentName: ChatDefaults.defaultAgentName)
+                    } catch {
+                        Logger.state.error("chat.start failed for new thread \(threadID, privacy: .public): \(error)")
+                    }
+                }
+            }
         } catch {
             Logger.state.error("createThread failed: \(error)")
             throw error
@@ -1294,20 +1325,30 @@ final class AppState {
     }
 
     private func handleChatSessionCreated(_ params: [String: Any]?) {
-        guard
-            let threadID = params?["thread_id"] as? String
-        else {
+        guard let session = parseChatSessionPayload(from: params) else {
             Logger.state.error("Invalid chat.session_created payload: \(String(describing: params))")
             return
         }
 
-        Logger.state.info("chat.session_created thread=\(threadID, privacy: .public)")
+        upsertConversation(
+            threadID: session.threadID,
+            sessionID: session.sessionID,
+            agentType: session.agentType,
+            title: session.title,
+            status: session.status,
+            modelID: session.modelID,
+            archiveIfEnded: false
+        )
+
+        Logger.state.info("chat.session_created thread=\(session.threadID, privacy: .public)")
         scheduleEventSync()
     }
 
     private func handleChatSessionReady(_ params: [String: Any]?) {
         guard
-            let threadID = params?["thread_id"] as? String
+            let params,
+            let threadID = params["thread_id"] as? String,
+            let sessionID = params["session_id"] as? String
         else {
             Logger.state.error("Invalid chat.session_ready payload: \(String(describing: params))")
             return
@@ -1316,6 +1357,14 @@ final class AppState {
         if let capabilities = decodeChatCapabilities(from: params) {
             chatCapabilitiesByThreadID[threadID] = capabilities
         }
+
+        upsertConversation(
+            threadID: threadID,
+            sessionID: sessionID,
+            status: ChatDefaults.readyStatus,
+            modelID: modelID(from: params),
+            archiveIfEnded: false
+        )
 
         Logger.state.info("chat.session_ready thread=\(threadID, privacy: .public)")
         scheduleEventSync()
@@ -1336,7 +1385,8 @@ final class AppState {
 
     private func handleChatSessionEnded(_ params: [String: Any]?) {
         guard
-            let threadID = params?["thread_id"] as? String
+            let threadID = params?["thread_id"] as? String,
+            let sessionID = params?["session_id"] as? String
         else {
             Logger.state.error("Invalid chat.session_ended payload: \(String(describing: params))")
             return
@@ -1344,6 +1394,14 @@ final class AppState {
 
         agentStatus.removeValue(forKey: threadID)
         chatCapabilitiesByThreadID.removeValue(forKey: threadID)
+
+        upsertConversation(
+            threadID: threadID,
+            sessionID: sessionID,
+            status: ChatDefaults.endedStatus,
+            archiveIfEnded: true
+        )
+
         Logger.state.info("chat.session_ended thread=\(threadID, privacy: .public)")
         scheduleEventSync()
     }
@@ -1358,8 +1416,87 @@ final class AppState {
             return
         }
 
+        let previousStatus = agentStatus[threadID]?.status
         agentStatus[threadID] = info
+
+        if shouldNotifyAgentFinished(
+            previousStatus: previousStatus,
+            currentStatus: info.status,
+            threadID: threadID,
+            reason: parseChatStatusChangedReason(params)
+        ) {
+            let thread = threads.first(where: { $0.id == threadID })
+            let projectName = thread.flatMap { projectsByID[$0.projectId]?.name }
+            notificationService.notifyAgentFinished(
+                threadName: thread?.name ?? threadID,
+                projectName: projectName
+            )
+        }
+
         Logger.state.info("chat.status_changed thread=\(threadID, privacy: .public) workers=\(info.workerCount)")
+    }
+
+    private func shouldNotifyAgentFinished(
+        previousStatus: AgentStatus?,
+        currentStatus: AgentStatus,
+        threadID: String,
+        reason: String?
+    ) -> Bool {
+        guard transitionedToIdle(previous: previousStatus, current: currentStatus) else {
+            return false
+        }
+
+        if let reason,
+           shouldSuppressNotificationForReason(reason)
+        {
+            return false
+        }
+
+        if isAppActive(), selectedThreadID == threadID {
+            return false
+        }
+
+        return true
+    }
+
+    private func transitionedToIdle(previous: AgentStatus?, current: AgentStatus) -> Bool {
+        guard case .idle = current else {
+            return false
+        }
+
+        guard let previous else {
+            return false
+        }
+
+        switch previous {
+        case .busy, .stalled:
+            return true
+        case .idle:
+            return false
+        }
+    }
+
+    private func parseChatStatusChangedReason(_ params: [String: Any]) -> String? {
+        let topLevelReason = params["reason"] ?? params["transition_reason"] ?? params["status_reason"]
+        if let topLevelText = topLevelReason as? String {
+            return normalizedReason(topLevelText)
+        }
+
+        if let nested = params["agent_status"] as? [String: Any],
+           let nestedReason = nested["reason"] as? String
+        {
+            return normalizedReason(nestedReason)
+        }
+
+        return nil
+    }
+
+    private func normalizedReason(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private func shouldSuppressNotificationForReason(_ reason: String) -> Bool {
+        reason == "disconnect" || reason == "disconnected" || reason == "stopped"
     }
 
     private func parseAgentActivityInfo(_ params: [String: Any]) -> AgentActivityInfo? {
@@ -1427,6 +1564,108 @@ final class AppState {
             return nil
         }
         return try? JSONDecoder().decode(ChatSessionCapabilities.self, from: data)
+    }
+
+    private func parseChatSessionPayload(from params: [String: Any]?) -> (threadID: String, sessionID: String, agentType: String, title: String?, status: String, modelID: String?)? {
+        guard let params else {
+            return nil
+        }
+
+        let sessionPayload = params["session"] as? [String: Any] ?? params
+        guard
+            let threadID = (sessionPayload["thread_id"] as? String) ?? (params["thread_id"] as? String),
+            let sessionID = sessionPayload["session_id"] as? String
+        else {
+            return nil
+        }
+
+        let agentType = sessionPayload["agent_type"] as? String
+            ?? sessionPayload["agent_name"] as? String
+            ?? ChatDefaults.defaultAgentName
+        let title = sessionPayload["title"] as? String
+        let status = (sessionPayload["status"] as? String) ?? ChatDefaults.startingStatus
+        let modelID = modelID(from: sessionPayload)
+
+        return (threadID, sessionID, agentType, title, status, modelID)
+    }
+
+    private func modelID(from payload: [String: Any]) -> String? {
+        if let modelID = payload["model_id"] as? String {
+            return modelID
+        }
+
+        if let models = payload["models"] as? [String: Any] {
+            if let currentModelID = models["currentModelId"] as? String {
+                return currentModelID
+            }
+            if let currentModelID = models["current_model_id"] as? String {
+                return currentModelID
+            }
+        }
+
+        if let capabilities = payload["capabilities"] as? [String: Any],
+           let models = capabilities["models"] as? [String: Any]
+        {
+            if let currentModelID = models["currentModelId"] as? String {
+                return currentModelID
+            }
+            if let currentModelID = models["current_model_id"] as? String {
+                return currentModelID
+            }
+        }
+
+        return nil
+    }
+
+    private func upsertConversation(
+        threadID: String,
+        sessionID: String,
+        agentType: String? = nil,
+        title: String? = nil,
+        status: String? = nil,
+        modelID: String? = nil,
+        archiveIfEnded: Bool
+    ) {
+        guard let databaseManager else {
+            return
+        }
+
+        do {
+            var conversation = try databaseManager.conversation(threadID: threadID, agentSessionID: sessionID)
+                ?? ChatConversation(
+                    id: UUID().uuidString,
+                    threadID: threadID,
+                    agentSessionID: sessionID,
+                    agentType: agentType ?? ChatDefaults.defaultAgentName,
+                    title: title ?? "",
+                    status: status ?? ChatDefaults.startingStatus,
+                    modelID: modelID,
+                    createdAt: Date(),
+                    isArchived: false
+                )
+
+            conversation.agentSessionID = sessionID
+            if let agentType {
+                conversation.agentType = agentType
+            }
+            if let title {
+                conversation.title = title
+            }
+            if let status {
+                conversation.status = status
+            }
+            if let modelID {
+                conversation.modelID = modelID
+            }
+            if archiveIfEnded {
+                conversation.isArchived = true
+            }
+            conversation.updatedAt = Date()
+
+            try databaseManager.saveConversation(conversation)
+        } catch {
+            Logger.state.error("Failed to upsert chat conversation for session \(sessionID, privacy: .public): \(error)")
+        }
     }
 
     private func threadProgressIndicatesFailure(step: String, errorText: String?) -> Bool {

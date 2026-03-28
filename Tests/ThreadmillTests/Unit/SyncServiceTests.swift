@@ -67,4 +67,104 @@ final class SyncServiceTests: XCTestCase {
         XCTAssertEqual(appState.agentStatus["thread-1"]?.workerCount, 2)
         XCTAssertEqual(appState.agentStatus["thread-1"]?.status, .busy(workerCount: 2))
     }
+
+    func testSyncFromDaemonUpsertsChatSessionsFromThreadSnapshots() async {
+        let connection = MockDaemonConnection(state: .connected)
+        connection.requestHandler = { method, _, _ in
+            switch method {
+            case "project.list", "thread.list":
+                return [[String: Any]]()
+            case "state.snapshot":
+                return [
+                    "threads": [
+                        [
+                            "id": "thread-1",
+                            "chat_sessions": [
+                                [
+                                    "session_id": "session-1",
+                                    "agent_type": "opencode",
+                                    "title": "Planner",
+                                    "status": "ready",
+                                    "model_id": "gpt-5",
+                                ],
+                            ],
+                        ],
+                    ],
+                ]
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let database = MockDatabaseManager()
+        let syncService = SyncService(
+            connectionManager: connection,
+            databaseManager: database,
+            appState: AppState(),
+            remoteId: "remote-1"
+        )
+
+        await syncService.syncFromDaemon()
+
+        XCTAssertEqual(database.conversations.count, 1)
+        XCTAssertEqual(database.conversations.first?.threadID, "thread-1")
+        XCTAssertEqual(database.conversations.first?.agentSessionID, "session-1")
+        XCTAssertEqual(database.conversations.first?.agentType, "opencode")
+        XCTAssertEqual(database.conversations.first?.title, "Planner")
+    }
+
+    func testSyncFromDaemonDoesNotDeleteExistingChatSessionsMissingFromSnapshot() async {
+        let connection = MockDaemonConnection(state: .connected)
+        var snapshotCalls = 0
+        connection.requestHandler = { method, _, _ in
+            switch method {
+            case "project.list", "thread.list":
+                return [[String: Any]]()
+            case "state.snapshot":
+                snapshotCalls += 1
+                if snapshotCalls == 1 {
+                    return [
+                        "threads": [
+                            [
+                                "id": "thread-1",
+                                "chat_sessions": [
+                                    [
+                                        "session_id": "session-1",
+                                        "agent_type": "opencode",
+                                        "title": "One",
+                                        "status": "ready",
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ]
+                }
+                return [
+                    "threads": [
+                        [
+                            "id": "thread-1",
+                            "chat_sessions": [[String: Any]](),
+                        ],
+                    ],
+                ]
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let database = MockDatabaseManager()
+        let syncService = SyncService(
+            connectionManager: connection,
+            databaseManager: database,
+            appState: AppState(),
+            remoteId: "remote-1"
+        )
+
+        await syncService.syncFromDaemon()
+        XCTAssertEqual(database.conversations.count, 1)
+
+        await syncService.syncFromDaemon()
+        XCTAssertEqual(database.conversations.count, 1)
+        XCTAssertEqual(database.conversations.first?.agentSessionID, "session-1")
+    }
 }
