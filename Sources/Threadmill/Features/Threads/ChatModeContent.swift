@@ -1,8 +1,10 @@
+import ACPModel
 import SwiftUI
 
 struct ChatModeContent: View {
     @Environment(AppState.self) private var appState
     @State private var viewModelCache = ChatSessionViewModelCache()
+    @State private var channelByConversationID: [String: UInt16] = [:]
 
     let thread: ThreadModel
     let chatHarnesses: [ChatHarness]
@@ -14,6 +16,8 @@ struct ChatModeContent: View {
     var body: some View {
         if let chatConversationService = appState.chatConversationService {
             let selectedConversation = selectedConversation
+            let selectedChannelID = selectedConversation.flatMap { channelByConversationID[$0.id] }
+            let capabilities = appState.chatCapabilitiesByThreadID[thread.id] ?? ChatSessionCapabilities()
             let selectedProjectAgents = appState.selectedProject?.agents ?? []
             let availableAgents = selectedProjectAgents.isEmpty
                 ? [AgentConfig(name: "opencode", command: "opencode", cwd: nil)]
@@ -24,8 +28,10 @@ struct ChatModeContent: View {
                     ChatSessionViewModel(
                         agentSessionManager: appState.agentSessionManager,
                         sessionID: selectedConversation?.agentSessionID,
+                        channelID: selectedChannelID,
                         threadID: thread.id,
-                        availableModes: [],
+                        availableModes: capabilities.modes.map { ModeInfo(id: $0.id, name: $0.title ?? $0.id) },
+                        availableModels: capabilities.models.map { ModelInfo(modelId: $0.id, name: $0.title ?? $0.id) },
                         selectedAgentName: selectedConversation?.agentType ?? availableAgents.first?.name ?? "opencode",
                         availableAgents: availableAgents
                     )
@@ -33,11 +39,17 @@ struct ChatModeContent: View {
             )
 
             ChatSessionView(viewModel: viewModel)
+                .task(id: "\(selectedConversation?.agentSessionID ?? ""):\(selectedChannelID?.description ?? "")") {
+                    viewModel.configureSession(sessionID: selectedConversation?.agentSessionID, channelID: selectedChannelID)
+                }
                 .task(id: reloadToken) {
                     await refreshConversationState(with: chatConversationService)
                 }
                 .task(id: selectedConversationID) {
                     await refreshConversationState(with: chatConversationService)
+                }
+                .task(id: selectedConversation?.id) {
+                    await attachChannelIfNeeded(for: selectedConversation)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -71,6 +83,24 @@ struct ChatModeContent: View {
             onConversationStateChange(sorted, current)
         } catch {
             onConversationStateChange([], nil)
+        }
+    }
+
+    private func attachChannelIfNeeded(for conversation: ChatConversation?) async {
+        guard
+            let conversation,
+            let sessionID = conversation.agentSessionID,
+            !sessionID.isEmpty,
+            channelByConversationID[conversation.id] == nil
+        else {
+            return
+        }
+
+        do {
+            let channelID = try await appState.chatAttach(threadID: thread.id, sessionID: sessionID)
+            channelByConversationID[conversation.id] = channelID
+        } catch {
+            return
         }
     }
 }
@@ -156,8 +186,6 @@ enum ChatModeActions {
         }
 
         let threadID = thread.id
-        let directory = thread.worktreePath
-
         Task {
             do {
                 let selectedHarness = harness ?? .opencode

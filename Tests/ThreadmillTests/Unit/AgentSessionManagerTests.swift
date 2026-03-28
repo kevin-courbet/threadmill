@@ -7,30 +7,12 @@ import XCTest
 final class AgentSessionManagerTests: XCTestCase {
     func testSessionRoutesFramesByChannelAndDecodesNewlineDelimitedUpdates() async throws {
         let connection = MockDaemonConnection(state: .connected)
-        let agentManager = MockAgentManager()
-        agentManager.startResult = .success(77)
+        let manager = AgentSessionManager(connectionManager: connection)
 
-        let manager = AgentSessionManager(
-            agentManager: agentManager,
-            connectionManager: connection,
-            projectIDResolver: { threadID in
-                threadID == "thread-1" ? "project-1" : nil
-            }
-        )
-
-        let startTask = Task { try await manager.startSession(agentConfig: AgentConfig(name: "opencode", command: "opencode", cwd: nil), threadID: "thread-1") }
-
-        let didSendInit = await waitUntilFrameCount(connection, equals: 1)
-        XCTAssertTrue(didSendInit)
-        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[0], result: InitializeResponse(protocolVersion: 1, agentCapabilities: AgentCapabilities())))
-
-        let didSendSessionNew = await waitUntilFrameCount(connection, equals: 2)
-        XCTAssertTrue(didSendSessionNew)
-        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[1], result: NewSessionResponse(sessionId: SessionId("acp-session-1"))))
-
-        let sessionID = try await startTask.value
-        XCTAssertEqual(agentManager.startedAgents.first?.projectID, "project-1")
-        XCTAssertEqual(agentManager.startedAgents.first?.agentName, "opencode")
+        var receivedUpdates: [SessionUpdateNotification] = []
+        manager.attachChannel(channelID: 77, sessionID: "acp-session-1") { update in
+            receivedUpdates.append(update)
+        }
 
         let update = SessionUpdateNotification(
             sessionId: SessionId("acp-session-1"),
@@ -44,92 +26,32 @@ final class AgentSessionManagerTests: XCTestCase {
         manager.handleBinaryFrame(makeFrame(channelID: 77, payload: Array(firstHalf)))
         manager.handleBinaryFrame(makeFrame(channelID: 77, payload: Array(secondHalf)))
 
-        XCTAssertEqual(manager.updatesBySessionID[sessionID]?.count, 1)
+        XCTAssertEqual(receivedUpdates.count, 1)
 
-        let promptTask = Task { try await manager.sendPrompt(text: "ship it", sessionID: sessionID) }
-        let didSendPrompt = await waitUntilFrameCount(connection, equals: 3)
+        let promptTask = Task {
+            try await manager.sendPrompt(text: "ship it", channelID: 77, sessionID: "acp-session-1")
+        }
+        let didSendPrompt = await waitUntilFrameCount(connection, equals: 1)
         XCTAssertTrue(didSendPrompt)
         try manager.handleBinaryFrame(
             makeResponseFrame(
                 channelID: 77,
-                requestFrame: connection.sentBinaryFrames[2],
+                requestFrame: connection.sentBinaryFrames[0],
                 result: SessionPromptResponse(stopReason: .endTurn)
             )
         )
         try await promptTask.value
     }
 
-    func testReconnectReattachesSessionAndScopesFramesToOwningConnection() async throws {
+    func testReconnectClearsChannelsAndScopesFramesToOwningConnection() async throws {
         let primaryConnection = MockDaemonConnection(state: .connected)
         let otherConnection = MockDaemonConnection(state: .connected)
-        let agentManager = MockAgentManager()
-        agentManager.startResult = .success(77)
+        let manager = AgentSessionManager(connectionManager: primaryConnection)
 
-        let manager = AgentSessionManager(
-            agentManager: agentManager,
-            connectionManager: primaryConnection,
-            projectIDResolver: { threadID in
-                threadID == "thread-1" ? "project-1" : nil
-            }
-        )
-
-        let startTask = Task {
-            try await manager.startSession(
-                agentConfig: AgentConfig(name: "opencode", command: "opencode", cwd: nil),
-                threadID: "thread-1"
-            )
+        var receivedUpdates: [SessionUpdateNotification] = []
+        manager.attachChannel(channelID: 88, sessionID: "acp-session-2") { update in
+            receivedUpdates.append(update)
         }
-
-        let didSendInit = await waitUntilFrameCount(primaryConnection, equals: 1)
-        XCTAssertTrue(didSendInit)
-        try manager.handleBinaryFrame(
-            makeResponseFrame(
-                channelID: 77,
-                requestFrame: primaryConnection.sentBinaryFrames[0],
-                result: InitializeResponse(protocolVersion: 1, agentCapabilities: AgentCapabilities())
-            )
-        )
-
-        let didSendSessionNew = await waitUntilFrameCount(primaryConnection, equals: 2)
-        XCTAssertTrue(didSendSessionNew)
-        try manager.handleBinaryFrame(
-            makeResponseFrame(
-                channelID: 77,
-                requestFrame: primaryConnection.sentBinaryFrames[1],
-                result: NewSessionResponse(sessionId: SessionId("acp-session-1"))
-            )
-        )
-
-        let sessionID = try await startTask.value
-
-        manager.handleConnectionStateChanged(.disconnected, on: primaryConnection)
-
-        agentManager.startResult = .success(88)
-        let reconnectTask = Task {
-            await manager.handleConnectionReconnected(on: primaryConnection)
-        }
-
-        let didSendReconnectInit = await waitUntilFrameCount(primaryConnection, equals: 3)
-        XCTAssertTrue(didSendReconnectInit)
-        try manager.handleBinaryFrame(
-            makeResponseFrame(
-                channelID: 88,
-                requestFrame: primaryConnection.sentBinaryFrames[2],
-                result: InitializeResponse(protocolVersion: 1, agentCapabilities: AgentCapabilities())
-            )
-        )
-
-        let didSendReconnectSessionNew = await waitUntilFrameCount(primaryConnection, equals: 4)
-        XCTAssertTrue(didSendReconnectSessionNew)
-        try manager.handleBinaryFrame(
-            makeResponseFrame(
-                channelID: 88,
-                requestFrame: primaryConnection.sentBinaryFrames[3],
-                result: NewSessionResponse(sessionId: SessionId("acp-session-2"))
-            )
-        )
-
-        _ = await reconnectTask.value
 
         let update = SessionUpdateNotification(
             sessionId: SessionId("acp-session-2"),
@@ -138,51 +60,17 @@ final class AgentSessionManagerTests: XCTestCase {
         let updatePayload = try makeNotificationLine(method: "session/update", params: update)
 
         manager.handleBinaryFrame(makeFrame(channelID: 88, payload: Array(updatePayload)), from: otherConnection)
-        XCTAssertTrue((manager.updatesBySessionID[sessionID] ?? []).isEmpty)
+        XCTAssertTrue(receivedUpdates.isEmpty)
 
+        manager.handleConnectionStateChanged(.disconnected, on: primaryConnection)
         manager.handleBinaryFrame(makeFrame(channelID: 88, payload: Array(updatePayload)), from: primaryConnection)
-        XCTAssertEqual(manager.updatesBySessionID[sessionID]?.count, 1)
-
-        let promptTask = Task { try await manager.sendPrompt(text: "after reconnect", sessionID: sessionID) }
-        let didSendPrompt = await waitUntilFrameCount(primaryConnection, equals: 5)
-        XCTAssertTrue(didSendPrompt)
-        try manager.handleBinaryFrame(
-            makeResponseFrame(
-                channelID: 88,
-                requestFrame: primaryConnection.sentBinaryFrames[4],
-                result: SessionPromptResponse(stopReason: .endTurn)
-            )
-        )
-        try await promptTask.value
+        XCTAssertTrue(receivedUpdates.isEmpty)
     }
 
     func testRequestPermissionRequestIsAutoApproved() async throws {
         let connection = MockDaemonConnection(state: .connected)
-        let agentManager = MockAgentManager()
-        agentManager.startResult = .success(77)
-
-        let manager = AgentSessionManager(
-            agentManager: agentManager,
-            connectionManager: connection,
-            projectIDResolver: { threadID in
-                threadID == "thread-1" ? "project-1" : nil
-            }
-        )
-
-        let startTask = Task {
-            try await manager.startSession(
-                agentConfig: AgentConfig(name: "opencode", command: "opencode", cwd: nil),
-                threadID: "thread-1"
-            )
-        }
-
-        let didSendInit = await waitUntilFrameCount(connection, equals: 1)
-        XCTAssertTrue(didSendInit)
-        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[0], result: InitializeResponse(protocolVersion: 1, agentCapabilities: AgentCapabilities())))
-        let didSendSessionNew = await waitUntilFrameCount(connection, equals: 2)
-        XCTAssertTrue(didSendSessionNew)
-        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[1], result: NewSessionResponse(sessionId: SessionId("acp-session-1"))))
-        _ = try await startTask.value
+        let manager = AgentSessionManager(connectionManager: connection)
+        manager.attachChannel(channelID: 77, sessionID: "acp-session-1") { _ in }
 
         let request = JSONRPCRequest(
             id: .number(99),
@@ -196,9 +84,9 @@ final class AgentSessionManagerTests: XCTestCase {
         requestPayload.append(0x0A)
         manager.handleBinaryFrame(makeFrame(channelID: 77, payload: Array(requestPayload)))
 
-        let didSendPermissionResponse = await waitUntilFrameCount(connection, equals: 3)
+        let didSendPermissionResponse = await waitUntilFrameCount(connection, equals: 1)
         XCTAssertTrue(didSendPermissionResponse)
-        let response = try decodeResponse(from: connection.sentBinaryFrames[2])
+        let response = try decodeResponse(from: connection.sentBinaryFrames[0])
         XCTAssertEqual(response.id, .number(99))
         XCTAssertNil(response.error)
         let result = try XCTUnwrap(response.result)
@@ -210,40 +98,17 @@ final class AgentSessionManagerTests: XCTestCase {
 
     func testUnsupportedIncomingRequestReceivesMethodNotFoundError() async throws {
         let connection = MockDaemonConnection(state: .connected)
-        let agentManager = MockAgentManager()
-        agentManager.startResult = .success(77)
-
-        let manager = AgentSessionManager(
-            agentManager: agentManager,
-            connectionManager: connection,
-            projectIDResolver: { threadID in
-                threadID == "thread-1" ? "project-1" : nil
-            }
-        )
-
-        let startTask = Task {
-            try await manager.startSession(
-                agentConfig: AgentConfig(name: "opencode", command: "opencode", cwd: nil),
-                threadID: "thread-1"
-            )
-        }
-
-        let didSendInit = await waitUntilFrameCount(connection, equals: 1)
-        XCTAssertTrue(didSendInit)
-        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[0], result: InitializeResponse(protocolVersion: 1, agentCapabilities: AgentCapabilities())))
-        let didSendSessionNew = await waitUntilFrameCount(connection, equals: 2)
-        XCTAssertTrue(didSendSessionNew)
-        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[1], result: NewSessionResponse(sessionId: SessionId("acp-session-1"))))
-        _ = try await startTask.value
+        let manager = AgentSessionManager(connectionManager: connection)
+        manager.attachChannel(channelID: 77, sessionID: "acp-session-1") { _ in }
 
         let request = JSONRPCRequest(id: .string("abc"), method: "unknown/method", params: nil)
         var requestPayload = try JSONEncoder().encode(request)
         requestPayload.append(0x0A)
         manager.handleBinaryFrame(makeFrame(channelID: 77, payload: Array(requestPayload)))
 
-        let didSendErrorResponse = await waitUntilFrameCount(connection, equals: 3)
+        let didSendErrorResponse = await waitUntilFrameCount(connection, equals: 1)
         XCTAssertTrue(didSendErrorResponse)
-        let response = try decodeResponse(from: connection.sentBinaryFrames[2])
+        let response = try decodeResponse(from: connection.sentBinaryFrames[0])
         XCTAssertEqual(response.id, .string("abc"))
         XCTAssertNil(response.result)
         XCTAssertEqual(response.error?.code, -32601)
@@ -251,37 +116,16 @@ final class AgentSessionManagerTests: XCTestCase {
 
     func testSetModelSendsRequestAndConsumesResponse() async throws {
         let connection = MockDaemonConnection(state: .connected)
-        let agentManager = MockAgentManager()
-        agentManager.startResult = .success(77)
+        let manager = AgentSessionManager(connectionManager: connection)
+        manager.attachChannel(channelID: 77, sessionID: "acp-session-1") { _ in }
 
-        let manager = AgentSessionManager(
-            agentManager: agentManager,
-            connectionManager: connection,
-            projectIDResolver: { threadID in
-                threadID == "thread-1" ? "project-1" : nil
-            }
-        )
-
-        let startTask = Task {
-            try await manager.startSession(
-                agentConfig: AgentConfig(name: "opencode", command: "opencode", cwd: nil),
-                threadID: "thread-1"
-            )
+        let setModelTask = Task {
+            try await manager.setModel(channelID: 77, sessionID: "acp-session-1", modelID: "claude-3-7")
         }
-
-        let didSendInit = await waitUntilFrameCount(connection, equals: 1)
-        XCTAssertTrue(didSendInit)
-        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[0], result: InitializeResponse(protocolVersion: 1, agentCapabilities: AgentCapabilities())))
-        let didSendSessionNew = await waitUntilFrameCount(connection, equals: 2)
-        XCTAssertTrue(didSendSessionNew)
-        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[1], result: NewSessionResponse(sessionId: SessionId("acp-session-1"))))
-        let sessionID = try await startTask.value
-
-        let setModelTask = Task { try await manager.setModel(sessionID: sessionID, modelID: "claude-3-7") }
-        let didSendSetModel = await waitUntilFrameCount(connection, equals: 3)
+        let didSendSetModel = await waitUntilFrameCount(connection, equals: 1)
         XCTAssertTrue(didSendSetModel)
 
-        let request = try decodeRequest(from: connection.sentBinaryFrames[2])
+        let request = try decodeRequest(from: connection.sentBinaryFrames[0])
         XCTAssertEqual(request.method, "session/set_model")
         let params = try XCTUnwrap(request.params)
         let paramsData = try JSONEncoder().encode(params)
@@ -289,7 +133,7 @@ final class AgentSessionManagerTests: XCTestCase {
         XCTAssertEqual(typedParams.sessionId.value, "acp-session-1")
         XCTAssertEqual(typedParams.modelId, "claude-3-7")
 
-        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[2], result: SetModelResponse(success: true)))
+        try manager.handleBinaryFrame(makeResponseFrame(channelID: 77, requestFrame: connection.sentBinaryFrames[0], result: SetModelResponse(success: true)))
         try await setModelTask.value
     }
 

@@ -4,20 +4,14 @@ import Observation
 import os
 
 enum AgentSessionManagerError: LocalizedError {
-    case unknownThread(String)
-    case unknownSession(String)
     case unknownChannel(UInt16)
     case invalidBinaryFrame
     case rpcError(String)
     case requestTimedOut
-    case sessionDisconnected(String)
+    case channelDisconnected(UInt16)
 
     var errorDescription: String? {
         switch self {
-        case let .unknownThread(threadID):
-            return "Unable to resolve project for thread \(threadID)."
-        case let .unknownSession(sessionID):
-            return "Unknown agent session: \(sessionID)."
         case let .unknownChannel(channelID):
             return "Unknown agent channel: \(channelID)."
         case .invalidBinaryFrame:
@@ -26,8 +20,8 @@ enum AgentSessionManagerError: LocalizedError {
             return message
         case .requestTimedOut:
             return "Agent RPC timed out."
-        case let .sessionDisconnected(sessionID):
-            return "Agent session is disconnected: \(sessionID)."
+        case let .channelDisconnected(channelID):
+            return "Agent channel is disconnected: \(channelID)."
         }
     }
 }
@@ -35,26 +29,9 @@ enum AgentSessionManagerError: LocalizedError {
 @MainActor
 @Observable
 final class AgentSessionManager {
-    struct SessionCapabilities {
-        var availableModes: [ModeInfo]
-        var currentModeID: String?
-        var availableModels: [ModelInfo]
-        var currentModelID: String?
-
-        static let empty = SessionCapabilities(
-            availableModes: [],
-            currentModeID: nil,
-            availableModels: [],
-            currentModelID: nil
-        )
-    }
-
-    private struct SessionContext: Hashable {
-        let id: String
-        let threadID: String
-        var channelID: UInt16?
-        let agentConfig: AgentConfig
-        var acpSessionID: String
+    private struct ChannelContext {
+        let sessionID: String
+        let onUpdate: (SessionUpdateNotification) -> Void
     }
 
     private struct PendingRequestKey: Hashable {
@@ -62,116 +39,44 @@ final class AgentSessionManager {
         let requestID: String
     }
 
-    private let agentManager: any AgentManaging
     private let connectionManager: any ConnectionManaging
     private let managedConnectionID: ObjectIdentifier
-    private let projectIDResolver: @MainActor (String) -> String?
 
-    private var sessionsByID: [String: SessionContext] = [:]
-    private var sessionCapabilitiesByID: [String: SessionCapabilities] = [:]
-    private var sessionIDByChannel: [UInt16: String] = [:]
+    private var channelsByID: [UInt16: ChannelContext] = [:]
     private var incomingBuffers: [UInt16: Data] = [:]
     private var nextRequestIDByChannel: [UInt16: Int] = [:]
     private var pendingRequests: [PendingRequestKey: CheckedContinuation<JSONRPCResponse, Error>] = [:]
 
-    var updatesBySessionID: [String: [SessionUpdateNotification]] = [:]
-    var onSessionUpdate: ((String, SessionUpdateNotification) -> Void)?
-
-    init(
-        agentManager: any AgentManaging,
-        connectionManager: any ConnectionManaging,
-        projectIDResolver: @escaping @MainActor (String) -> String?
-    ) {
-        self.agentManager = agentManager
+    init(connectionManager: any ConnectionManaging) {
         self.connectionManager = connectionManager
         managedConnectionID = ObjectIdentifier(connectionManager as AnyObject)
-        self.projectIDResolver = projectIDResolver
     }
 
-    @discardableResult
-    func startSession(agentConfig: AgentConfig, threadID: String) async throws -> String {
-        guard let projectID = projectIDResolver(threadID) else {
-            throw AgentSessionManagerError.unknownThread(threadID)
-        }
-
-        return try await startSession(agentConfig: agentConfig, threadID: threadID, projectID: projectID, sessionIDOverride: nil)
+    func attachChannel(channelID: UInt16, sessionID: String, onUpdate: @escaping (SessionUpdateNotification) -> Void) {
+        channelsByID[channelID] = ChannelContext(sessionID: sessionID, onUpdate: onUpdate)
+        incomingBuffers[channelID] = Data()
     }
 
-    @discardableResult
-    func switchAgent(sessionID: String, agentConfig: AgentConfig) async throws -> String {
-        guard let existing = sessionsByID[sessionID] else {
-            throw AgentSessionManagerError.unknownSession(sessionID)
-        }
-
-        guard let projectID = projectIDResolver(existing.threadID) else {
-            throw AgentSessionManagerError.unknownThread(existing.threadID)
-        }
-
-        if let channelID = existing.channelID {
-            try await agentManager.stopAgent(channelID: channelID)
-        }
-        cleanupSession(sessionID: sessionID)
-
-        return try await startSession(
-            agentConfig: agentConfig,
-            threadID: existing.threadID,
-            projectID: projectID,
-            sessionIDOverride: sessionID
-        )
+    func detachChannel(channelID: UInt16) {
+        cleanupChannel(channelID: channelID, pendingError: AgentSessionManagerError.channelDisconnected(channelID))
     }
 
-    private func startSession(
-        agentConfig: AgentConfig,
-        threadID: String,
-        projectID: String,
-        sessionIDOverride: String?
-    ) async throws -> String {
-        let sessionID = sessionIDOverride ?? UUID().uuidString
-        var context = SessionContext(
-            id: sessionID,
-            threadID: threadID,
-            channelID: nil,
-            agentConfig: agentConfig,
-            acpSessionID: sessionID
-        )
-
-        sessionsByID[sessionID] = context
-        if updatesBySessionID[sessionID] == nil {
-            updatesBySessionID[sessionID] = []
-        }
-
-        do {
-            try await attachSession(&context, projectID: projectID)
-            sessionsByID[sessionID] = context
-            return sessionID
-        } catch {
-            cleanupSession(sessionID: sessionID)
-            throw error
-        }
-    }
-
-    func stopSession(channelID: UInt16) async throws {
-        guard let sessionID = sessionIDByChannel[channelID] else {
+    func sendFrame(channelID: UInt16, payload: Data) async throws {
+        guard channelsByID[channelID] != nil else {
             throw AgentSessionManagerError.unknownChannel(channelID)
         }
 
-        try await agentManager.stopAgent(channelID: channelID)
-        cleanupSession(sessionID: sessionID)
+        var frame = Data([UInt8(channelID >> 8), UInt8(channelID & 0xFF)])
+        frame.append(payload)
+        frame.append(0x0A)
+        try await connectionManager.sendBinaryFrame(frame)
     }
 
-    func sendPrompt(text: String, sessionID: String) async throws {
-        guard let context = sessionsByID[sessionID] else {
-            throw AgentSessionManagerError.unknownSession(sessionID)
-        }
-
-        guard let channelID = context.channelID else {
-            throw AgentSessionManagerError.sessionDisconnected(sessionID)
-        }
-
+    func sendPrompt(text: String, channelID: UInt16, sessionID: String) async throws {
         let _: SessionPromptResponse = try await sendRequest(
             method: "session/prompt",
             params: SessionPromptRequest(
-                sessionId: SessionId(context.acpSessionID),
+                sessionId: SessionId(sessionID),
                 prompt: [.text(TextContent(text: text))]
             ),
             channelID: channelID,
@@ -179,85 +84,37 @@ final class AgentSessionManager {
         )
     }
 
-    func hasSession(sessionID: String) -> Bool {
-        sessionsByID[sessionID] != nil
-    }
-
-    func capabilities(for sessionID: String) -> SessionCapabilities {
-        sessionCapabilitiesByID[sessionID] ?? .empty
-    }
-
-    func cancelPrompt(sessionID: String) async throws {
-        guard let context = sessionsByID[sessionID] else {
-            throw AgentSessionManagerError.unknownSession(sessionID)
-        }
-
-        guard let channelID = context.channelID else {
-            throw AgentSessionManagerError.sessionDisconnected(sessionID)
-        }
-
+    func cancelPrompt(channelID: UInt16, sessionID: String) async throws {
         try await sendNotification(
             method: "session/cancel",
-            params: CancelSessionRequest(sessionId: SessionId(context.acpSessionID)),
+            params: CancelSessionRequest(sessionId: SessionId(sessionID)),
             channelID: channelID
         )
     }
 
-    func setMode(sessionID: String, modeID: String) async throws {
-        guard let context = sessionsByID[sessionID] else {
-            throw AgentSessionManagerError.unknownSession(sessionID)
-        }
-
-        guard let channelID = context.channelID else {
-            throw AgentSessionManagerError.sessionDisconnected(sessionID)
-        }
-
+    func setMode(channelID: UInt16, sessionID: String, modeID: String) async throws {
         let _: SetModeResponse = try await sendRequest(
             method: "session/set_mode",
-            params: SetModeRequest(sessionId: SessionId(context.acpSessionID), modeId: modeID),
+            params: SetModeRequest(sessionId: SessionId(sessionID), modeId: modeID),
             channelID: channelID,
             timeout: 20
         )
-
-        var capabilities = sessionCapabilitiesByID[sessionID] ?? .empty
-        capabilities.currentModeID = modeID
-        sessionCapabilitiesByID[sessionID] = capabilities
     }
 
-    func setModel(sessionID: String, modelID: String) async throws {
-        guard let context = sessionsByID[sessionID] else {
-            throw AgentSessionManagerError.unknownSession(sessionID)
-        }
-
-        guard let channelID = context.channelID else {
-            throw AgentSessionManagerError.sessionDisconnected(sessionID)
-        }
-
+    func setModel(channelID: UInt16, sessionID: String, modelID: String) async throws {
         let _: SetModelResponse = try await sendRequest(
             method: "session/set_model",
-            params: SetModelRequest(sessionId: SessionId(context.acpSessionID), modelId: modelID),
+            params: SetModelRequest(sessionId: SessionId(sessionID), modelId: modelID),
             channelID: channelID,
             timeout: 20
         )
-
-        var capabilities = sessionCapabilitiesByID[sessionID] ?? .empty
-        capabilities.currentModelID = modelID
-        sessionCapabilitiesByID[sessionID] = capabilities
     }
 
-    func setConfigOption(sessionID: String, key: String, value: SessionConfigOptionValue) async throws {
-        guard let context = sessionsByID[sessionID] else {
-            throw AgentSessionManagerError.unknownSession(sessionID)
-        }
-
-        guard let channelID = context.channelID else {
-            throw AgentSessionManagerError.sessionDisconnected(sessionID)
-        }
-
+    func setConfigOption(channelID: UInt16, sessionID: String, key: String, value: SessionConfigOptionValue) async throws {
         let _: SetSessionConfigOptionResponse = try await sendRequest(
             method: "session/set_config_option",
             params: SetSessionConfigOptionRequest(
-                sessionId: SessionId(context.acpSessionID),
+                sessionId: SessionId(sessionID),
                 configId: SessionConfigId(key),
                 value: value
             ),
@@ -266,33 +123,17 @@ final class AgentSessionManager {
         )
     }
 
-    func loadSession(sessionID: String, acpSessionID: String) async throws -> LoadSessionResponse {
-        guard let context = sessionsByID[sessionID] else {
-            throw AgentSessionManagerError.unknownSession(sessionID)
-        }
-
-        guard let channelID = context.channelID else {
-            throw AgentSessionManagerError.sessionDisconnected(sessionID)
-        }
-
-        return try await sendRequest(
+    func loadSession(channelID: UInt16, sessionID: String) async throws -> LoadSessionResponse {
+        try await sendRequest(
             method: "session/load",
-            params: LoadSessionRequest(sessionId: SessionId(acpSessionID)),
+            params: LoadSessionRequest(sessionId: SessionId(sessionID)),
             channelID: channelID,
             timeout: 20
         )
     }
 
-    func listSessions(sessionID: String) async throws -> ListSessionsResponse {
-        guard let context = sessionsByID[sessionID] else {
-            throw AgentSessionManagerError.unknownSession(sessionID)
-        }
-
-        guard let channelID = context.channelID else {
-            throw AgentSessionManagerError.sessionDisconnected(sessionID)
-        }
-
-        return try await sendRequest(
+    func listSessions(channelID: UInt16) async throws -> ListSessionsResponse {
+        try await sendRequest(
             method: "session/list",
             params: ListSessionsRequest(),
             channelID: channelID,
@@ -307,7 +148,7 @@ final class AgentSessionManager {
 
         switch status {
         case .disconnected, .reconnecting:
-            markAllSessionsDisconnected()
+            markAllChannelsDisconnected()
         case .connecting, .connected:
             break
         }
@@ -316,25 +157,6 @@ final class AgentSessionManager {
     func handleConnectionReconnected(on connection: any ConnectionManaging) async {
         guard isManagedConnection(connection) else {
             return
-        }
-
-        let sessionIDs = sessionsByID.keys.sorted()
-        for sessionID in sessionIDs {
-            guard var context = sessionsByID[sessionID], context.channelID == nil else {
-                continue
-            }
-
-            guard let projectID = projectIDResolver(context.threadID) else {
-                Logger.agent.error("Unable to reattach session \(sessionID), thread missing: \(context.threadID)")
-                continue
-            }
-
-            do {
-                try await attachSession(&context, projectID: projectID)
-                sessionsByID[sessionID] = context
-            } catch {
-                Logger.agent.error("Failed to reattach session \(sessionID): \(error)")
-            }
         }
     }
 
@@ -348,11 +170,12 @@ final class AgentSessionManager {
         }
 
         guard frame.count >= 2 else {
+            Logger.agent.error("Received invalid ACP frame, missing channel header")
             return
         }
 
         let channelID = (UInt16(frame[0]) << 8) | UInt16(frame[1])
-        guard sessionIDByChannel[channelID] != nil else {
+        guard channelsByID[channelID] != nil else {
             return
         }
 
@@ -385,10 +208,8 @@ final class AgentSessionManager {
     ) async throws {
         let paramsData = try JSONEncoder().encode(params)
         let paramsValue = try JSONDecoder().decode(AnyCodable.self, from: paramsData)
-        let payload = try JSONEncoder().encode(
-            JSONRPCNotification(method: method, params: paramsValue)
-        )
-        try await sendFrame(payload, channelID: channelID)
+        let payload = try JSONEncoder().encode(JSONRPCNotification(method: method, params: paramsValue))
+        try await sendFrame(channelID: channelID, payload: payload)
     }
 
     private func sendRequest<Response: Decodable, Params: Encodable>(
@@ -456,7 +277,7 @@ final class AgentSessionManager {
             pendingRequests[key] = continuation
             Task {
                 do {
-                    try await sendFrame(payload, channelID: channelID)
+                    try await sendFrame(channelID: channelID, payload: payload)
                 } catch {
                     await MainActor.run {
                         self.resumePendingRequest(channelID: channelID, requestID: requestID, with: .failure(error))
@@ -466,15 +287,8 @@ final class AgentSessionManager {
         }
     }
 
-    private func sendFrame(_ payload: Data, channelID: UInt16) async throws {
-        var frame = Data([UInt8(channelID >> 8), UInt8(channelID & 0xFF)])
-        frame.append(payload)
-        frame.append(0x0A)
-        try await connectionManager.sendBinaryFrame(frame)
-    }
-
     private func nextRequestID(channelID: UInt16) -> RequestId {
-        let next = (nextRequestIDByChannel[channelID] ?? 1)
+        let next = nextRequestIDByChannel[channelID] ?? 1
         nextRequestIDByChannel[channelID] = next + 1
         return .number(next)
     }
@@ -518,17 +332,6 @@ final class AgentSessionManager {
             return
         }
 
-        if request.method == "fs/read_text_file" || request.method == "fs/write_text_file" || request.method.hasPrefix("terminal/") {
-            Task {
-                do {
-                    try await sendRPCMethodNotFound(id: request.id, method: request.method, channelID: channelID)
-                } catch {
-                    Logger.agent.error("Failed to send unsupported method error on channel \(channelID): \(error)")
-                }
-            }
-            return
-        }
-
         Task {
             do {
                 try await sendRPCMethodNotFound(id: request.id, method: request.method, channelID: channelID)
@@ -545,7 +348,7 @@ final class AgentSessionManager {
             error: JSONRPCError(code: -32601, message: "Method not found: \(method)", data: nil)
         )
         let payload = try JSONEncoder().encode(response)
-        try await sendFrame(payload, channelID: channelID)
+        try await sendFrame(channelID: channelID, payload: payload)
     }
 
     private func sendRPCResponse<ResultPayload: Encodable>(id: RequestId, result: ResultPayload, channelID: UInt16) async throws {
@@ -553,14 +356,14 @@ final class AgentSessionManager {
         let resultValue = try JSONDecoder().decode(AnyCodable.self, from: resultData)
         let response = JSONRPCResponse(id: id, result: resultValue, error: nil)
         let payload = try JSONEncoder().encode(response)
-        try await sendFrame(payload, channelID: channelID)
+        try await sendFrame(channelID: channelID, payload: payload)
     }
 
     private func handleNotification(_ notification: JSONRPCNotification, channelID: UInt16) {
         guard
             notification.method == "session/update",
             let params = notification.params,
-            let sessionID = sessionIDByChannel[channelID]
+            let context = channelsByID[channelID]
         else {
             return
         }
@@ -568,13 +371,10 @@ final class AgentSessionManager {
         do {
             let data = try JSONEncoder().encode(params)
             let update = try JSONDecoder().decode(SessionUpdateNotification.self, from: data)
-            updatesBySessionID[sessionID, default: []].append(update)
-            if case let .currentModeUpdate(modeID) = update.update {
-                var capabilities = sessionCapabilitiesByID[sessionID] ?? .empty
-                capabilities.currentModeID = modeID
-                sessionCapabilitiesByID[sessionID] = capabilities
+            guard update.sessionId.value == context.sessionID else {
+                return
             }
-            onSessionUpdate?(sessionID, update)
+            context.onUpdate(update)
         } catch {
             Logger.agent.error("Failed to decode session/update on channel \(channelID): \(error)")
         }
@@ -594,74 +394,15 @@ final class AgentSessionManager {
         }
     }
 
-    private func cleanupSession(sessionID: String) {
-        guard let context = sessionsByID.removeValue(forKey: sessionID) else {
-            return
-        }
-
-        if let channelID = context.channelID {
-            cleanupChannel(channelID: channelID, pendingError: AgentSessionManagerError.unknownSession(sessionID))
-        }
-        sessionCapabilitiesByID.removeValue(forKey: sessionID)
-        updatesBySessionID.removeValue(forKey: sessionID)
-    }
-
-    private func attachSession(_ context: inout SessionContext, projectID: String) async throws {
-        let channelID = try await agentManager.startAgent(projectID: projectID, agentName: context.agentConfig.name)
-        context.channelID = channelID
-        sessionIDByChannel[channelID] = context.id
-        incomingBuffers[channelID] = Data()
-
-        do {
-            let _: InitializeResponse = try await sendRequest(
-                method: "initialize",
-                params: InitializeRequest(
-                    protocolVersion: 1,
-                    clientCapabilities: ClientCapabilities(
-                        fs: FileSystemCapabilities(readTextFile: false, writeTextFile: false),
-                        terminal: false
-                    ),
-                    clientInfo: ClientInfo(name: "Threadmill", title: "Threadmill", version: "dev")
-                ),
-                channelID: channelID,
-                timeout: 20
-            )
-
-            let newSession: NewSessionResponse = try await sendRequest(
-                method: "session/new",
-                params: NewSessionRequest(cwd: context.agentConfig.cwd ?? "."),
-                channelID: channelID,
-                timeout: 20
-            )
-            context.acpSessionID = newSession.sessionId.value
-            sessionCapabilitiesByID[context.id] = SessionCapabilities(
-                availableModes: newSession.modes?.availableModes ?? [],
-                currentModeID: newSession.modes?.currentModeId,
-                availableModels: newSession.models?.availableModels ?? [],
-                currentModelID: newSession.models?.currentModelId
-            )
-        } catch {
-            cleanupChannel(channelID: channelID, pendingError: error)
-            context.channelID = nil
-            throw error
-        }
-    }
-
-    private func markAllSessionsDisconnected() {
-        let sessionIDs = sessionsByID.keys
-        for sessionID in sessionIDs {
-            guard var context = sessionsByID[sessionID], let channelID = context.channelID else {
-                continue
-            }
-
-            cleanupChannel(channelID: channelID, pendingError: AgentSessionManagerError.sessionDisconnected(sessionID))
-            context.channelID = nil
-            sessionsByID[sessionID] = context
+    private func markAllChannelsDisconnected() {
+        let channelIDs = Array(channelsByID.keys)
+        for channelID in channelIDs {
+            cleanupChannel(channelID: channelID, pendingError: AgentSessionManagerError.channelDisconnected(channelID))
         }
     }
 
     private func cleanupChannel(channelID: UInt16, pendingError: Error) {
-        sessionIDByChannel.removeValue(forKey: channelID)
+        channelsByID.removeValue(forKey: channelID)
         incomingBuffers.removeValue(forKey: channelID)
         nextRequestIDByChannel.removeValue(forKey: channelID)
 

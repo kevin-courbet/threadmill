@@ -97,45 +97,8 @@ final class IntegrationFlowTests: XCTestCase {
 
     func test4ChatSessionSendReceiveUpdatesTimeline() async throws {
         let connection = MockDaemonConnection(state: .connected)
-        let agentManager = MockAgentManager()
-        agentManager.startResult = .success(611)
-
-        let manager = AgentSessionManager(
-            agentManager: agentManager,
-            connectionManager: connection,
-            projectIDResolver: { threadID in
-                threadID == "thread-feature-acp" ? "project-threadmill" : nil
-            }
-        )
-
-        let startedSessionTask = Task {
-            try await manager.startSession(
-                agentConfig: AgentConfig(name: "opencode", command: "opencode", cwd: nil),
-                threadID: "thread-feature-acp"
-            )
-        }
-
-        let didSendInitialize = await waitUntilFrameCount(connection, equals: 1)
-        XCTAssertTrue(didSendInitialize)
-        try manager.handleBinaryFrame(
-            makeResponseFrame(
-                channelID: 611,
-                requestFrame: connection.sentBinaryFrames[0],
-                result: InitializeResponse(protocolVersion: 1, agentCapabilities: AgentCapabilities())
-            )
-        )
-
-        let didSendSessionNew = await waitUntilFrameCount(connection, equals: 2)
-        XCTAssertTrue(didSendSessionNew)
-        try manager.handleBinaryFrame(
-            makeResponseFrame(
-                channelID: 611,
-                requestFrame: connection.sentBinaryFrames[1],
-                result: NewSessionResponse(sessionId: SessionId("acp-session-test"))
-            )
-        )
-
-        let sessionID = try await startedSessionTask.value
+        let manager = AgentSessionManager(connectionManager: connection)
+        let sessionID = "acp-session-test"
         let conversation = ChatConversation(
             id: "conversation-1",
             threadID: "thread-feature-acp",
@@ -151,6 +114,7 @@ final class IntegrationFlowTests: XCTestCase {
         let viewModel = ChatSessionViewModel(
             agentSessionManager: manager,
             sessionID: sessionID,
+            channelID: 611,
             threadID: conversation.threadID,
             availableAgents: [AgentConfig(name: "opencode", command: "opencode", cwd: nil)]
         )
@@ -159,7 +123,7 @@ final class IntegrationFlowTests: XCTestCase {
             await viewModel.sendPrompt(text: "Ship this integration")
         }
 
-        let didSendPrompt = await waitUntilFrameCount(connection, equals: 3)
+        let didSendPrompt = await waitUntilFrameCount(connection, equals: 1)
         XCTAssertTrue(didSendPrompt)
 
         let userUpdate = SessionUpdateNotification(
@@ -179,7 +143,7 @@ final class IntegrationFlowTests: XCTestCase {
         try manager.handleBinaryFrame(
             makeResponseFrame(
                 channelID: 611,
-                requestFrame: connection.sentBinaryFrames[2],
+                requestFrame: connection.sentBinaryFrames[0],
                 result: SessionPromptResponse(stopReason: .endTurn)
             )
         )
