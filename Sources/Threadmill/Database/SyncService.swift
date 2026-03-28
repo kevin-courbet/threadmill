@@ -31,6 +31,7 @@ final class SyncService: SyncServicing {
             let threads = parseThreads(threadsResult)
             let chatSessions = parseChatSessions(snapshotResult)
             let agentStatus = parseAgentStatusByThread(chatSessions)
+            let chatSessionMetadata = parseChatSessionMetadata(chatSessions)
             let presetCount = projects.flatMap(\.presets).count
             Logger.sync.info("Parsed \(projects.count) projects, \(threads.count) threads, \(presetCount) presets — writing to DB")
             try databaseManager.replaceAllFromDaemon(projects: projects, threads: threads, remoteId: remoteId)
@@ -38,6 +39,10 @@ final class SyncService: SyncServicing {
             Logger.sync.info("DB write done — calling reloadFromDatabase")
             appState.reloadFromDatabase()
             appState.replaceAgentStatus(agentStatus)
+            appState.replaceChatSessionMetadata(
+                capabilitiesBySessionID: chatSessionMetadata.capabilitiesBySessionID,
+                sessionStateBySessionID: chatSessionMetadata.sessionStateBySessionID
+            )
             Logger.sync.info("syncFromDaemon DONE — appState.presets.count=\(self.appState.presets.count)")
         } catch {
             Logger.sync.error("Sync failed: \(error)")
@@ -225,6 +230,28 @@ final class SyncService: SyncServicing {
         return sessions
     }
 
+    private func parseChatSessionMetadata(_ sessions: [[String: Any]]) -> (
+        capabilitiesBySessionID: [String: ChatSessionCapabilities],
+        sessionStateBySessionID: [String: ChatSessionState]
+    ) {
+        var capabilitiesBySessionID: [String: ChatSessionCapabilities] = [:]
+        var sessionStateBySessionID: [String: ChatSessionState] = [:]
+
+        for session in sessions {
+            guard let sessionID = session["session_id"] as? String else {
+                continue
+            }
+
+            if let capabilities = sessionCapabilities(from: session) {
+                capabilitiesBySessionID[sessionID] = capabilities
+            }
+
+            sessionStateBySessionID[sessionID] = sessionState(from: session)
+        }
+
+        return (capabilitiesBySessionID, sessionStateBySessionID)
+    }
+
     private func syncChatSessions(_ sessions: [[String: Any]]) throws {
         for session in sessions {
             guard
@@ -274,6 +301,64 @@ final class SyncService: SyncServicing {
             return status
         }
         return "starting"
+    }
+
+    private func sessionState(from session: [String: Any]) -> ChatSessionState {
+        switch sessionStatus(from: session).trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "ready":
+            return .ready
+        case "failed":
+            let message = (session["error"] as? String) ?? "Session failed."
+            return .failed(ChatSessionStateError(message: message))
+        case "ended":
+            return .failed(ChatSessionStateError(message: "Session ended."))
+        default:
+            return .starting
+        }
+    }
+
+    private func sessionCapabilities(from session: [String: Any]) -> ChatSessionCapabilities? {
+        var hydrated = decodeChatCapabilities(from: session["capabilities"])
+
+        if let modelID = sessionModelID(from: session) {
+            if hydrated == nil {
+                hydrated = ChatSessionCapabilities()
+            }
+
+            if hydrated?.currentModelID == nil {
+                hydrated = ChatSessionCapabilities(
+                    modes: hydrated?.modes ?? [],
+                    models: hydrated?.models ?? [],
+                    currentModeID: hydrated?.currentModeID,
+                    currentModelID: modelID
+                )
+            }
+
+            if hydrated?.models.contains(where: { $0.id == modelID }) == false {
+                hydrated = ChatSessionCapabilities(
+                    modes: hydrated?.modes ?? [],
+                    models: (hydrated?.models ?? []) + [ChatModelCapability(id: modelID)],
+                    currentModeID: hydrated?.currentModeID,
+                    currentModelID: hydrated?.currentModelID
+                )
+            }
+        }
+
+        return hydrated
+    }
+
+    private func decodeChatCapabilities(from payload: Any?) -> ChatSessionCapabilities? {
+        guard let payload else {
+            return nil
+        }
+
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload)
+        else {
+            return nil
+        }
+
+        return try? JSONDecoder().decode(ChatSessionCapabilities.self, from: data)
     }
 
     private func sessionModelID(from payload: [String: Any]) -> String? {

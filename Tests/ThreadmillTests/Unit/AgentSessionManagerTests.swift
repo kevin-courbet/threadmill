@@ -48,6 +48,8 @@ final class AgentSessionManagerTests: XCTestCase {
         let otherConnection = MockDaemonConnection(state: .connected)
         let manager = AgentSessionManager(connectionManager: primaryConnection)
 
+        XCTAssertEqual(manager.reconnectEpoch, 0)
+
         var receivedUpdates: [SessionUpdateNotification] = []
         manager.attachChannel(channelID: 88, sessionID: "acp-session-2") { update in
             receivedUpdates.append(update)
@@ -63,8 +65,16 @@ final class AgentSessionManagerTests: XCTestCase {
         XCTAssertTrue(receivedUpdates.isEmpty)
 
         manager.handleConnectionStateChanged(.disconnected, on: primaryConnection)
+        XCTAssertEqual(manager.reconnectEpoch, 1)
         manager.handleBinaryFrame(makeFrame(channelID: 88, payload: Array(updatePayload)), from: primaryConnection)
         XCTAssertTrue(receivedUpdates.isEmpty)
+
+        await manager.handleConnectionReconnected(on: primaryConnection)
+        XCTAssertEqual(manager.reconnectEpoch, 2)
+
+        manager.handleConnectionStateChanged(.disconnected, on: otherConnection)
+        await manager.handleConnectionReconnected(on: otherConnection)
+        XCTAssertEqual(manager.reconnectEpoch, 2)
     }
 
     func testRequestPermissionRequestIsAutoApproved() async throws {

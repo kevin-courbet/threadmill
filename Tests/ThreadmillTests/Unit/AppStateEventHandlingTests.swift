@@ -114,11 +114,11 @@ final class AppStateEventHandlingTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(appState.chatCapabilitiesByThreadID["thread-1"]?.modes.map(\.id), ["chat", "plan"])
-        XCTAssertEqual(appState.chatCapabilitiesByThreadID["thread-1"]?.models.map(\.id), ["gpt-5", "claude-opus-4-6"])
-        XCTAssertEqual(appState.chatCapabilitiesByThreadID["thread-1"]?.currentModeID, "plan")
-        XCTAssertEqual(appState.chatCapabilitiesByThreadID["thread-1"]?.currentModelID, "claude-opus-4-6")
-        if case .ready = appState.chatSessionStateByThreadID["thread-1"] {
+        XCTAssertEqual(appState.chatCapabilitiesBySessionID["sess-1"]?.modes.map(\.id), ["chat", "plan"])
+        XCTAssertEqual(appState.chatCapabilitiesBySessionID["sess-1"]?.models.map(\.id), ["gpt-5", "claude-opus-4-6"])
+        XCTAssertEqual(appState.chatCapabilitiesBySessionID["sess-1"]?.currentModeID, "plan")
+        XCTAssertEqual(appState.chatCapabilitiesBySessionID["sess-1"]?.currentModelID, "claude-opus-4-6")
+        if case .ready = appState.chatSessionStateBySessionID["sess-1"] {
             XCTAssertTrue(true)
         } else {
             XCTFail("Expected chat session state to become ready")
@@ -139,10 +139,45 @@ final class AppStateEventHandlingTests: XCTestCase {
             ]
         )
 
-        guard case let .failed(error) = appState.chatSessionStateByThreadID["thread-1"] else {
+        guard case let .failed(error) = appState.chatSessionStateBySessionID["sess-1"] else {
             return XCTFail("Expected failed state")
         }
         XCTAssertEqual(error.localizedDescription, "session crashed")
+    }
+
+    func testHandleDaemonEventChatSessionReadyDoesNotOverwriteOtherSessionInSameThread() {
+        let (_, _, _, _, _, appState) = makeConfiguredAppStateWithDoubles()
+
+        appState.handleDaemonEvent(
+            method: "chat.session_ready",
+            params: [
+                "thread_id": "thread-1",
+                "session_id": "sess-a",
+                "capabilities": [
+                    "models": [
+                        "availableModels": [["id": "gpt-5"]],
+                        "currentModelId": "gpt-5",
+                    ],
+                ],
+            ]
+        )
+
+        appState.handleDaemonEvent(
+            method: "chat.session_ready",
+            params: [
+                "thread_id": "thread-1",
+                "session_id": "sess-b",
+                "capabilities": [
+                    "models": [
+                        "availableModels": [["id": "claude-opus-4-6"]],
+                        "currentModelId": "claude-opus-4-6",
+                    ],
+                ],
+            ]
+        )
+
+        XCTAssertEqual(appState.chatCapabilitiesBySessionID["sess-a"]?.currentModelID, "gpt-5")
+        XCTAssertEqual(appState.chatCapabilitiesBySessionID["sess-b"]?.currentModelID, "claude-opus-4-6")
     }
 
     func testHandleDaemonEventChatSessionCreatedTriggersSync() async {
@@ -167,7 +202,7 @@ final class AppStateEventHandlingTests: XCTestCase {
     func testDisconnectResetsAgentStatus() {
         let (_, _, _, _, _, appState) = makeConfiguredAppStateWithDoubles()
         appState.agentStatus["thread-1"] = AgentActivityInfo.from(rawStatus: "busy", workerCount: 1)
-        appState.chatCapabilitiesByThreadID["thread-1"] = ChatSessionCapabilities(
+        appState.chatCapabilitiesBySessionID["sess-1"] = ChatSessionCapabilities(
             modes: [ChatModeCapability(id: "chat")],
             models: [ChatModelCapability(id: "gpt-5")]
         )
@@ -175,8 +210,8 @@ final class AppStateEventHandlingTests: XCTestCase {
         appState.connectionStatus = .disconnected
 
         XCTAssertTrue(appState.agentStatus.isEmpty)
-        XCTAssertTrue(appState.chatCapabilitiesByThreadID.isEmpty)
-        XCTAssertTrue(appState.chatSessionStateByThreadID.isEmpty)
+        XCTAssertTrue(appState.chatCapabilitiesBySessionID.isEmpty)
+        XCTAssertTrue(appState.chatSessionStateBySessionID.isEmpty)
     }
 
     func testHandleDaemonEventCloneProgressDoesNotTriggerSync() async {

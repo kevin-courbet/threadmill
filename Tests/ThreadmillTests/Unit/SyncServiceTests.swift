@@ -68,6 +68,47 @@ final class SyncServiceTests: XCTestCase {
         XCTAssertEqual(appState.agentStatus["thread-1"]?.status, .busy(workerCount: 2))
     }
 
+    func testSyncFromDaemonHydratesChatCapabilitiesAndStateFromSnapshotMetadata() async {
+        let connection = MockDaemonConnection(state: .connected)
+        connection.requestHandler = { method, _, _ in
+            switch method {
+            case "project.list", "thread.list":
+                return [[String: Any]]()
+            case "state.snapshot":
+                return [
+                    "chat_sessions": [
+                        [
+                            "thread_id": "thread-1",
+                            "session_id": "session-1",
+                            "status": "ready",
+                            "model_id": "gpt-5",
+                        ],
+                    ],
+                ]
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let appState = AppState()
+        let syncService = SyncService(
+            connectionManager: connection,
+            databaseManager: MockDatabaseManager(),
+            appState: appState,
+            remoteId: "remote-1"
+        )
+
+        await syncService.syncFromDaemon()
+
+        XCTAssertEqual(appState.chatCapabilitiesBySessionID["session-1"]?.currentModelID, "gpt-5")
+        XCTAssertEqual(appState.chatCapabilitiesBySessionID["session-1"]?.models.map(\.id), ["gpt-5"])
+        if case .ready = appState.chatSessionStateBySessionID["session-1"] {
+            XCTAssertTrue(true)
+        } else {
+            XCTFail("Expected chat session state to be ready")
+        }
+    }
+
     func testSyncFromDaemonUpsertsChatSessionsFromThreadSnapshots() async {
         let connection = MockDaemonConnection(state: .connected)
         connection.requestHandler = { method, _, _ in

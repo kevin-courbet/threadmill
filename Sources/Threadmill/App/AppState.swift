@@ -8,6 +8,8 @@ enum AppStateError: LocalizedError {
     case connectionNotReady
     case invalidGitStatusResponse
     case invalidProjectResponse
+    case databaseUnavailable
+    case conversationNotFound(String)
     case defaultWorkspaceProjectAlreadyLinked(projectID: String, repoID: String)
     case provisioningUnavailable
 
@@ -21,6 +23,10 @@ enum AppStateError: LocalizedError {
             "Invalid response for file.git_status."
         case .invalidProjectResponse:
             "Invalid response while preparing the project."
+        case .databaseUnavailable:
+            "Local database is unavailable."
+        case let .conversationNotFound(id):
+            "Conversation \(id) was not found."
         case let .defaultWorkspaceProjectAlreadyLinked(projectID, repoID):
             "Project \(projectID) is already linked to repo \(repoID), refusing to relink as cross-project workspace."
         case .provisioningUnavailable:
@@ -138,8 +144,8 @@ final class AppState {
                 stopStatsTimer()
                 systemStats = nil
                 agentStatus = [:]
-                chatCapabilitiesByThreadID = [:]
-                chatSessionStateByThreadID = [:]
+                chatCapabilitiesBySessionID = [:]
+                chatSessionStateBySessionID = [:]
             }
         }
     }
@@ -156,8 +162,8 @@ final class AppState {
     }
     var threads: [ThreadModel] = []
     var agentStatus: [String: AgentActivityInfo] = [:]
-    var chatCapabilitiesByThreadID: [String: ChatSessionCapabilities] = [:]
-    var chatSessionStateByThreadID: [String: ChatSessionState] = [:]
+    var chatCapabilitiesBySessionID: [String: ChatSessionCapabilities] = [:]
+    var chatSessionStateBySessionID: [String: ChatSessionState] = [:]
     var systemStats: SystemStatsResult?
     var pinnedThreadIDs: Set<String> = {
         guard let data = UserDefaults.standard.data(forKey: "pinnedThreadIDs"),
@@ -564,6 +570,14 @@ final class AppState {
         agentStatus = snapshot
     }
 
+    func replaceChatSessionMetadata(
+        capabilitiesBySessionID: [String: ChatSessionCapabilities],
+        sessionStateBySessionID: [String: ChatSessionState]
+    ) {
+        chatCapabilitiesBySessionID = capabilitiesBySessionID
+        chatSessionStateBySessionID = sessionStateBySessionID
+    }
+
     func startAgent(projectID: String, agentName: String) async throws -> UInt16 {
         guard let connection = connectionForProject(id: projectID) as? AgentManaging else {
             throw AppStateError.connectionManagerUnavailable
@@ -625,6 +639,21 @@ final class AppState {
             throw AppStateError.connectionManagerUnavailable
         }
         return try await connection.chatHistory(threadID: threadID, sessionID: sessionID, cursor: cursor)
+    }
+
+    func bindConversation(_ conversationID: String, toChatSessionID sessionID: String) throws -> ChatConversation {
+        guard let databaseManager else {
+            throw AppStateError.databaseUnavailable
+        }
+
+        guard var conversation = try databaseManager.conversation(id: conversationID) else {
+            throw AppStateError.conversationNotFound(conversationID)
+        }
+
+        conversation.linkSession(sessionID)
+        conversation.status = ChatDefaults.startingStatus
+        try databaseManager.saveConversation(conversation)
+        return conversation
     }
 
     func scheduleAttachSelectedPreset() {
@@ -1332,7 +1361,7 @@ final class AppState {
             return
         }
 
-        chatSessionStateByThreadID[session.threadID] = .starting
+        chatSessionStateBySessionID[session.sessionID] = .starting
 
         upsertConversation(
             threadID: session.threadID,
@@ -1359,9 +1388,9 @@ final class AppState {
         }
 
         if let capabilities = decodeChatCapabilities(from: params) {
-            chatCapabilitiesByThreadID[threadID] = capabilities
+            chatCapabilitiesBySessionID[sessionID] = capabilities
         }
-        chatSessionStateByThreadID[threadID] = .ready
+        chatSessionStateBySessionID[sessionID] = .ready
 
         upsertConversation(
             threadID: threadID,
@@ -1376,16 +1405,16 @@ final class AppState {
     }
 
     private func handleChatSessionFailed(_ params: [String: Any]?) {
-        guard
-            let threadID = params?["thread_id"] as? String
-        else {
+        guard let threadID = params?["thread_id"] as? String else {
             Logger.state.error("Invalid chat.session_failed payload: \(String(describing: params))")
             return
         }
 
-        chatCapabilitiesByThreadID.removeValue(forKey: threadID)
         let errorMessage = (params?["error"] as? String) ?? "Session failed."
-        chatSessionStateByThreadID[threadID] = .failed(ChatSessionStateError(message: errorMessage))
+        if let sessionID = params?["session_id"] as? String {
+            chatCapabilitiesBySessionID.removeValue(forKey: sessionID)
+            chatSessionStateBySessionID[sessionID] = .failed(ChatSessionStateError(message: errorMessage))
+        }
 
         if let sessionID = params?["session_id"] as? String {
             upsertConversation(
@@ -1410,8 +1439,8 @@ final class AppState {
         }
 
         agentStatus.removeValue(forKey: threadID)
-        chatCapabilitiesByThreadID.removeValue(forKey: threadID)
-        chatSessionStateByThreadID[threadID] = .failed(ChatSessionStateError(message: "Session ended."))
+        chatCapabilitiesBySessionID.removeValue(forKey: sessionID)
+        chatSessionStateBySessionID[sessionID] = .failed(ChatSessionStateError(message: "Session ended."))
 
         upsertConversation(
             threadID: threadID,

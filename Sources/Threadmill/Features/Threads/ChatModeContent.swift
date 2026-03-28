@@ -17,7 +17,9 @@ struct ChatModeContent: View {
         if let chatConversationService = appState.chatConversationService {
             let selectedConversation = selectedConversation
             let selectedChannelID = selectedConversation.flatMap { channelByConversationID[$0.id] }
-            let capabilities = appState.chatCapabilitiesByThreadID[thread.id] ?? ChatSessionCapabilities()
+            let reconnectEpoch = appState.agentSessionManager?.reconnectEpoch ?? 0
+            let capabilities = selectedConversation?.agentSessionID.flatMap { appState.chatCapabilitiesBySessionID[$0] }
+                ?? ChatSessionCapabilities()
             let sessionState = resolveSessionState(for: selectedConversation)
             let selectedProjectAgents = appState.selectedProject?.agents ?? []
             let availableAgents = selectedProjectAgents.isEmpty
@@ -64,8 +66,11 @@ struct ChatModeContent: View {
                 .task(id: selectedConversationID) {
                     await refreshConversationState(with: chatConversationService)
                 }
-                .task(id: selectedConversation?.id) {
+                .task(id: attachTaskID(conversation: selectedConversation, reconnectEpoch: reconnectEpoch)) {
                     await attachChannelIfNeeded(for: selectedConversation)
+                }
+                .onChange(of: reconnectEpoch) { _, _ in
+                    channelByConversationID = [:]
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -103,25 +108,57 @@ struct ChatModeContent: View {
     }
 
     private func attachChannelIfNeeded(for conversation: ChatConversation?) async {
+        guard let conversation, channelByConversationID[conversation.id] == nil else {
+            return
+        }
+
+        let resolvedConversation: ChatConversation
+        do {
+            resolvedConversation = try await ChatModeActions.ensureConversationSession(
+                threadID: thread.id,
+                conversation: conversation,
+                appState: appState
+            )
+        } catch {
+            return
+        }
+
         guard
-            let conversation,
-            let sessionID = conversation.agentSessionID,
-            !sessionID.isEmpty,
-            channelByConversationID[conversation.id] == nil
+            let sessionID = resolvedConversation.agentSessionID,
+            !sessionID.isEmpty
         else {
             return
         }
 
-        do {
-            let channelID = try await appState.chatAttach(threadID: thread.id, sessionID: sessionID)
-            channelByConversationID[conversation.id] = channelID
-        } catch {
-            return
+        let maxRetryAttempts = 5
+        for attempt in 1 ... maxRetryAttempts {
+            guard !Task.isCancelled, channelByConversationID[resolvedConversation.id] == nil else {
+                return
+            }
+
+            do {
+                let channelID = try await appState.chatAttach(threadID: thread.id, sessionID: sessionID)
+                channelByConversationID[resolvedConversation.id] = channelID
+                return
+            } catch {
+                guard appState.connectionStatus.isConnected, attempt < maxRetryAttempts else {
+                    return
+                }
+                let delayNanoseconds = UInt64(200_000_000 * attempt)
+                try? await Task.sleep(nanoseconds: delayNanoseconds)
+            }
         }
     }
 
+    private func attachTaskID(conversation: ChatConversation?, reconnectEpoch: UInt64) -> String {
+        let conversationID = conversation?.id ?? "none"
+        return "\(conversationID):\(reconnectEpoch)"
+    }
+
     private func resolveSessionState(for conversation: ChatConversation?) -> ChatSessionState {
-        if let state = appState.chatSessionStateByThreadID[thread.id] {
+        if let sessionID = conversation?.agentSessionID,
+           let state = appState.chatSessionStateBySessionID[sessionID]
+        {
             return state
         }
 
@@ -174,6 +211,20 @@ final class ChatSessionViewModelCache {
 
 @MainActor
 enum ChatModeActions {
+    static func ensureConversationSession(
+        threadID: String,
+        conversation: ChatConversation,
+        appState: AppState
+    ) async throws -> ChatConversation {
+        let existingSessionID = conversation.agentSessionID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard existingSessionID.isEmpty else {
+            return conversation
+        }
+
+        let startResponse = try await appState.chatStart(threadID: threadID, agentName: conversation.agentType)
+        return try appState.bindConversation(conversation.id, toChatSessionID: startResponse.sessionID)
+    }
+
     static func refreshChatConversations(
         for thread: ThreadModel,
         appState: AppState,

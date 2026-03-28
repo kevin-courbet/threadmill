@@ -42,6 +42,8 @@ final class AgentSessionManager {
     private let connectionManager: any ConnectionManaging
     private let managedConnectionID: ObjectIdentifier
 
+    private(set) var reconnectEpoch: UInt64 = 0
+
     private var channelsByID: [UInt16: ChannelContext] = [:]
     private var incomingBuffers: [UInt16: Data] = [:]
     private var nextRequestIDByChannel: [UInt16: Int] = [:]
@@ -149,6 +151,7 @@ final class AgentSessionManager {
         switch status {
         case .disconnected, .reconnecting:
             markAllChannelsDisconnected()
+            reconnectEpoch &+= 1
         case .connecting, .connected:
             break
         }
@@ -158,6 +161,8 @@ final class AgentSessionManager {
         guard isManagedConnection(connection) else {
             return
         }
+
+        reconnectEpoch &+= 1
     }
 
     func handleBinaryFrame(_ frame: Data) {
