@@ -65,6 +65,11 @@ let package = Package(
             name: "ThreadmillTests",
             dependencies: ["Threadmill"],
             path: "Tests/ThreadmillTests"
+        ),
+        .testTarget(
+            name: "ThreadmillUITests",
+            dependencies: ["Threadmill"],
+            path: "Tests/ThreadmillUITests"
         )
     ]
 )

@@ -74,6 +74,7 @@ struct ChatInputBar: View {
                     } : nil
                 )
                 .frame(height: editorHeight)
+                .accessibilityIdentifier("chat.input")
             }
             .frame(height: editorHeight)
         }
@@ -115,6 +116,7 @@ struct ChatInputBar: View {
                 .font(.subheadline.weight(.medium))
                 .lineLimit(1)
                 .foregroundStyle(viewModel.availableModels.isEmpty ? .secondary : .primary)
+                .accessibilityIdentifier("chat.model.label")
         }
         .menuStyle(.borderlessButton)
         .disabled(!viewModel.isInputEnabled || viewModel.isStreaming || viewModel.availableModels.isEmpty)
@@ -182,6 +184,7 @@ private struct ExpandingTextView: NSViewRepresentable {
         scrollView.hasHorizontalScroller = false
 
         let textView = SubmitTextView()
+        textView.setAccessibilityIdentifier("chat.input")
         textView.delegate = context.coordinator
         textView.onSubmit = onSubmit
         textView.onCancel = onCancel
