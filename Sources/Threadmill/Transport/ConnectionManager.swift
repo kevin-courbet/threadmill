@@ -50,6 +50,7 @@ extension ConnectionManager: AgentManaging {
 
 extension ConnectionManager: ChatManaging {
     func chatStart(threadID: String, agentName: String) async throws -> ChatStartResponse {
+        Logger.chat.info("chat.rpc chat.start thread=\(threadID, privacy: .public) agent=\(agentName, privacy: .public)")
         let result = try await request(
             method: "chat.start",
             params: [
@@ -58,7 +59,9 @@ extension ConnectionManager: ChatManaging {
             ],
             timeout: 20
         )
-        return try decodeRPCResult(result, as: ChatStartResponse.self)
+        let decoded = try decodeRPCResult(result, as: ChatStartResponse.self)
+        Logger.chat.info("chat.rpc chat.start ok thread=\(threadID, privacy: .public) session=\(decoded.sessionID, privacy: .public)")
+        return decoded
     }
 
     func chatLoad(threadID: String, sessionID: String) async throws -> ChatLoadResponse {
@@ -94,6 +97,7 @@ extension ConnectionManager: ChatManaging {
     }
 
     func chatAttach(threadID: String, sessionID: String) async throws -> UInt16 {
+        Logger.chat.info("chat.rpc chat.attach thread=\(threadID, privacy: .public) session=\(sessionID, privacy: .public)")
         let result = try await request(
             method: "chat.attach",
             params: [
@@ -102,7 +106,9 @@ extension ConnectionManager: ChatManaging {
             ],
             timeout: 20
         )
-        return try decodeRPCResult(result, as: ChatAttachResponse.self).channelID
+        let channelID = try decodeRPCResult(result, as: ChatAttachResponse.self).channelID
+        Logger.chat.info("chat.rpc chat.attach ok thread=\(threadID, privacy: .public) session=\(sessionID, privacy: .public) channel=\(channelID)")
+        return channelID
     }
 
     func chatDetach(channelID: UInt16) async throws {

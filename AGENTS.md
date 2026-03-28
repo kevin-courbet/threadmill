@@ -249,6 +249,7 @@ All production logging uses `os.Logger` (subsystem `dev.threadmill`). Categories
 - **Every test must verify behavior** — state transitions, error paths, protocol contracts, or business logic. See `docs/agents/unit-testing.md`.
 - **Never write source-reading tests** — reading `.swift` files and asserting on string contents is banned.
 - **Never write trivially shallow tests** — don't test struct init field assignment or mock recording.
+- **Never use mock server patterns** — fake server/hardcoded response tests (including the deleted `MockSpindleServer` pattern) are banned; use real Spindle `TestHarness` e2e coverage.
 - Swift tests use `XCTest`, mock doubles in `TestDoubles.swift`, DI via protocols in `Abstractions.swift`.
 - Spindle tests are integration tests against a real daemon instance (test helpers in `tests/common/`).
 - All tests `@MainActor` on the Swift side (AppState and most components are MainActor-bound).

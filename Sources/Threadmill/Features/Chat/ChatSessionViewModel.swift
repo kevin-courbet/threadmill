@@ -37,7 +37,10 @@ final class ChatSessionViewModel {
     var sessionState: ChatSessionState
 
     var isInputEnabled: Bool {
-        if case .ready = sessionState {
+        if case .ready = sessionState,
+           sessionID != nil,
+           channelID != nil
+        {
             return true
         }
         return false
@@ -244,7 +247,7 @@ final class ChatSessionViewModel {
 
         guard let channelID, let sessionID else {
             Logger.chat.error(
-                "chat.vm.send_prompt ignored thread=\(self.threadID ?? "nil", privacy: .public) reason=session_not_attached session=\(self.sessionID ?? "nil", privacy: .public) channel=\(self.channelID.map(String.init) ?? "nil", privacy: .public)"
+                "chat.vm.send_prompt ignored thread=\(self.threadID ?? "nil", privacy: .public) reason=session_not_attached session=\(self.sessionID ?? "nil", privacy: .public) channel=\(self.channelID.map(String.init) ?? "nil", privacy: .public) state=\(String(describing: self.sessionState), privacy: .public)"
             )
             return
         }

@@ -19,7 +19,8 @@ struct ChatModeContent: View {
             let selectedConversation = selectedConversation
             let selectedChannelID = selectedConversation.flatMap { channelByConversationID[$0.id] }
             let reconnectEpoch = appState.agentSessionManager?.reconnectEpoch ?? 0
-            let connectionReady = appState.connectionStatus.isConnected
+            let connectionReady = appState.connectionForThread(id: thread.id)?.state.isConnected ?? false
+            let connectionLabel = appState.connectionForThread(id: thread.id)?.state.label ?? "unavailable"
             let capabilities = selectedConversation?.agentSessionID.flatMap { appState.chatCapabilitiesBySessionID[$0] }
                 ?? ChatSessionCapabilities()
             let sessionState = resolveSessionState(for: selectedConversation)
@@ -69,9 +70,11 @@ struct ChatModeContent: View {
                     await refreshConversationState(with: chatConversationService)
                 }
                 .task(id: attachTaskID(
+                    threadID: thread.id,
                     conversation: selectedConversation,
                     reconnectEpoch: reconnectEpoch,
-                    connectionReady: connectionReady
+                    connectionReady: connectionReady,
+                    connectionLabel: connectionLabel
                 )) {
                     await attachChannelIfNeeded(for: selectedConversation)
                 }
@@ -120,13 +123,19 @@ struct ChatModeContent: View {
     }
 
     private func attachChannelIfNeeded(for conversation: ChatConversation?) async {
+        if conversation == nil {
+            Logger.chat.info(
+                "chat.attach skipped thread=\(self.thread.id, privacy: .public) reason=no_selected_conversation"
+            )
+        }
         guard let conversation, channelByConversationID[conversation.id] == nil else {
             return
         }
 
-        guard appState.connectionStatus.isConnected else {
+        let threadConnectionStatus = appState.connectionForThread(id: thread.id)?.state
+        guard threadConnectionStatus?.isConnected == true else {
             Logger.chat.info(
-                "chat.attach deferred thread=\(self.thread.id, privacy: .public) conversation=\(conversation.id, privacy: .public) reason=connection_not_ready"
+                "chat.attach deferred thread=\(self.thread.id, privacy: .public) conversation=\(conversation.id, privacy: .public) reason=connection_not_ready status=\(threadConnectionStatus?.label ?? "unavailable", privacy: .public)"
             )
             return
         }
@@ -173,7 +182,8 @@ struct ChatModeContent: View {
                 )
                 return
             } catch {
-                guard appState.connectionStatus.isConnected, attempt < maxRetryAttempts else {
+                let stillConnected = appState.connectionForThread(id: thread.id)?.state.isConnected ?? false
+                guard stillConnected, attempt < maxRetryAttempts else {
                     Logger.chat.error(
                         "chat.attach failed thread=\(self.thread.id, privacy: .public) conversation=\(resolvedConversation.id, privacy: .public) session=\(sessionID, privacy: .public) attempt=\(attempt)/\(maxRetryAttempts): \(error)"
                     )
@@ -188,10 +198,16 @@ struct ChatModeContent: View {
         }
     }
 
-    private func attachTaskID(conversation: ChatConversation?, reconnectEpoch: UInt64, connectionReady: Bool) -> String {
+    private func attachTaskID(
+        threadID: String,
+        conversation: ChatConversation?,
+        reconnectEpoch: UInt64,
+        connectionReady: Bool,
+        connectionLabel: String
+    ) -> String {
         let conversationID = conversation?.id ?? "none"
         let ready = connectionReady ? "connected" : "not-connected"
-        return "\(conversationID):\(reconnectEpoch):\(ready)"
+        return "\(threadID):\(conversationID):\(reconnectEpoch):\(ready):\(connectionLabel)"
     }
 
     private func resolveSessionState(for conversation: ChatConversation?) -> ChatSessionState {

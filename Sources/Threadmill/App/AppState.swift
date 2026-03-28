@@ -594,8 +594,11 @@ final class AppState {
 
     func chatStart(threadID: String, agentName: String) async throws -> ChatStartResponse {
         guard let connection = connectionForThread(id: threadID) as? ChatManaging else {
+            Logger.chat.error("chat.start aborted thread=\(threadID, privacy: .public) reason=connection_manager_unavailable")
             throw AppStateError.connectionManagerUnavailable
         }
+        let connectionState = (connection as? ConnectionManaging)?.state.label ?? "unknown"
+        Logger.chat.info("chat.start request thread=\(threadID, privacy: .public) agent=\(agentName, privacy: .public) connection=\(connectionState, privacy: .public)")
         return try await connection.chatStart(threadID: threadID, agentName: agentName)
     }
 
@@ -622,8 +625,11 @@ final class AppState {
 
     func chatAttach(threadID: String, sessionID: String) async throws -> UInt16 {
         guard let connection = connectionForThread(id: threadID) as? ChatManaging else {
+            Logger.chat.error("chat.attach aborted thread=\(threadID, privacy: .public) session=\(sessionID, privacy: .public) reason=connection_manager_unavailable")
             throw AppStateError.connectionManagerUnavailable
         }
+        let connectionState = (connection as? ConnectionManaging)?.state.label ?? "unknown"
+        Logger.chat.info("chat.attach request thread=\(threadID, privacy: .public) session=\(sessionID, privacy: .public) connection=\(connectionState, privacy: .public)")
         return try await connection.chatAttach(threadID: threadID, sessionID: sessionID)
     }
 

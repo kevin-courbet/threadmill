@@ -77,14 +77,20 @@ final class ChatE2ETests: XCTestCase {
     }
 
     private func ensureChatSessionExists(_ h: TestHarness) throws {
+        let sessionTabs = h.app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH 'session.tab.' AND NOT identifier BEGINSWITH 'session.tab.close.'")
+        )
         let sessionState = h.app.descendants(matching: .any).matching(identifier: "chat.session.state").firstMatch
-        if !sessionState.waitForExistence(timeout: Self.uiTimeout) {
+        if sessionTabs.count == 0 {
             let addButton = h.app.descendants(matching: .any).matching(identifier: "chat.session.add").firstMatch
             XCTAssertTrue(addButton.waitForExistence(timeout: Self.uiTimeout), "chat.session.add not found")
             addButton.click()
             h.screenshot(name: "chat-step-03a-session-created", testCase: self)
-            XCTAssertTrue(sessionState.waitForExistence(timeout: Self.launchTimeout), "chat.session.state missing after creating session")
+        } else {
+            sessionTabs.firstMatch.click()
         }
+
+        XCTAssertTrue(sessionState.waitForExistence(timeout: Self.launchTimeout), "chat.session.state missing after selecting session")
 
         let readyPredicate = NSPredicate(format: "value CONTAINS[c] 'ready'")
         let readyExpectation = XCTNSPredicateExpectation(predicate: readyPredicate, object: sessionState)

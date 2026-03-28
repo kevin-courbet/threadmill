@@ -4,16 +4,20 @@ import XCTest
 
 @MainActor
 final class ChatSessionViewModelTests: XCTestCase {
-    func testSessionStateGatesInputUntilReady() {
+    func testSessionStateRequiresReadySessionAndChannelBeforeInputIsEnabled() {
+        let connection = MockDaemonConnection(state: .connected)
+        let manager = AgentSessionManager(connectionManager: connection)
         let viewModel = ChatSessionViewModel(
-            agentSessionManager: nil,
+            agentSessionManager: manager,
             sessionState: .starting
         )
 
         XCTAssertFalse(viewModel.isInputEnabled)
 
         viewModel.updateSessionState(.ready)
+        XCTAssertFalse(viewModel.isInputEnabled)
 
+        viewModel.configureSession(sessionID: "session-1", channelID: 42)
         XCTAssertTrue(viewModel.isInputEnabled)
     }
 

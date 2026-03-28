@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-25
+updated: 2026-03-28
 ---
 
 # Unit Testing Standards
@@ -60,6 +60,12 @@ func testMockRecordsCalls() {
 If a test requires 5+ mock setup lines to verify one trivial property, the test is testing wiring, not behavior. Either:
 - Test at a higher level where the wiring is exercised naturally
 - Don't test it — the compiler and integration tests cover wiring
+
+### Banned: Mock server patterns
+
+- Any test that stands up a fake server returning hardcoded responses and asserts those responses arrive
+- `MockSpindleServer` was deleted because it implemented its own ACP handshake, event shapes, and channel routing — a parallel universe that drifted silently from production
+- For e2e validation, use `TestHarness` against real Spindle (`UITests/ThreadmillUITests` pattern)
 
 ## What Makes a Good Unit Test
 
