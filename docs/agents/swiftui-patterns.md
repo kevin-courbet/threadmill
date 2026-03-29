@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-07
+updated: 2026-03-29
 ---
 
 # SwiftUI & AppKit Patterns
@@ -176,6 +176,101 @@ Wire `⌘,` via:
 ```
 
 Settings root uses `NavigationSplitView` with sidebar list + detail pane. Detail panes use `Form { }.formStyle(.grouped)`.
+
+---
+
+## @Observable + @State: The Rules
+
+iOS 17+ replaced `ObservableObject`/`@Published`/`@StateObject`/`@ObservedObject` with `@Observable`. The new model is simpler but has critical rules. Violating them causes **silent observation failures** — views render once and never update, with no warnings or errors.
+
+### The mental model
+
+With `@Observable`, SwiftUI tracks **which specific properties** each view reads during body evaluation and re-renders **only that view** when **those specific properties** change. This is property-level tracking (not object-level like `ObservableObject` was).
+
+### The rules
+
+| View role | Wrapper | Example |
+|---|---|---|
+| **Owner** (creates the model) | `@State private var` | `@State private var vm = MyViewModel()` |
+| **Consumer** (receives the model) | Plain `let` or `var` | `let vm: MyViewModel` |
+| **Needs two-way binding** ($) | `@Bindable var` | `@Bindable var vm: MyViewModel` (for TextField, Toggle, etc.) |
+| **Shared via environment** | `@Environment` | `@Environment(MyViewModel.self) private var vm` |
+
+### BANNED: @State on a received @Observable
+
+```swift
+// BROKEN — observation silently fails
+struct ChatSessionView: View {
+    @State var viewModel: ChatSessionViewModel  // ← NEVER do this
+    var body: some View {
+        // viewModel.channelID changes → this body NEVER re-runs
+        ChatInputBar(viewModel: viewModel)
+    }
+}
+
+// CORRECT — plain var, observation works
+struct ChatSessionView: View {
+    var viewModel: ChatSessionViewModel  // ← just a var
+    var body: some View {
+        ChatInputBar(viewModel: viewModel)  // re-renders on property changes
+    }
+}
+```
+
+**Why it breaks:** `@State` caches the value across view struct recreations. For reference types, it preserves the identity (same pointer). But internally, `@State`'s storage wrapper interferes with `@Observable`'s property access tracking — SwiftUI doesn't register the property reads that happen through `@State`'s wrapped value, so it never schedules re-renders when those properties change.
+
+**Why it's silent:** The view renders once with initial values. No crash, no warning, no error. Properties change but the body never re-evaluates. You only discover it by adding logging inside computed properties and seeing they're never called again.
+
+### @State IS correct for the owner
+
+The view that **creates** the model uses `@State` — this is correct and necessary:
+
+```swift
+// App-level or root view: @State creates and owns the model
+struct ContentView: View {
+    @State private var vm = ChatSessionViewModel()  // ← owner, correct
+
+    var body: some View {
+        ChatSessionView(viewModel: vm)  // passes to child as plain var
+    }
+}
+```
+
+`@State` here ensures the model is created once and persists across view rebuilds. Observation works because SwiftUI tracks property access when the model is read through child views (which hold it as plain `var`/`let`).
+
+### @State init gotcha: phantom instances
+
+Unlike `@StateObject` (which used `@autoclosure` for lazy init), `@State`'s initializer eagerly evaluates its argument. This means **every time SwiftUI rebuilds the view struct**, it creates a new instance of your model, then immediately discards it and restores the cached original.
+
+```swift
+@State private var vm = ExpensiveViewModel()
+// ExpensiveViewModel.init() runs on EVERY parent rebuild
+// SwiftUI throws away the new instance and keeps the original
+// Side effects in init() (network calls, timers, observers) stack up
+```
+
+**Fix:** Keep `init()` side-effect-free. Move setup to `.task {}`:
+
+```swift
+struct RootView: View {
+    @State private var vm = MyViewModel()
+
+    var body: some View {
+        ContentView(vm: vm)
+            .task { vm.setup() }  // runs once when view appears
+    }
+}
+```
+
+### Summary cheat sheet
+
+```
+Owner creates model     → @State private var vm = Model()
+Child receives model    → let vm: Model  (or var vm: Model)
+Child needs $ bindings  → @Bindable var vm: Model
+Deep injection          → .environment(vm) + @Environment(Model.self)
+Combine streams         → still use Combine (it's not replaced)
+```
 
 ---
 

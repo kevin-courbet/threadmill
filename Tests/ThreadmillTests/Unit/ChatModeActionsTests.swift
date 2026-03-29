@@ -4,6 +4,110 @@ import XCTest
 
 @MainActor
 final class ChatModeActionsTests: XCTestCase {
+    func testEnsureConversationSessionStartsRemoteSessionAndPersistsConversationLink() async throws {
+        let appState = AppState()
+        let database = MockDatabaseManager()
+        let connection = MockDaemonConnection(state: .connected)
+        let syncService = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+        let chatConversationService = MockChatConversationService()
+
+        let pool = makeSingleRemoteConnectionPool(connection: connection)
+        appState.configure(
+            connectionPool: pool,
+            databaseManager: database,
+            syncService: syncService,
+            multiplexer: multiplexer,
+            chatConversationService: chatConversationService
+        )
+
+        let thread = ThreadModel(
+            id: "thread-1",
+            projectId: "project-1",
+            name: "feature/chat",
+            branch: "feature/chat",
+            worktreePath: "/tmp/worktree",
+            status: .active,
+            sourceType: "new_feature",
+            createdAt: Date(),
+            tmuxSession: "tm_thread-1",
+            portOffset: nil
+        )
+        appState.threads = [thread]
+
+        var conversation = ChatConversation(threadID: thread.id)
+        conversation.id = "conversation-1"
+        conversation.agentType = "opencode"
+        conversation.agentSessionID = nil
+        database.conversations = [conversation]
+
+        connection.requestHandler = { method, _, _ in
+            if method == "chat.start" {
+                return ["session_id": "session-42"]
+            }
+            throw TestError.missingStub
+        }
+
+        let updatedConversation = try await ChatModeActions.ensureConversationSession(
+            threadID: thread.id,
+            conversation: conversation,
+            appState: appState
+        )
+
+        XCTAssertEqual(updatedConversation.agentSessionID, "session-42")
+        XCTAssertEqual(try database.conversation(id: conversation.id)?.agentSessionID, "session-42")
+        XCTAssertEqual(connection.requests.map(\.method), ["chat.start"])
+        XCTAssertEqual(connection.requests.first?.params?["thread_id"] as? String, thread.id)
+        XCTAssertEqual(connection.requests.first?.params?["agent_name"] as? String, "opencode")
+    }
+
+    func testEnsureConversationSessionSkipsRemoteStartWhenSessionAlreadyExists() async throws {
+        let appState = AppState()
+        let database = MockDatabaseManager()
+        let connection = MockDaemonConnection(state: .connected)
+        let syncService = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+        let chatConversationService = MockChatConversationService()
+
+        let pool = makeSingleRemoteConnectionPool(connection: connection)
+        appState.configure(
+            connectionPool: pool,
+            databaseManager: database,
+            syncService: syncService,
+            multiplexer: multiplexer,
+            chatConversationService: chatConversationService
+        )
+
+        let thread = ThreadModel(
+            id: "thread-1",
+            projectId: "project-1",
+            name: "feature/chat",
+            branch: "feature/chat",
+            worktreePath: "/tmp/worktree",
+            status: .active,
+            sourceType: "new_feature",
+            createdAt: Date(),
+            tmuxSession: "tm_thread-1",
+            portOffset: nil
+        )
+        appState.threads = [thread]
+
+        var conversation = ChatConversation(threadID: thread.id)
+        conversation.id = "conversation-1"
+        conversation.agentType = "opencode"
+        conversation.agentSessionID = "session-existing"
+        database.conversations = [conversation]
+
+        let updatedConversation = try await ChatModeActions.ensureConversationSession(
+            threadID: thread.id,
+            conversation: conversation,
+            appState: appState
+        )
+
+        XCTAssertEqual(updatedConversation.agentSessionID, "session-existing")
+        XCTAssertTrue(connection.requests.isEmpty)
+    }
+
     func testCreateChatConversationSelectsNewConversationAndDoesNotOverrideHarnessModel() async {
         let appState = AppState()
         let database = MockDatabaseManager()

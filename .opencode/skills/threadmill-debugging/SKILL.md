@@ -48,13 +48,21 @@ All production logging uses `os.Logger` (subsystem `dev.threadmill`). Categories
 | `Logger.relay` | `relay` | RelayEndpoint: PTY shim, binary frames |
 | `Logger.ghostty` | `ghostty` | GhosttySurfaceHost: surface create/free |
 | `Logger.agent` | `agent` | AgentSessionManager: ACP sessions |
+| `Logger.chat` | `chat` | Chat lifecycle: session start, attach, VM configure, input gating |
 | `Logger.browser` | `browser` | BrowserSessionManager: tab CRUD |
 | `Logger.github` | `github` | GitHub OAuth device flow |
 | `Logger.view` | `view` | View-layer tracing (mode switching, restore) |
 
 ### Reading logs
 
-**Console.app** (running app):
+**Preferred: `task logs:*` commands** (stream logs in real time from terminal):
+```bash
+task logs:app                        # all categories, info level
+task logs:chat                       # chat category only
+task spindle:logs                    # Spindle daemon (journalctl)
+```
+
+**Console.app** (GUI, running app):
 ```
 Filter: subsystem:dev.threadmill
 Narrow: subsystem:dev.threadmill category:conn
@@ -63,11 +71,17 @@ Enable: Action -> Include Info/Debug Messages
 
 **Integration tests**: `IntegrationTestCase` auto-dumps all `dev.threadmill` logs on failure via `OSLogStore`. No action needed — logs appear in `swift test --verbose` output.
 
-**UI e2e tests**: XCUI runs in a separate process. `OSLogStore` cannot capture cross-process logs. Use Console.app filtered to `subsystem:dev.threadmill` while reproducing.
+**UI e2e tests**: XCUI runs in a separate process. Use `task logs:app` in a parallel terminal while reproducing. `OSLogStore` cannot capture cross-process logs.
+
+**Post-mortem** (after app exited):
+```bash
+/usr/bin/log show --predicate 'subsystem == "dev.threadmill"' --last 60s --style compact --info
+```
+Note: logs for killed processes may not be available — always prefer `task logs:*` streaming.
 
 **Spindle daemon logs**:
 ```bash
-task spindle:logs                    # tail journalctl
+task spindle:logs                    # tail journalctl -f
 ssh beast "journalctl --user -u spindle -n 200 --no-pager"  # last 200 lines
 ```
 
@@ -241,7 +255,7 @@ Full list in `docs/agents/ui-e2e-tests.md`. Key ones:
 **Mode switcher**: `mode.tab.{chat,terminal,files,browser}`
 **Terminal**: `terminal.surface`, `terminal.connecting`, `terminal.session.add`, `terminal.session.add.menu`, `terminal.session.add.item.<name>`
 **Session tabs**: `session.tab.<sessionID>`, `session.tab.close.<sessionID>`
-**Chat**: `chat.session.add`
+**Chat**: `chat.session.add`, `chat.input`, `chat.timeline`, `chat.session.state` (value: starting/ready/failed), `chat.model.label`
 
 ### Filtering XCUI queries to avoid ambiguity
 
@@ -421,15 +435,120 @@ Fix: scope by element type (`staticTexts`, `buttons`) or add `NOT identifier BEG
 
 ---
 
-## 9. Debugging Checklist
+## 9. Chat / ACP Debugging
+
+### Data path
+
+```
+Mac UI → ChatModeContent → chat.start RPC → Spindle → spawn opencode acp
+       → ACP initialize → session/new → chat.session_ready event → Mac
+       → chat.attach → binary channel → session/prompt → agent response
+```
+
+### Diagnostic commands
+
+```bash
+task logs:chat                  # stream Mac chat-category logs
+task logs:app                   # stream all Mac logs
+task spindle:logs               # stream Spindle daemon logs (includes chat tracing)
+task test:chat-handshake        # headless end-to-end: hello → chat.start → session_ready → attach → PASS/FAIL
+```
+
+### Symptom: chat input disabled / "Starting chat session" forever
+
+This is the most common chat failure. The input bar requires ALL THREE conditions:
+1. `sessionState == .ready`
+2. `sessionID != nil`
+3. `channelID != nil`
+
+**Triage sequence:**
+
+1. **Run headless test first**: `task test:chat-handshake` — if this fails, the bug is in Spindle. If it passes, the bug is Mac-side.
+2. **Check Mac chat logs**: `task logs:chat` — look for `chat.vm.configure` entries showing session/channel values. If `channel=nil`, the attach flow is failing.
+3. **Check Spindle logs**: `task spindle:logs` — look for `chat_start`, `handshake`, `session_ready` tracing. If `session/new` fails, the ACP params are wrong.
+4. **Check `isInputEnabled` gating**: the three conditions above. Log them if unclear.
+
+### Symptom: chat.start succeeds but session never reaches ready
+
+1. Check Spindle logs for ACP handshake progress — `handshake_complete` or `handshake_failed`
+2. The agent process (`opencode acp`) may fail silently. Temporarily change `.stderr(Stdio::null())` to `.stderr(Stdio::inherit())` in `chat.rs` to see agent stderr in Spindle logs
+3. Common ACP handshake failures:
+   - Missing `mcpServers: []` in `session/new` params (OpenCode requires it)
+   - Wrong `protocolVersion` in `initialize`
+   - Agent binary not found in PATH
+
+### Symptom: channel set then immediately cleared
+
+Multiple `.task(id:)` handlers fire in quick succession as SwiftUI re-renders. Each new task cancels the previous one. The channel gets set by one task, cleared by a re-triggered task, then set again. The final state should be correct — if `isInputEnabled` is still false, the issue is observation (see SwiftUI @State footgun below).
+
+### Key footgun: @State + @Observable
+
+If `ChatSessionView` uses `@State var viewModel`, SwiftUI observation breaks — property changes don't trigger re-renders. See `docs/agents/swiftui-patterns.md` for the full explanation. The fix is to use plain `var viewModel` instead of `@State var`.
+
+---
+
+## 10. Agent Debugging Modus Operandi
+
+**MANDATORY for all debugging sessions. Do NOT skip these steps.**
+
+### Step 1: Observe before hypothesizing
+
+Before forming any theory about what's wrong:
+1. Run `task logs:app` (or `task logs:chat` for chat issues) in a background terminal
+2. Reproduce the issue
+3. Read the logs. The answer is almost always visible.
+
+Do NOT guess at causes. Do NOT add speculative fixes. Observe first.
+
+### Step 2: Validate the backend independently
+
+For any feature that involves Spindle RPCs:
+1. Run the headless test first (`task test:chat-handshake` for chat)
+2. If the headless test passes, the bug is in the Mac client
+3. If it fails, debug Spindle first
+
+This eliminates an entire half of the stack in one command.
+
+### Step 3: Log actual values, not assumed values
+
+When the issue is in the Mac client:
+1. Add `.info`-level logging to the SPECIFIC property that gates the behavior
+2. Log the actual runtime values, not what you think they should be
+3. Use `task logs:chat` to see them in real time
+
+Example: if the input bar is disabled, log inside `isInputEnabled`:
+```swift
+Logger.chat.info("isInputEnabled session=\(sessionID ?? "nil") channel=\(channelID.map(String.init) ?? "nil") state=\(String(describing: sessionState))")
+```
+
+### Step 4: Binary search the layer
+
+If logs are unclear, use `task test:chat-handshake` (or a bun one-liner) to inject test data at specific points in the chain and observe where it breaks.
+
+### Facilities reference
+
+| Command | Purpose |
+|---|---|
+| `task logs:app` | Stream all Mac app logs |
+| `task logs:chat` | Stream Mac chat-category logs |
+| `task spindle:logs` | Stream Spindle daemon logs |
+| `task test:chat-handshake` | Headless Spindle chat flow validation |
+| Console.app filter `subsystem:dev.threadmill` | GUI log viewer with filtering |
+| `ssh beast "journalctl --user -u spindle -n 200"` | Last N Spindle log lines |
+
+---
+
+## 11. Debugging Checklist
 
 For any bug, run through this before diving into code:
 
 - [ ] Which layer failed? (UI / State / Transport / Wire / Daemon)
-- [ ] Can you reproduce with `task test:swift` or `task test:integration`?
-- [ ] Are Console.app logs showing the expected flow?
+- [ ] Did you run the headless test for this subsystem? (e.g., `task test:chat-handshake`)
+- [ ] Did you check `task logs:app` or `task logs:chat` while reproducing?
+- [ ] Did you log the ACTUAL values of the gating condition?
 - [ ] Is Spindle running and reachable? (`task spindle:status`)
 - [ ] Was Spindle rebuilt but not restarted?
 - [ ] Is the SSH tunnel up? (`nc -z 127.0.0.1 19990`)
 - [ ] For UI issues: did you dump the accessibility tree to verify element types?
 - [ ] For protocol issues: does the JSON schema match the Swift/Rust types?
+- [ ] For observation issues: is any view using `@State` with an `@Observable` class? (See swiftui-patterns.md)

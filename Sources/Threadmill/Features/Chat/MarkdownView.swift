@@ -148,6 +148,7 @@ private struct CombinedTextBlockView: NSViewRepresentable {
         textView.textContainer?.heightTracksTextView = false
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
+        textView.textColor = .labelColor
         return textView
     }
 

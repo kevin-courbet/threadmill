@@ -1,7 +1,18 @@
 import SwiftUI
 
 struct ChatSessionView: View {
-    @State var viewModel: ChatSessionViewModel
+    var viewModel: ChatSessionViewModel
+
+    private var sessionStateLabel: String {
+        switch viewModel.sessionState {
+        case .starting:
+            return "starting"
+        case .ready:
+            return "ready"
+        case .failed:
+            return "failed"
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,12 +26,37 @@ struct ChatSessionView: View {
                     .transition(.opacity)
             }
 
+            switch viewModel.sessionState {
+            case .starting:
+                ChatProcessingIndicator(thoughtText: "Starting chat session…")
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 4)
+            case let .failed(error):
+                Text(error.localizedDescription)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 4)
+            case .ready:
+                EmptyView()
+            }
+
             ChatInputBar(viewModel: viewModel)
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .topLeading) {
+            // Invisible element for XCUI to query session state.
+            // Uses 1x1 to remain in the AX tree (0x0 is pruned).
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityElement()
+                .accessibilityIdentifier("chat.session.state")
+                .accessibilityLabel(sessionStateLabel)
+                .accessibilityValue(sessionStateLabel)
+        }
         .background {
             // Cmd+.: cancel streaming (macOS standard cancel)
             Button("") {

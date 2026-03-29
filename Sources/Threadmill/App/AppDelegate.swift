@@ -5,6 +5,7 @@ import os
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isBootstrapped = false
     private let surfaceHost = GhosttySurfaceHost()
+    private let notificationService = NotificationService()
 
     private var remoteConnectionPool: RemoteConnectionPool?
     private var primaryConnectionManager: (any ConnectionManaging)?
@@ -25,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         Logger.boot.info("applicationDidFinishLaunching — args: \(ProcessInfo.processInfo.arguments, privacy: .public)")
         Logger.boot.info("env THREADMILL keys: \(ProcessInfo.processInfo.environment.filter { $0.key.hasPrefix("THREADMILL") }, privacy: .public)")
+        notificationService.requestPermission()
     }
 
     func bootstrap(appState: AppState) {
@@ -76,15 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let chatConversationService = ChatConversationService(
                 databaseManager: databaseManager
             )
-            if let agentManagingConnection = primaryConnectionManager as? AgentManaging {
-                agentSessionManager = AgentSessionManager(
-                    agentManager: agentManagingConnection,
-                    connectionManager: primaryConnectionManager,
-                    projectIDResolver: { threadID in
-                        appState.threads.first(where: { $0.id == threadID })?.projectId
-                    }
-                )
-            }
+            agentSessionManager = AgentSessionManager(connectionManager: primaryConnectionManager)
 
             self.databaseManager = databaseManager
             remoteConnectionPool = connectionPool

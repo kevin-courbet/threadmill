@@ -1,10 +1,27 @@
 import ACPModel
 import Foundation
 import Observation
+import os
+
+enum ChatSessionState {
+    case starting
+    case ready
+    case failed(any Error)
+}
+
+struct ChatSessionStateError: LocalizedError {
+    let message: String
+
+    var errorDescription: String? {
+        message
+    }
+}
 
 @MainActor
 @Observable
 final class ChatSessionViewModel {
+    typealias ChatHistoryProvider = @MainActor (_ threadID: String, _ sessionID: String, _ cursor: UInt64?) async throws -> ChatHistoryResponse
+
     var timelineItems: [TimelineItem] = []
     var itemIndex: [String: Int] = [:]
 
@@ -17,13 +34,28 @@ final class ChatSessionViewModel {
     var selectedAgentName: String
     var availableAgents: [AgentConfig]
     var sessionTitle: String?
+    var sessionState: ChatSessionState
+
+    var isInputEnabled: Bool {
+        if case .ready = sessionState,
+           sessionID != nil,
+           channelID != nil
+        {
+            return true
+        }
+        return false
+    }
+
+    private(set) var hasHydratedScrollback = false
 
     var userMessages: [MessageTimelineItem] = []
     var agentMessages: [MessageTimelineItem] = []
     var toolCallsByID: [String: ToolCallTimelineItem] = [:]
 
-    private let agentSessionManager: AgentSessionManager?
+    private var agentSessionManager: AgentSessionManager?
+    private let historyProvider: ChatHistoryProvider?
     private(set) var sessionID: String?
+    private(set) var channelID: UInt16?
     private let threadID: String?
     private let streamingUserMessageID = "streaming-user"
     private let streamingAgentMessageID = "streaming-agent"
@@ -32,66 +64,128 @@ final class ChatSessionViewModel {
     private var pendingToolCallTimelineIDs: Set<String> = []
     private var toolCallFlushTask: Task<Void, Never>?
     private var pendingStreamingRebuild = false
+    private var hydrateTask: Task<Void, Never>?
+    private var hydratedSessionID: String?
+    private var hydrationHighWaterCursor: UInt64?
+    private var hydratedUpdateSignatures: Set<String> = []
+    private var hydratedMessageChunkFingerprints: Set<String> = []
 
     init(
         agentSessionManager: AgentSessionManager?,
         sessionID: String? = nil,
+        channelID: UInt16? = nil,
         threadID: String? = nil,
+        sessionState: ChatSessionState = .starting,
         availableModes: [ModeInfo] = [],
+        availableModels: [ModelInfo] = [],
+        currentModeID: String? = nil,
+        currentModelID: String? = nil,
         selectedAgentName: String = "opencode",
-        availableAgents: [AgentConfig] = []
+        availableAgents: [AgentConfig] = [],
+        historyProvider: ChatHistoryProvider? = nil
     ) {
         self.agentSessionManager = agentSessionManager
-        self.sessionID = sessionID
+        self.historyProvider = historyProvider
         self.threadID = threadID
-        self.availableModes = availableModes
+        self.sessionState = sessionState
+        self.availableModes = []
+        self.availableModels = []
         self.selectedAgentName = selectedAgentName
         self.availableAgents = availableAgents
 
-        agentSessionManager?.onSessionUpdate = { [weak self] incomingSessionID, update in
-            guard let self else {
-                return
-            }
-            if let expectedSessionID = self.sessionID, expectedSessionID != incomingSessionID {
-                return
-            }
-            self.handleSessionUpdate(update)
-        }
+        applyCapabilities(
+            modes: availableModes,
+            models: availableModels,
+            currentModeID: currentModeID,
+            currentModelID: currentModelID
+        )
 
-        if let sessionID, let agentSessionManager, agentSessionManager.hasSession(sessionID: sessionID) {
-            applyCapabilities(from: agentSessionManager, sessionID: sessionID)
-        }
+        configureSession(sessionID: sessionID, channelID: channelID)
     }
 
     func selectAgent(named name: String) async {
         guard !isStreaming else {
             return
         }
-
-        guard let selectedAgent = availableAgents.first(where: { $0.name == name }) else {
-            selectedAgentName = name
-            return
-        }
-
-        if let sessionID, let agentSessionManager {
-            do {
-                _ = try await agentSessionManager.switchAgent(sessionID: sessionID, agentConfig: selectedAgent)
-                applyCapabilities(from: agentSessionManager, sessionID: sessionID)
-            } catch {
-                return
-            }
-        } else if let threadID, let agentSessionManager {
-            do {
-                sessionID = try await agentSessionManager.startSession(agentConfig: selectedAgent, threadID: threadID)
-                if let sessionID {
-                    applyCapabilities(from: agentSessionManager, sessionID: sessionID)
-                }
-            } catch {
-                return
-            }
-        }
-
         selectedAgentName = name
+    }
+
+    func updateSessionState(_ state: ChatSessionState) {
+        Logger.chat.info("chat.vm.updateSessionState from=\(String(describing: self.sessionState), privacy: .public) to=\(String(describing: state), privacy: .public) session=\(self.sessionID ?? "nil", privacy: .public) channel=\(self.channelID.map(String.init) ?? "nil", privacy: .public)")
+        sessionState = state
+    }
+
+    func configureCapabilities(modes: [ModeInfo], models: [ModelInfo]) {
+        applyCapabilities(modes: modes, models: models, currentModeID: nil, currentModelID: nil)
+    }
+
+    func applyCapabilities(
+        modes: [ModeInfo],
+        models: [ModelInfo],
+        currentModeID: String?,
+        currentModelID: String?
+    ) {
+        availableModes = modes
+        availableModels = models
+
+        if let currentModeID,
+           modes.contains(where: { $0.id == currentModeID })
+        {
+            currentMode = currentModeID
+        } else if let currentMode,
+                  !modes.contains(where: { $0.id == currentMode })
+        {
+            self.currentMode = modes.first?.id
+        }
+
+        if let currentModelID,
+           models.contains(where: { $0.modelId == currentModelID })
+        {
+            self.currentModelID = currentModelID
+        } else if let currentModelID,
+                  !models.contains(where: { $0.modelId == currentModelID })
+        {
+            self.currentModelID = models.first?.modelId
+        } else if let selectedModelID = self.currentModelID,
+                  !models.contains(where: { $0.modelId == selectedModelID })
+        {
+            self.currentModelID = models.first?.modelId
+        }
+    }
+
+    func configureSession(sessionID: String?, channelID: UInt16?, agentSessionManager: AgentSessionManager? = nil) {
+        let previousChannelID = self.channelID
+        if let previousChannelID,
+           previousChannelID != channelID
+        {
+            self.agentSessionManager?.detachChannel(channelID: previousChannelID)
+        }
+
+        // Update agentSessionManager if a non-nil one is provided (fixes
+        // the case where the VM was created before AppState.configure ran)
+        if let agentSessionManager {
+            self.agentSessionManager = agentSessionManager
+        }
+
+        self.sessionID = sessionID
+        self.channelID = self.agentSessionManager == nil ? nil : channelID
+        Logger.chat.info(
+            "chat.vm.configure thread=\(self.threadID ?? "nil", privacy: .public) session=\(self.sessionID ?? "nil", privacy: .public) channel=\(self.channelID.map(String.init) ?? "nil", privacy: .public)"
+        )
+
+        // Register channel synchronously so sendPrompt can use it immediately.
+        // Use acpSessionID for the channel context — session/update notifications
+        // from the agent use the ACP session ID, not the Spindle session ID.
+        if let channelID, let sessionID, let asm = self.agentSessionManager {
+            asm.attachChannel(channelID: channelID, sessionID: sessionID) { [weak self] update in
+                self?.consumeSessionUpdate(update, source: .live)
+            }
+        }
+
+        hydrateTask?.cancel()
+        hydrateTask = Task { [weak self] in
+            await self?.hydrateAndAttachLiveUpdates(sessionID: sessionID, channelID: channelID)
+        }
     }
 
     func setMode(_ modeID: String) async {
@@ -100,13 +194,13 @@ final class ChatSessionViewModel {
             return
         }
 
-        guard let sessionID = await ensureSessionReady() else {
+        guard let channelID, let sessionID else {
             currentMode = modeID
             return
         }
 
         do {
-            try await agentSessionManager.setMode(sessionID: sessionID, modeID: modeID)
+            try await agentSessionManager.setMode(channelID: channelID, sessionID: sessionID, modeID: modeID)
             currentMode = modeID
         } catch {
             return
@@ -119,13 +213,13 @@ final class ChatSessionViewModel {
             return
         }
 
-        guard let sessionID = await ensureSessionReady() else {
+        guard let channelID, let sessionID else {
             currentModelID = modelID
             return
         }
 
         do {
-            try await agentSessionManager.setModel(sessionID: sessionID, modelID: modelID)
+            try await agentSessionManager.setModel(channelID: channelID, sessionID: sessionID, modelID: modelID)
             currentModelID = modelID
         } catch {
             return
@@ -155,22 +249,44 @@ final class ChatSessionViewModel {
 
     func sendPrompt(text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let agentSessionManager else {
+        guard !trimmed.isEmpty else {
+            Logger.chat.info("chat.vm.send_prompt ignored reason=empty_prompt")
             return
         }
 
-        guard let sessionID = await ensureSessionReady() else {
+        guard let agentSessionManager else {
+            Logger.chat.error(
+                "chat.vm.send_prompt ignored thread=\(self.threadID ?? "nil", privacy: .public) reason=agent_manager_unavailable"
+            )
             return
         }
+
+        guard let channelID, let sessionID else {
+            Logger.chat.error(
+                "chat.vm.send_prompt ignored thread=\(self.threadID ?? "nil", privacy: .public) reason=session_not_attached session=\(self.sessionID ?? "nil", privacy: .public) channel=\(self.channelID.map(String.init) ?? "nil", privacy: .public) state=\(String(describing: self.sessionState), privacy: .public)"
+            )
+            return
+        }
+
+        Logger.chat.info(
+            "chat.vm.send_prompt start thread=\(self.threadID ?? "nil", privacy: .public) session=\(sessionID, privacy: .public) channel=\(channelID)"
+        )
 
         isStreaming = true
 
         do {
-            try await agentSessionManager.sendPrompt(text: trimmed, sessionID: sessionID)
+            try await agentSessionManager.sendPrompt(text: trimmed, channelID: channelID, sessionID: sessionID)
         } catch {
+            Logger.chat.error(
+                "chat.vm.send_prompt failed thread=\(self.threadID ?? "nil", privacy: .public) session=\(sessionID, privacy: .public) channel=\(channelID): \(error)"
+            )
             finishStreamingCycle(forceRebuild: true)
             return
         }
+
+        Logger.chat.info(
+            "chat.vm.send_prompt submitted thread=\(self.threadID ?? "nil", privacy: .public) session=\(sessionID, privacy: .public) channel=\(channelID)"
+        )
 
         finishStreamingCycle(forceRebuild: false)
     }
@@ -180,17 +296,123 @@ final class ChatSessionViewModel {
             return
         }
 
-        guard let sessionID = await ensureSessionReady() else {
+        guard let channelID, let sessionID else {
             return
         }
 
         do {
-            try await agentSessionManager.cancelPrompt(sessionID: sessionID)
+            try await agentSessionManager.cancelPrompt(channelID: channelID, sessionID: sessionID)
         } catch {
             return
         }
 
         finishStreamingCycle(forceRebuild: true)
+    }
+
+    private func hydrateAndAttachLiveUpdates(sessionID: String?, channelID: UInt16?) async {
+        guard let sessionID else {
+            hasHydratedScrollback = false
+            hydrationHighWaterCursor = nil
+            hydratedUpdateSignatures.removeAll(keepingCapacity: false)
+            hydratedMessageChunkFingerprints.removeAll(keepingCapacity: false)
+            return
+        }
+
+        if hydratedSessionID != sessionID {
+            hasHydratedScrollback = false
+            hydratedSessionID = nil
+            hydrationHighWaterCursor = nil
+            hydratedUpdateSignatures.removeAll(keepingCapacity: false)
+            hydratedMessageChunkFingerprints.removeAll(keepingCapacity: false)
+        }
+
+        if !hasHydratedScrollback,
+           let threadID,
+           let historyProvider
+        {
+            var cursor: UInt64?
+            do {
+                repeat {
+                    let response = try await historyProvider(threadID, sessionID, cursor)
+                    for update in response.updates {
+                        consumeSessionUpdate(update, source: .history)
+                    }
+                    cursor = response.nextCursor
+                    hydrationHighWaterCursor = cursor ?? hydrationHighWaterCursor
+                } while cursor != nil
+                hasHydratedScrollback = true
+                hydratedSessionID = sessionID
+            } catch {
+                hasHydratedScrollback = false
+            }
+        }
+
+        guard
+            let channelID,
+            let agentSessionManager
+        else {
+            return
+        }
+
+        agentSessionManager.attachChannel(channelID: channelID, sessionID: sessionID ?? "") { [weak self] update in
+            self?.consumeSessionUpdate(update, source: .live)
+        }
+    }
+
+    private enum SessionUpdateSource {
+        case history
+        case live
+    }
+
+    private func consumeSessionUpdate(_ update: SessionUpdateNotification, source: SessionUpdateSource) {
+        Logger.chat.info("chat.vm.consumeUpdate type=\(String(describing: update.update), privacy: .public) source=\(String(describing: source), privacy: .public) channel=\(self.channelID.map(String.init) ?? "nil", privacy: .public)")
+        let signature = updateSignature(update)
+
+        switch source {
+        case .history:
+            hydratedUpdateSignatures.insert(signature)
+            recordHydratedMessageChunkFingerprint(update)
+            handleSessionUpdate(update)
+        case .live:
+            if hasHydratedScrollback,
+               (hydratedUpdateSignatures.contains(signature) || isHydratedMessageChunkDuplicate(update))
+            {
+                return
+            }
+            handleSessionUpdate(update)
+        }
+    }
+
+    private func recordHydratedMessageChunkFingerprint(_ update: SessionUpdateNotification) {
+        guard let fingerprint = messageChunkFingerprint(for: update.update) else {
+            return
+        }
+        hydratedMessageChunkFingerprints.insert(fingerprint)
+    }
+
+    private func isHydratedMessageChunkDuplicate(_ update: SessionUpdateNotification) -> Bool {
+        guard let fingerprint = messageChunkFingerprint(for: update.update) else {
+            return false
+        }
+        return hydratedMessageChunkFingerprints.contains(fingerprint)
+    }
+
+    private func messageChunkFingerprint(for update: SessionUpdate) -> String? {
+        switch update {
+        case let .userMessageChunk(content):
+            return "user:\(contentBlockFingerprint(content))"
+        case let .agentMessageChunk(content):
+            return "assistant:\(contentBlockFingerprint(content))"
+        default:
+            return nil
+        }
+    }
+
+    private func contentBlockFingerprint(_ content: ContentBlock) -> String {
+        guard let data = try? JSONEncoder().encode(content) else {
+            return "unknown"
+        }
+        return data.base64EncodedString()
     }
 
     func handleSessionUpdate(_ update: SessionUpdateNotification) {
@@ -325,12 +547,18 @@ final class ChatSessionViewModel {
 
         if role == .assistant, let index = agentMessages.firstIndex(where: { $0.id == messageID }) {
             var message = agentMessages[index]
+            if hasTrailingDuplicateContent(existing: message.content, appended: contents) {
+                return
+            }
             message.append(contentsOf: contents)
             message.timestamp = messageTimestamp
             agentMessages[index] = message
             updatedMessage = message
         } else if role == .user, let index = userMessages.firstIndex(where: { $0.id == messageID }) {
             var message = userMessages[index]
+            if hasTrailingDuplicateContent(existing: message.content, appended: contents) {
+                return
+            }
             message.append(contentsOf: contents)
             message.timestamp = messageTimestamp
             userMessages[index] = message
@@ -563,6 +791,27 @@ final class ChatSessionViewModel {
         return [toolCall.id, contentText, String(describing: toolCall.rawOutput)].joined(separator: "|")
     }
 
+    private func hasTrailingDuplicateContent(existing: [ContentBlock], appended: [ContentBlock]) -> Bool {
+        guard !existing.isEmpty, !appended.isEmpty, existing.count >= appended.count else {
+            return false
+        }
+
+        let trailing = existing.suffix(appended.count)
+        for (lhs, rhs) in zip(trailing, appended) {
+            guard contentBlockFingerprint(lhs) == contentBlockFingerprint(rhs) else {
+                return false
+            }
+        }
+        return true
+    }
+
+    private func updateSignature(_ update: SessionUpdateNotification) -> String {
+        guard let data = try? JSONEncoder().encode(update.update) else {
+            return UUID().uuidString
+        }
+        return "\(update.sessionId.value)|\(data.base64EncodedString())"
+    }
+
     private func finishStreamingCycle(forceRebuild: Bool) {
         messageFlushTask?.cancel()
         messageFlushTask = nil
@@ -582,48 +831,4 @@ final class ChatSessionViewModel {
         }
     }
 
-    private func ensureSessionReady() async -> String? {
-        guard let agentSessionManager, let threadID else {
-            return sessionID
-        }
-
-        if let sessionID, agentSessionManager.hasSession(sessionID: sessionID) {
-            return sessionID
-        }
-
-        guard let agentConfig = resolvedAgentConfig() else {
-            return nil
-        }
-
-        do {
-            let startedSessionID = try await agentSessionManager.startSession(agentConfig: agentConfig, threadID: threadID)
-            sessionID = startedSessionID
-            applyCapabilities(from: agentSessionManager, sessionID: startedSessionID)
-            return startedSessionID
-        } catch {
-            return nil
-        }
-    }
-
-    private func resolvedAgentConfig() -> AgentConfig? {
-        if let exact = availableAgents.first(where: { $0.name == selectedAgentName }) {
-            return exact
-        }
-        if let first = availableAgents.first {
-            return first
-        }
-        return nil
-    }
-
-    private func applyCapabilities(from manager: AgentSessionManager, sessionID: String) {
-        let capabilities = manager.capabilities(for: sessionID)
-        availableModes = capabilities.availableModes
-        if let modeID = capabilities.currentModeID {
-            currentMode = modeID
-        }
-        availableModels = capabilities.availableModels
-        if let modelID = capabilities.currentModelID {
-            currentModelID = modelID
-        }
-    }
 }

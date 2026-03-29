@@ -1,25 +1,24 @@
 # Orchestrator State
 
-status: SPAWNING
+status: READY
 goal_version: 1
-next_worker_id: W003
-active_batch_id: B002
-last_integrated_commit: 876f9f0
+next_worker_id: W001
+active_batch_id: none
+last_integrated_commit: none
 
 ## Active Workers
-- worker_id: W002
-  batch_id: B002
-  task: "Phase 2: Mac sends session_id — consolidate preset name resolution, send preset + session_id in all RPCs, remove daemonPreset param"
-  handoff_file: /Users/kevincourbet/dev/threadmill.session-id-protocol/.sisyphus/workers/W002.md
-  status: assigned
+- worker_id: none
+  batch_id: none
+  task: none
+  handoff_file: none
+  status: none
 
 ## Pending Integration
-- worker_id: W001
-  batch_id: B001
-  stop_reason: DONE
-  handoff_file: /Users/kevincourbet/dev/threadmill.session-id-protocol/.sisyphus/workers/W001.md
-  status: integrated
+- worker_id: none
+  batch_id: none
+  stop_reason: none
+  handoff_file: none
+  status: none
 
 ## Notes
-- Phase 1 (Spindle) integrated at 876f9f0. Spindle changes in separate repo (symlink).
-- Now spawning Phase 2 (Mac/Swift).
+- Shared worktree mode: workers do not commit; orchestrator owns git integration.

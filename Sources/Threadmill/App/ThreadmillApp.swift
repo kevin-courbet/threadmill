@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct ThreadmillApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @State private var appState = AppState(statsPollingEnabled: true)
+    @State private var appState = AppState(statsPollingEnabled: true, notificationService: NotificationService())
     @State private var gitHubAuthManager = GitHubAuthManager()
     @AppStorage("threadmill.appearance-mode") private var appearanceMode = "dark"
 

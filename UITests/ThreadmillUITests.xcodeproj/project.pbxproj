@@ -62,6 +62,7 @@
 		C1F35CF46811F79B2E3D4FAD /* BrowserSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2F35CF46811F79B2E3D4FAD /* BrowserSession.swift */; };
 		C1FED8DCF71EF673E2DC6F0E /* ChatConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FED8DCF71EF673E2DC6F0E /* ChatConversation.swift */; };
 		C1C701991B5F7A70CCE6F1D9 /* ChatHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2C701991B5F7A70CCE6F1D9 /* ChatHarness.swift */; };
+		C1AC2D931EAFDBEEDCCA0557 /* ChatRPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2AC2D931EAFDBEEDCCA0557 /* ChatRPC.swift */; };
 		C16AFEE0E66065ED183B46A4 /* Preset.swift in Sources */ = {isa = PBXBuildFile; fileRef = C26AFEE0E66065ED183B46A4 /* Preset.swift */; };
 		C1BEB67B1865F1C9F4C49FF5 /* Project.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2BEB67B1865F1C9F4C49FF5 /* Project.swift */; };
 		C1F2FC0BCF57B80107698505 /* Remote.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2F2FC0BCF57B80107698505 /* Remote.swift */; };
@@ -75,6 +76,7 @@
 		C15EB25CEA19B1948C9E8D88 /* ProvisioningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25EB25CEA19B1948C9E8D88 /* ProvisioningService.swift */; };
 		C13654E69AA54A72FF9376AA /* Abstractions.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23654E69AA54A72FF9376AA /* Abstractions.swift */; };
 		C1819258C0A25C1C7F3F34A0 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2819258C0A25C1C7F3F34A0 /* Log.swift */; };
+		C1D3BF6CF0CF4AAA1BF572F8 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2D3BF6CF0CF4AAA1BF572F8 /* NotificationService.swift */; };
 		C17E235957232068C546650A /* RelayBinaryLocator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27E235957232068C546650A /* RelayBinaryLocator.swift */; };
 		C12D878AECB4D1C75EF833A2 /* GhosttyKeyInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22D878AECB4D1C75EF833A2 /* GhosttyKeyInput.swift */; };
 		C14ACC96B8B1CDCB0866DDB4 /* GhosttyNSView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24ACC96B8B1CDCB0866DDB4 /* GhosttyNSView.swift */; };
@@ -98,8 +100,9 @@
 		C12F6BBB3A502FAFF5DB8ADB /* TabContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22F6BBB3A502FAFF5DB8ADB /* TabContainer.swift */; };
 		C167B23BF60C42480133CAA1 /* TabLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C267B23BF60C42480133CAA1 /* TabLabel.swift */; };
 		C136AD69D689DD988AA8BDF9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C236AD69D689DD988AA8BDF9 /* ContentView.swift */; };
-		A1E9E8DF1370DC28B0F6474F /* TestHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E9E8DF1370DC28B0F6474F /* TestHarness.swift */; };
-		A1026710510B159C625584B0 /* TerminalE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2026710510B159C625584B0 /* TerminalE2ETests.swift */; };
+		A1FDE60343204EDFE19ED0A4 /* ChatE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2FDE60343204EDFE19ED0A4 /* ChatE2ETests.swift */; };
+		A1C34BBD7682FAA084ED7731 /* TerminalE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C34BBD7682FAA084ED7731 /* TerminalE2ETests.swift */; };
+		A1159F6DB2F241B5D70B2825 /* TestHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2159F6DB2F241B5D70B2825 /* TestHarness.swift */; };
 		A10000000000000000000004 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* XCTest.framework */; };
 		A1000000000000000000000D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000001 /* GRDB */; };
 		A1000000000000000000000F /* GhosttyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* GhosttyKit.xcframework */; };
@@ -165,6 +168,7 @@
 		C2F35CF46811F79B2E3D4FAD /* BrowserSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "BrowserSession.swift"; path = "../Sources/Threadmill/Models/BrowserSession.swift"; sourceTree = SOURCE_ROOT; };
 		C2FED8DCF71EF673E2DC6F0E /* ChatConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatConversation.swift"; path = "../Sources/Threadmill/Models/ChatConversation.swift"; sourceTree = SOURCE_ROOT; };
 		C2C701991B5F7A70CCE6F1D9 /* ChatHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatHarness.swift"; path = "../Sources/Threadmill/Models/ChatHarness.swift"; sourceTree = SOURCE_ROOT; };
+		C2AC2D931EAFDBEEDCCA0557 /* ChatRPC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ChatRPC.swift"; path = "../Sources/Threadmill/Models/ChatRPC.swift"; sourceTree = SOURCE_ROOT; };
 		C26AFEE0E66065ED183B46A4 /* Preset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Preset.swift"; path = "../Sources/Threadmill/Models/Preset.swift"; sourceTree = SOURCE_ROOT; };
 		C2BEB67B1865F1C9F4C49FF5 /* Project.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Project.swift"; path = "../Sources/Threadmill/Models/Project.swift"; sourceTree = SOURCE_ROOT; };
 		C2F2FC0BCF57B80107698505 /* Remote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Remote.swift"; path = "../Sources/Threadmill/Models/Remote.swift"; sourceTree = SOURCE_ROOT; };
@@ -178,6 +182,7 @@
 		C25EB25CEA19B1948C9E8D88 /* ProvisioningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ProvisioningService.swift"; path = "../Sources/Threadmill/Services/ProvisioningService.swift"; sourceTree = SOURCE_ROOT; };
 		C23654E69AA54A72FF9376AA /* Abstractions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Abstractions.swift"; path = "../Sources/Threadmill/Support/Abstractions.swift"; sourceTree = SOURCE_ROOT; };
 		C2819258C0A25C1C7F3F34A0 /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "Log.swift"; path = "../Sources/Threadmill/Support/Log.swift"; sourceTree = SOURCE_ROOT; };
+		C2D3BF6CF0CF4AAA1BF572F8 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "NotificationService.swift"; path = "../Sources/Threadmill/Support/NotificationService.swift"; sourceTree = SOURCE_ROOT; };
 		C27E235957232068C546650A /* RelayBinaryLocator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RelayBinaryLocator.swift"; path = "../Sources/Threadmill/Support/RelayBinaryLocator.swift"; sourceTree = SOURCE_ROOT; };
 		C22D878AECB4D1C75EF833A2 /* GhosttyKeyInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "GhosttyKeyInput.swift"; path = "../Sources/Threadmill/Terminal/GhosttyKeyInput.swift"; sourceTree = SOURCE_ROOT; };
 		C24ACC96B8B1CDCB0866DDB4 /* GhosttyNSView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "GhosttyNSView.swift"; path = "../Sources/Threadmill/Terminal/GhosttyNSView.swift"; sourceTree = SOURCE_ROOT; };
@@ -201,8 +206,9 @@
 		C22F6BBB3A502FAFF5DB8ADB /* TabContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TabContainer.swift"; path = "../Sources/Threadmill/Views/Components/TabContainer.swift"; sourceTree = SOURCE_ROOT; };
 		C267B23BF60C42480133CAA1 /* TabLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TabLabel.swift"; path = "../Sources/Threadmill/Views/Components/TabLabel.swift"; sourceTree = SOURCE_ROOT; };
 		C236AD69D689DD988AA8BDF9 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ContentView.swift"; path = "../Sources/Threadmill/Views/ContentView.swift"; sourceTree = SOURCE_ROOT; };
-		A2E9E8DF1370DC28B0F6474F /* TestHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHarness.swift; sourceTree = "<group>"; };
-		A2026710510B159C625584B0 /* TerminalE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalE2ETests.swift; sourceTree = "<group>"; };
+		A2FDE60343204EDFE19ED0A4 /* ChatE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatE2ETests.swift; sourceTree = "<group>"; };
+		A2C34BBD7682FAA084ED7731 /* TerminalE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalE2ETests.swift; sourceTree = "<group>"; };
+		A2159F6DB2F241B5D70B2825 /* TestHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHarness.swift; sourceTree = "<group>"; };
 		A20000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000005 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A20000000000000000000006 /* ThreadmillUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ThreadmillUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -240,8 +246,9 @@
 		A40000000000000000000002 /* ThreadmillUITests */ = {
 			isa = PBXGroup;
 			children = (
-				A2E9E8DF1370DC28B0F6474F /* TestHarness.swift */,
-				A2026710510B159C625584B0 /* TerminalE2ETests.swift */,				A20000000000000000000004 /* Info.plist */,
+				A2FDE60343204EDFE19ED0A4 /* ChatE2ETests.swift */,
+				A2C34BBD7682FAA084ED7731 /* TerminalE2ETests.swift */,
+				A2159F6DB2F241B5D70B2825 /* TestHarness.swift */,				A20000000000000000000004 /* Info.plist */,
 			);
 			path = ThreadmillUITests;
 			sourceTree = "<group>";
@@ -389,6 +396,7 @@
 				C1F35CF46811F79B2E3D4FAD /* BrowserSession.swift in Sources */,
 				C1FED8DCF71EF673E2DC6F0E /* ChatConversation.swift in Sources */,
 				C1C701991B5F7A70CCE6F1D9 /* ChatHarness.swift in Sources */,
+				C1AC2D931EAFDBEEDCCA0557 /* ChatRPC.swift in Sources */,
 				C16AFEE0E66065ED183B46A4 /* Preset.swift in Sources */,
 				C1BEB67B1865F1C9F4C49FF5 /* Project.swift in Sources */,
 				C1F2FC0BCF57B80107698505 /* Remote.swift in Sources */,
@@ -402,6 +410,7 @@
 				C15EB25CEA19B1948C9E8D88 /* ProvisioningService.swift in Sources */,
 				C13654E69AA54A72FF9376AA /* Abstractions.swift in Sources */,
 				C1819258C0A25C1C7F3F34A0 /* Log.swift in Sources */,
+				C1D3BF6CF0CF4AAA1BF572F8 /* NotificationService.swift in Sources */,
 				C17E235957232068C546650A /* RelayBinaryLocator.swift in Sources */,
 				C12D878AECB4D1C75EF833A2 /* GhosttyKeyInput.swift in Sources */,
 				C14ACC96B8B1CDCB0866DDB4 /* GhosttyNSView.swift in Sources */,
@@ -425,8 +434,9 @@
 				C12F6BBB3A502FAFF5DB8ADB /* TabContainer.swift in Sources */,
 				C167B23BF60C42480133CAA1 /* TabLabel.swift in Sources */,
 				C136AD69D689DD988AA8BDF9 /* ContentView.swift in Sources */,
-				A1E9E8DF1370DC28B0F6474F /* TestHarness.swift in Sources */,
-				A1026710510B159C625584B0 /* TerminalE2ETests.swift in Sources */,			);
+				A1FDE60343204EDFE19ED0A4 /* ChatE2ETests.swift in Sources */,
+				A1C34BBD7682FAA084ED7731 /* TerminalE2ETests.swift in Sources */,
+				A1159F6DB2F241B5D70B2825 /* TestHarness.swift in Sources */,			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

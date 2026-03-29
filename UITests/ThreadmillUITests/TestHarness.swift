@@ -32,10 +32,10 @@ struct TestHarness {
         }
 
         let app = XCUIApplication(bundleIdentifier: "dev.threadmill.app")
-        guard app.wait(for: .runningForeground, timeout: 10) else {
-            throw UITestError("Threadmill did not reach foreground")
-        }
-        guard app.windows.firstMatch.waitForExistence(timeout: 5) else {
+        // wait(for: .runningForeground) requires XCUI to have established an
+        // AX connection during launch. Since we launch via NSWorkspace, skip
+        // the state check and go straight to window detection.
+        guard app.windows.firstMatch.waitForExistence(timeout: 15) else {
             app.terminate()
             throw UITestError("Threadmill window did not appear")
         }
