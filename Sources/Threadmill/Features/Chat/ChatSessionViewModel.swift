@@ -52,7 +52,7 @@ final class ChatSessionViewModel {
     var agentMessages: [MessageTimelineItem] = []
     var toolCallsByID: [String: ToolCallTimelineItem] = [:]
 
-    private let agentSessionManager: AgentSessionManager?
+    private var agentSessionManager: AgentSessionManager?
     private let historyProvider: ChatHistoryProvider?
     private(set) var sessionID: String?
     private(set) var channelID: UInt16?
@@ -111,6 +111,7 @@ final class ChatSessionViewModel {
     }
 
     func updateSessionState(_ state: ChatSessionState) {
+        Logger.chat.info("chat.vm.updateSessionState from=\(String(describing: self.sessionState), privacy: .public) to=\(String(describing: state), privacy: .public) session=\(self.sessionID ?? "nil", privacy: .public) channel=\(self.channelID.map(String.init) ?? "nil", privacy: .public)")
         sessionState = state
     }
 
@@ -152,19 +153,34 @@ final class ChatSessionViewModel {
         }
     }
 
-    func configureSession(sessionID: String?, channelID: UInt16?) {
+    func configureSession(sessionID: String?, channelID: UInt16?, agentSessionManager: AgentSessionManager? = nil) {
         let previousChannelID = self.channelID
         if let previousChannelID,
            previousChannelID != channelID
         {
-            agentSessionManager?.detachChannel(channelID: previousChannelID)
+            self.agentSessionManager?.detachChannel(channelID: previousChannelID)
+        }
+
+        // Update agentSessionManager if a non-nil one is provided (fixes
+        // the case where the VM was created before AppState.configure ran)
+        if let agentSessionManager {
+            self.agentSessionManager = agentSessionManager
         }
 
         self.sessionID = sessionID
-        self.channelID = agentSessionManager == nil ? nil : channelID
+        self.channelID = self.agentSessionManager == nil ? nil : channelID
         Logger.chat.info(
             "chat.vm.configure thread=\(self.threadID ?? "nil", privacy: .public) session=\(self.sessionID ?? "nil", privacy: .public) channel=\(self.channelID.map(String.init) ?? "nil", privacy: .public)"
         )
+
+        // Register channel synchronously so sendPrompt can use it immediately.
+        // Use acpSessionID for the channel context — session/update notifications
+        // from the agent use the ACP session ID, not the Spindle session ID.
+        if let channelID, let sessionID, let asm = self.agentSessionManager {
+            asm.attachChannel(channelID: channelID, sessionID: sessionID) { [weak self] update in
+                self?.consumeSessionUpdate(update, source: .live)
+            }
+        }
 
         hydrateTask?.cancel()
         hydrateTask = Task { [weak self] in
@@ -338,7 +354,7 @@ final class ChatSessionViewModel {
             return
         }
 
-        agentSessionManager.attachChannel(channelID: channelID, sessionID: sessionID) { [weak self] update in
+        agentSessionManager.attachChannel(channelID: channelID, sessionID: sessionID ?? "") { [weak self] update in
             self?.consumeSessionUpdate(update, source: .live)
         }
     }
@@ -349,6 +365,7 @@ final class ChatSessionViewModel {
     }
 
     private func consumeSessionUpdate(_ update: SessionUpdateNotification, source: SessionUpdateSource) {
+        Logger.chat.info("chat.vm.consumeUpdate type=\(String(describing: update.update), privacy: .public) source=\(String(describing: source), privacy: .public) channel=\(self.channelID.map(String.init) ?? "nil", privacy: .public)")
         let signature = updateSignature(update)
 
         switch source {

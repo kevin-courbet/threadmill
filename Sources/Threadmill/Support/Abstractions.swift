@@ -52,7 +52,7 @@ protocol ChatManaging: AnyObject {
     func chatLoad(threadID: String, sessionID: String) async throws -> ChatLoadResponse
     func chatStop(threadID: String, sessionID: String) async throws
     func chatList(threadID: String) async throws -> [ChatSessionInfo]
-    func chatAttach(threadID: String, sessionID: String) async throws -> UInt16
+    func chatAttach(threadID: String, sessionID: String) async throws -> ChatAttachResponse
     func chatDetach(channelID: UInt16) async throws
     func chatHistory(threadID: String, sessionID: String, cursor: UInt64?) async throws -> ChatHistoryResponse
 }

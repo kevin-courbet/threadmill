@@ -268,5 +268,5 @@ All production logging uses `os.Logger` (subsystem `dev.threadmill`). Categories
 | `docs/architecture.md` | Full architecture spec, module structure, milestone status |
 | `docs/vision.md` | Product vision, feature status, milestone checklist |
 | `protocol/threadmill-rpc.schema.json` | JSON-RPC schema (types, methods, events) |
-| `docs/agents/swiftui-patterns.md` | SwiftUI/AppKit patterns: DisclosureGroup custom chevron, hover states, Settings window, GhosttyKit theming |
+| `docs/agents/swiftui-patterns.md` | SwiftUI/AppKit patterns: @Observable+@State rules, DisclosureGroup custom chevron, hover states, Settings window, GhosttyKit theming |
 | `.opencode/skills/threadmill-debugging/SKILL.md` | Full-stack debugging: layer triage, logging, connection/terminal/UI/accessibility/test debugging procedures |

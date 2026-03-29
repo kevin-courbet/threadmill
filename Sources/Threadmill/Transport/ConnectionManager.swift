@@ -96,7 +96,7 @@ extension ConnectionManager: ChatManaging {
         return try decodeRPCResult(result, as: [ChatSessionInfo].self)
     }
 
-    func chatAttach(threadID: String, sessionID: String) async throws -> UInt16 {
+    func chatAttach(threadID: String, sessionID: String) async throws -> ChatAttachResponse {
         Logger.chat.info("chat.rpc chat.attach thread=\(threadID, privacy: .public) session=\(sessionID, privacy: .public)")
         let result = try await request(
             method: "chat.attach",
@@ -106,9 +106,9 @@ extension ConnectionManager: ChatManaging {
             ],
             timeout: 20
         )
-        let channelID = try decodeRPCResult(result, as: ChatAttachResponse.self).channelID
-        Logger.chat.info("chat.rpc chat.attach ok thread=\(threadID, privacy: .public) session=\(sessionID, privacy: .public) channel=\(channelID)")
-        return channelID
+        let response = try decodeRPCResult(result, as: ChatAttachResponse.self)
+        Logger.chat.info("chat.rpc chat.attach ok thread=\(threadID, privacy: .public) session=\(sessionID, privacy: .public) channel=\(response.channelID) acp=\(response.acpSessionID, privacy: .public)")
+        return response
     }
 
     func chatDetach(channelID: UInt16) async throws {

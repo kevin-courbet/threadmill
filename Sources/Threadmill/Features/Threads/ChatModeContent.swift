@@ -51,8 +51,12 @@ struct ChatModeContent: View {
             )
 
             ChatSessionView(viewModel: viewModel)
-                .task(id: "\(selectedConversation?.agentSessionID ?? ""):\(selectedChannelID?.description ?? "")") {
-                    viewModel.configureSession(sessionID: selectedConversation?.agentSessionID, channelID: selectedChannelID)
+                .task(id: "\(selectedConversation?.agentSessionID ?? ""):\(selectedChannelID?.description ?? ""):\(appState.agentSessionManager != nil)") {
+                    viewModel.configureSession(
+                        sessionID: selectedConversation?.agentSessionID,
+                        channelID: selectedChannelID,
+                        agentSessionManager: appState.agentSessionManager
+                    )
                 }
                 .task(id: sessionStateTaskID(sessionState: sessionState, conversationID: selectedConversation?.id)) {
                     viewModel.updateSessionState(sessionState)
@@ -144,7 +148,7 @@ struct ChatModeContent: View {
             "chat.attach begin thread=\(self.thread.id, privacy: .public) conversation=\(conversation.id, privacy: .public) session=\(conversation.agentSessionID ?? "nil", privacy: .public)"
         )
 
-        let resolvedConversation: ChatConversation
+        var resolvedConversation: ChatConversation
         do {
             resolvedConversation = try await ChatModeActions.ensureConversationSession(
                 threadID: thread.id,
@@ -159,7 +163,7 @@ struct ChatModeContent: View {
         }
 
         guard
-            let sessionID = resolvedConversation.agentSessionID,
+            var sessionID = resolvedConversation.agentSessionID,
             !sessionID.isEmpty
         else {
             Logger.chat.error(
@@ -168,33 +172,46 @@ struct ChatModeContent: View {
             return
         }
 
-        let maxRetryAttempts = 5
-        for attempt in 1 ... maxRetryAttempts {
-            guard !Task.isCancelled, channelByConversationID[resolvedConversation.id] == nil else {
-                return
-            }
+        // Try to attach. If the session ID is stale (Spindle restarted, session gone),
+        // clear it and start a fresh session.
+        do {
+            let attachResponse = try await appState.chatAttach(threadID: thread.id, sessionID: sessionID)
+            appState.chatSessionStateBySessionID[sessionID] = .ready
+            channelByConversationID[resolvedConversation.id] = attachResponse.channelID
+            Logger.chat.info(
+                "chat.attach success thread=\(self.thread.id, privacy: .public) conversation=\(resolvedConversation.id, privacy: .public) session=\(sessionID, privacy: .public) channel=\(attachResponse.channelID)"
+            )
+            return
+        } catch {
+            Logger.chat.warning(
+                "chat.attach failed (stale session?), starting fresh thread=\(self.thread.id, privacy: .public) session=\(sessionID, privacy: .public): \(error)"
+            )
+        }
 
-            do {
-                let channelID = try await appState.chatAttach(threadID: thread.id, sessionID: sessionID)
-                channelByConversationID[resolvedConversation.id] = channelID
-                Logger.chat.info(
-                    "chat.attach success thread=\(self.thread.id, privacy: .public) conversation=\(resolvedConversation.id, privacy: .public) session=\(sessionID, privacy: .public) channel=\(channelID)"
-                )
+        // Stale session — clear it and start fresh
+        guard !Task.isCancelled else { return }
+        do {
+            resolvedConversation = try await ChatModeActions.forceNewSession(
+                threadID: thread.id,
+                conversation: resolvedConversation,
+                appState: appState
+            )
+            guard let freshSessionID = resolvedConversation.agentSessionID, !freshSessionID.isEmpty else {
+                Logger.chat.error("chat.attach fresh session returned no ID")
                 return
-            } catch {
-                let stillConnected = appState.connectionForThread(id: thread.id)?.state.isConnected ?? false
-                guard stillConnected, attempt < maxRetryAttempts else {
-                    Logger.chat.error(
-                        "chat.attach failed thread=\(self.thread.id, privacy: .public) conversation=\(resolvedConversation.id, privacy: .public) session=\(sessionID, privacy: .public) attempt=\(attempt)/\(maxRetryAttempts): \(error)"
-                    )
-                    return
-                }
-                Logger.chat.info(
-                    "chat.attach retrying thread=\(self.thread.id, privacy: .public) conversation=\(resolvedConversation.id, privacy: .public) session=\(sessionID, privacy: .public) next_attempt=\(attempt + 1)/\(maxRetryAttempts)"
-                )
-                let delayNanoseconds = UInt64(200_000_000 * attempt)
-                try? await Task.sleep(nanoseconds: delayNanoseconds)
             }
+            sessionID = freshSessionID
+
+            let attachResponse = try await appState.chatAttach(threadID: thread.id, sessionID: sessionID)
+            appState.chatSessionStateBySessionID[sessionID] = .ready
+            channelByConversationID[resolvedConversation.id] = attachResponse.channelID
+            Logger.chat.info(
+                "chat.attach success (fresh) thread=\(self.thread.id, privacy: .public) conversation=\(resolvedConversation.id, privacy: .public) session=\(sessionID, privacy: .public) channel=\(attachResponse.channelID)"
+            )
+        } catch {
+            Logger.chat.error(
+                "chat.attach failed after fresh session thread=\(self.thread.id, privacy: .public) conversation=\(resolvedConversation.id, privacy: .public): \(error)"
+            )
         }
     }
 
@@ -279,13 +296,35 @@ enum ChatModeActions {
             return conversation
         }
 
+        return try await startNewSession(threadID: threadID, conversation: conversation, appState: appState)
+    }
+
+    /// Force a new session, clearing any stale session ID first.
+    static func forceNewSession(
+        threadID: String,
+        conversation: ChatConversation,
+        appState: AppState
+    ) async throws -> ChatConversation {
         Logger.chat.info(
-            "chat.ensure_session starting thread=\(threadID, privacy: .public) conversation=\(conversation.id, privacy: .public) agent=\(conversation.agentType, privacy: .public)"
+            "chat.force_new_session thread=\(threadID, privacy: .public) conversation=\(conversation.id, privacy: .public) stale_session=\(conversation.agentSessionID ?? "nil", privacy: .public)"
+        )
+        // Clear the stale session ID in GRDB
+        _ = try? appState.bindConversation(conversation.id, toChatSessionID: "")
+        return try await startNewSession(threadID: threadID, conversation: conversation, appState: appState)
+    }
+
+    private static func startNewSession(
+        threadID: String,
+        conversation: ChatConversation,
+        appState: AppState
+    ) async throws -> ChatConversation {
+        Logger.chat.info(
+            "chat.start_session thread=\(threadID, privacy: .public) conversation=\(conversation.id, privacy: .public) agent=\(conversation.agentType, privacy: .public)"
         )
         let startResponse = try await appState.chatStart(threadID: threadID, agentName: conversation.agentType)
         let boundConversation = try appState.bindConversation(conversation.id, toChatSessionID: startResponse.sessionID)
         Logger.chat.info(
-            "chat.ensure_session started thread=\(threadID, privacy: .public) conversation=\(conversation.id, privacy: .public) session=\(startResponse.sessionID, privacy: .public)"
+            "chat.start_session ok thread=\(threadID, privacy: .public) conversation=\(conversation.id, privacy: .public) session=\(startResponse.sessionID, privacy: .public)"
         )
         return boundConversation
     }

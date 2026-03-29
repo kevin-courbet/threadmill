@@ -623,7 +623,7 @@ final class AppState {
         return try await connection.chatList(threadID: threadID)
     }
 
-    func chatAttach(threadID: String, sessionID: String) async throws -> UInt16 {
+    func chatAttach(threadID: String, sessionID: String) async throws -> ChatAttachResponse {
         guard let connection = connectionForThread(id: threadID) as? ChatManaging else {
             Logger.chat.error("chat.attach aborted thread=\(threadID, privacy: .public) session=\(sessionID, privacy: .public) reason=connection_manager_unavailable")
             throw AppStateError.connectionManagerUnavailable

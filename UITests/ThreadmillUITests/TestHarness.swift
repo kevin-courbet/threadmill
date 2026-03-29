@@ -27,12 +27,15 @@ struct TestHarness {
             launchedApp = app
             sem.signal()
         }
-        guard sem.wait(timeout: .now() + 30) == .success, launchedApp != nil else {
+        guard sem.wait(timeout: .now() + 10) == .success, launchedApp != nil else {
             throw UITestError("Failed to launch Threadmill")
         }
 
         let app = XCUIApplication(bundleIdentifier: "dev.threadmill.app")
-        guard app.windows.firstMatch.waitForExistence(timeout: 30) else {
+        // wait(for: .runningForeground) requires XCUI to have established an
+        // AX connection during launch. Since we launch via NSWorkspace, skip
+        // the state check and go straight to window detection.
+        guard app.windows.firstMatch.waitForExistence(timeout: 15) else {
             app.terminate()
             throw UITestError("Threadmill window did not appear")
         }
@@ -41,7 +44,7 @@ struct TestHarness {
         let fixtureRow = app.descendants(matching: .any).matching(
             NSPredicate(format: "identifier BEGINSWITH 'thread.row.' AND label CONTAINS 'test-xcui'")
         ).firstMatch
-        guard fixtureRow.waitForExistence(timeout: 20) else {
+        guard fixtureRow.waitForExistence(timeout: 10) else {
             app.terminate()
             throw UITestError("Fixture thread not found in sidebar — is Spindle running?")
         }

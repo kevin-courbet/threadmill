@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ChatSessionView: View {
-    @State var viewModel: ChatSessionViewModel
+    var viewModel: ChatSessionViewModel
 
     private var sessionStateLabel: String {
         switch viewModel.sessionState {
@@ -47,9 +47,16 @@ struct ChatSessionView: View {
                 .padding(.bottom, 12)
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("chat.session.state")
-        .accessibilityValue(sessionStateLabel)
+        .overlay(alignment: .topLeading) {
+            // Invisible element for XCUI to query session state.
+            // Uses 1x1 to remain in the AX tree (0x0 is pruned).
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityElement()
+                .accessibilityIdentifier("chat.session.state")
+                .accessibilityLabel(sessionStateLabel)
+                .accessibilityValue(sessionStateLabel)
+        }
         .background {
             // Cmd+.: cancel streaming (macOS standard cancel)
             Button("") {

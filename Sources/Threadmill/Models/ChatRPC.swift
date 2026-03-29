@@ -321,13 +321,16 @@ struct ChatLoadResponse: Codable, Equatable {
 
 struct ChatAttachResponse: Codable, Equatable {
     let channelID: UInt16
+    let acpSessionID: String
 
     enum CodingKeys: String, CodingKey {
         case channelID = "channel_id"
+        case acpSessionID = "acp_session_id"
     }
 
-    init(channelID: UInt16) {
+    init(channelID: UInt16, acpSessionID: String = "") {
         self.channelID = channelID
+        self.acpSessionID = acpSessionID
     }
 
     init(from decoder: Decoder) throws {
@@ -337,6 +340,7 @@ struct ChatAttachResponse: Codable, Equatable {
             throw DecodingError.dataCorruptedError(forKey: .channelID, in: container, debugDescription: "channel_id out of range")
         }
         channelID = UInt16(rawID)
+        acpSessionID = try container.decodeIfPresent(String.self, forKey: .acpSessionID) ?? ""
     }
 }
 

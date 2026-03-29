@@ -32,10 +32,31 @@ tasks:
       - ssh beast "systemctl --user restart spindle"
       - task: spindle:status
 
+  logs:app:
+    desc: Stream all Threadmill Mac app logs (all categories)
+    cmds:
+      - /usr/bin/log stream --predicate 'subsystem == "dev.threadmill"' --style compact --info
+
+  logs:chat:
+    desc: Stream Threadmill chat-specific logs
+    cmds:
+      - /usr/bin/log stream --predicate 'subsystem == "dev.threadmill" AND category == "chat"' --style compact --info
+
   spindle:logs:
     desc: Tail Spindle service logs on beast
     cmds:
       - ssh beast "journalctl --user -u spindle -f --no-pager -n 50"
+
+  test:chat-handshake:
+    desc: Headless test of Spindle chat.start -> session_ready -> chat.attach flow
+    cmds:
+      - |
+        if ! nc -z 127.0.0.1 19990 2>/dev/null; then
+          echo "Starting SSH tunnel..."
+          ssh -N -f -L 127.0.0.1:19990:127.0.0.1:19990 beast
+          sleep 1
+        fi
+      - ssh beast 'bun run /home/wsl/dev/spindle/scripts/test_chat_handshake.ts'
 
   spindle:status:
     desc: Show Spindle service status on beast

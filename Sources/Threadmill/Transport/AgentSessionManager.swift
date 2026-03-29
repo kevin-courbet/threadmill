@@ -55,6 +55,7 @@ final class AgentSessionManager {
     }
 
     func attachChannel(channelID: UInt16, sessionID: String, onUpdate: @escaping (SessionUpdateNotification) -> Void) {
+        Logger.agent.info("asm.attachChannel ch=\(channelID) session=\(sessionID, privacy: .public) registered=\(self.channelsByID.keys.sorted().map(String.init).joined(separator: ","), privacy: .public)")
         channelsByID[channelID] = ChannelContext(sessionID: sessionID, onUpdate: onUpdate)
         incomingBuffers[channelID] = Data()
     }
@@ -180,7 +181,9 @@ final class AgentSessionManager {
         }
 
         let channelID = (UInt16(frame[0]) << 8) | UInt16(frame[1])
+        Logger.agent.info("asm.binaryFrame ch=\(channelID) bytes=\(frame.count) registered=\(self.channelsByID.keys.sorted().map(String.init).joined(separator: ","), privacy: .public)")
         guard channelsByID[channelID] != nil else {
+            Logger.agent.info("asm.binaryFrame DROPPED ch=\(channelID)")
             return
         }
 
