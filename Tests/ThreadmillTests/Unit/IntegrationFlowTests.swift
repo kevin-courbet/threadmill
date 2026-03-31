@@ -97,45 +97,31 @@ final class IntegrationFlowTests: XCTestCase {
 
     func test4ChatSessionSendReceiveUpdatesTimeline() async throws {
         let connection = MockDaemonConnection(state: .connected)
-        let agentManager = MockAgentManager()
-        agentManager.startResult = .success(611)
-
-        let manager = AgentSessionManager(
-            agentManager: agentManager,
-            connectionManager: connection,
-            projectIDResolver: { threadID in
-                threadID == "thread-feature-acp" ? "project-threadmill" : nil
+        let testSessionID = "test-session-chat"
+        connection.requestHandler = { method, params, _ in
+            switch method {
+            case "chat.start":
+                return [
+                    "session_id": testSessionID,
+                    "status": "starting",
+                ] as [String: Any]
+            case "chat.attach":
+                return [
+                    "channel_id": 611,
+                    "acp_session_id": "acp-session-test",
+                ] as [String: Any]
+            default:
+                throw TestError.missingStub
             }
-        )
-
-        let startedSessionTask = Task {
-            try await manager.startSession(
-                agentConfig: AgentConfig(name: "opencode", command: "opencode", cwd: nil),
-                threadID: "thread-feature-acp"
-            )
         }
 
-        let didSendInitialize = await waitUntilFrameCount(connection, equals: 1)
-        XCTAssertTrue(didSendInitialize)
-        try manager.handleBinaryFrame(
-            makeResponseFrame(
-                channelID: 611,
-                requestFrame: connection.sentBinaryFrames[0],
-                result: InitializeResponse(protocolVersion: 1, agentCapabilities: AgentCapabilities())
-            )
+        let manager = AgentSessionManager(connectionManager: connection)
+
+        let sessionID = try await manager.startSession(
+            agentConfig: AgentConfig(name: "opencode", command: "opencode", cwd: nil),
+            threadID: "thread-feature-acp"
         )
 
-        let didSendSessionNew = await waitUntilFrameCount(connection, equals: 2)
-        XCTAssertTrue(didSendSessionNew)
-        try manager.handleBinaryFrame(
-            makeResponseFrame(
-                channelID: 611,
-                requestFrame: connection.sentBinaryFrames[1],
-                result: NewSessionResponse(sessionId: SessionId("acp-session-test"))
-            )
-        )
-
-        let sessionID = try await startedSessionTask.value
         let conversation = ChatConversation(
             id: "conversation-1",
             threadID: "thread-feature-acp",
@@ -159,18 +145,18 @@ final class IntegrationFlowTests: XCTestCase {
             await viewModel.sendPrompt(text: "Ship this integration")
         }
 
-        let didSendPrompt = await waitUntilFrameCount(connection, equals: 3)
+        let didSendPrompt = await waitUntilFrameCount(connection, equals: 1)
         XCTAssertTrue(didSendPrompt)
 
         let userUpdate = SessionUpdateNotification(
-            sessionId: SessionId("acp-session-test"),
+            sessionId: SessionId(sessionID),
             update: .userMessageChunk(.text(TextContent(text: "Ship this integration")))
         )
         let userLine = try makeNotificationLine(method: "session/update", params: userUpdate)
         manager.handleBinaryFrame(makeFrame(channelID: 611, payload: Array(userLine)))
 
         let agentUpdate = SessionUpdateNotification(
-            sessionId: SessionId("acp-session-test"),
+            sessionId: SessionId(sessionID),
             update: .agentMessageChunk(.text(TextContent(text: "Hello world")))
         )
         let agentLine = try makeNotificationLine(method: "session/update", params: agentUpdate)
@@ -179,7 +165,7 @@ final class IntegrationFlowTests: XCTestCase {
         try manager.handleBinaryFrame(
             makeResponseFrame(
                 channelID: 611,
-                requestFrame: connection.sentBinaryFrames[2],
+                requestFrame: connection.sentBinaryFrames[0],
                 result: SessionPromptResponse(stopReason: .endTurn)
             )
         )

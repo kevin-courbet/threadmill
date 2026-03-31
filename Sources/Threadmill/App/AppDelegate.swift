@@ -76,15 +76,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let chatConversationService = ChatConversationService(
                 databaseManager: databaseManager
             )
-            if let agentManagingConnection = primaryConnectionManager as? AgentManaging {
-                agentSessionManager = AgentSessionManager(
-                    agentManager: agentManagingConnection,
-                    connectionManager: primaryConnectionManager,
-                    projectIDResolver: { threadID in
-                        appState.threads.first(where: { $0.id == threadID })?.projectId
-                    }
-                )
-            }
+            agentSessionManager = AgentSessionManager(
+                connectionManager: primaryConnectionManager
+            )
 
             self.databaseManager = databaseManager
             remoteConnectionPool = connectionPool

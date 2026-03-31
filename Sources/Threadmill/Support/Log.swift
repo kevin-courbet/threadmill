@@ -43,6 +43,9 @@ extension Logger {
     /// AgentSessionManager: ACP sessions, binary deframing
     static let agent = Logger(subsystem: subsystem, category: "agent")
 
+    /// Chat pipeline: prompt send flow, timeline updates
+    static let chat = Logger(subsystem: subsystem, category: "chat")
+
     /// BrowserSessionManager: tab CRUD, navigation
     static let browser = Logger(subsystem: subsystem, category: "browser")
 

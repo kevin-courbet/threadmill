@@ -1,9 +1,11 @@
 import SwiftUI
+import os
 
 struct ChatSessionView: View {
-    @State var viewModel: ChatSessionViewModel
+    var viewModel: ChatSessionViewModel
 
     var body: some View {
+        let _ = Logger.chat.info("ChatSessionView body — viewModel.sessionID=\(viewModel.sessionID ?? "nil", privacy: .public), isStreaming=\(viewModel.isStreaming, privacy: .public)")
         VStack(spacing: 0) {
             ChatMessageList(viewModel: viewModel)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -29,6 +31,9 @@ struct ChatSessionView: View {
             }
             .keyboardShortcut(".", modifiers: .command)
             .hidden()
+        }
+        .onAppear {
+            Logger.chat.info("ChatSessionView appeared — viewModel.sessionID=\(viewModel.sessionID ?? "nil", privacy: .public)")
         }
     }
 }

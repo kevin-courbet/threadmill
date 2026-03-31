@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import os
 
 struct ChatInputBar: View {
     let viewModel: ChatSessionViewModel
@@ -15,17 +16,21 @@ struct ChatInputBar: View {
         min(140, max(44, measuredHeight))
     }
 
-    private var borderState: AnimatedGradientBorderState {
-        if viewModel.isStreaming {
-            return .streaming
-        }
-        if viewModel.currentMode?.lowercased() == "plan" {
-            return .plan
-        }
-        return .idleFocused
+    private var isPlanMode: Bool {
+        viewModel.currentMode?.lowercased() == "plan"
+    }
+
+    private var inputBorderColor: Color {
+        isPlanMode ? Color.blue.opacity(0.9) : Color(nsColor: .separatorColor)
+    }
+
+    private var inputBorderStyle: StrokeStyle {
+        isPlanMode ? StrokeStyle(lineWidth: 1, dash: [6, 4]) : StrokeStyle(lineWidth: 1)
     }
 
     var body: some View {
+        let inputEnabled = viewModel.isInputEnabled
+        let _ = Logger.chat.info("ChatInputBar render — isInputEnabled=\(inputEnabled, privacy: .public), isStreaming=\(viewModel.isStreaming, privacy: .public), canSend=\(canSend, privacy: .public), textLength=\(text.count, privacy: .public)")
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 modelSelector
@@ -37,6 +42,7 @@ struct ChatInputBar: View {
                 Spacer(minLength: 0)
 
                 Button {
+                    Logger.chat.info("ChatInputBar send button tapped — isStreaming=\(viewModel.isStreaming, privacy: .public), canSend=\(canSend, privacy: .public), textLength=\(text.count, privacy: .public)")
                     if viewModel.isStreaming {
                         Task { await viewModel.cancelCurrentPrompt() }
                     } else {
@@ -76,12 +82,9 @@ struct ChatInputBar: View {
         .padding(.vertical, 10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
-            AnimatedGradientBorder(
-                state: borderState,
-                cornerRadius: 18,
-                lineWidth: viewModel.isStreaming ? 1.7 : 1.0
-            )
-            .allowsHitTesting(false)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(inputBorderColor, style: inputBorderStyle)
+                .allowsHitTesting(false)
         }
         .background {
             Button("") {
@@ -146,10 +149,12 @@ struct ChatInputBar: View {
 
     private func send() {
         guard canSend else {
+            Logger.chat.info("ChatInputBar send skipped — canSend=false, trimmedLength=\(text.trimmingCharacters(in: .whitespacesAndNewlines).count, privacy: .public), isStreaming=\(viewModel.isStreaming, privacy: .public)")
             return
         }
 
         let outgoingText = text
+        Logger.chat.info("ChatInputBar send dispatch — outgoingLength=\(outgoingText.count, privacy: .public), trimmedLength=\(outgoingText.trimmingCharacters(in: .whitespacesAndNewlines).count, privacy: .public)")
         text = ""
         Task {
             await viewModel.sendPrompt(text: outgoingText)

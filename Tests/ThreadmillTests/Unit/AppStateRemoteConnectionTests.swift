@@ -197,7 +197,7 @@ final class AppStateRemoteConnectionTests: XCTestCase {
         try await appState.createThread(projectID: "project-b", name: "feature-b", sourceType: "new_feature", branch: nil)
 
         XCTAssertEqual(database.replaceAllFromDaemonRemoteIDs.last, remoteB.id)
-        XCTAssertEqual(connectionB.requests.map(\.method), ["thread.create", "project.list", "thread.list"])
+        XCTAssertEqual(connectionB.requests.map(\.method), ["thread.create", "project.list", "thread.list", "agent.registry.list"])
     }
 
     func testReloadFromDatabaseReconcilesRemoteConnectionPool() {

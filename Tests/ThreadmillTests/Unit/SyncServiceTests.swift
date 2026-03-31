@@ -24,7 +24,7 @@ final class SyncServiceTests: XCTestCase {
 
         await syncService.syncFromDaemon()
 
-        XCTAssertEqual(connection.requests.map(\.method), ["project.list", "thread.list"])
+        XCTAssertEqual(connection.requests.map(\.method), ["project.list", "thread.list", "agent.registry.list"])
         XCTAssertEqual(database.replaceAllFromDaemonRemoteIDs, ["remote-42"])
     }
 }

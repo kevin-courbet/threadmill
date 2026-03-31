@@ -14,6 +14,7 @@ private extension View {
 enum SettingsSection: Hashable {
     case general
     case remotes
+    case agents
     case chat
 }
 
@@ -32,6 +33,8 @@ struct SettingsView: View {
                     .tag(SettingsSection.general)
                 Label("Remotes", systemImage: "server.rack")
                     .tag(SettingsSection.remotes)
+                Label("Agents", systemImage: "cpu")
+                    .tag(SettingsSection.agents)
                 Label("Chat", systemImage: "bubble.left.and.bubble.right")
                     .tag(SettingsSection.chat)
             }
@@ -61,6 +64,9 @@ struct SettingsView: View {
         case .remotes:
             RemotesSettingsView(databaseManager: databaseManager, appState: appState)
                 .navigationTitle("Remotes")
+        case .agents:
+            AgentsSettingsView()
+                .navigationTitle("Agents")
         case .chat:
             ChatSettingsView(gitHubAuthManager: gitHubAuthManager)
                 .navigationTitle("Chat")

@@ -33,9 +33,68 @@ final class SyncService: SyncServicing {
             try databaseManager.replaceAllFromDaemon(projects: projects, threads: threads, remoteId: remoteId)
             Logger.sync.info("DB write done — calling reloadFromDatabase")
             appState.reloadFromDatabase()
+
+            await syncAgentRegistry()
+
             Logger.sync.info("syncFromDaemon DONE — appState.presets.count=\(self.appState.presets.count)")
         } catch {
             Logger.sync.error("Sync failed: \(error)")
+        }
+    }
+
+    private func syncAgentRegistry() async {
+        do {
+            let result = try await connectionManager.request(method: "agent.registry.list", params: [:], timeout: 10)
+            let entries = parseAgentRegistry(result)
+            appState.agentRegistry = entries
+            Logger.sync.info("Agent registry synced — \(entries.count) agents, \(entries.filter(\.installed).count) installed")
+        } catch {
+            Logger.sync.error("Agent registry sync failed: \(error)")
+        }
+    }
+
+    private func parseAgentRegistry(_ payload: Any) -> [AgentRegistryEntry] {
+        guard let rows = payload as? [[String: Any]] else {
+            return []
+        }
+
+        return rows.compactMap { row in
+            guard
+                let id = row["id"] as? String,
+                let name = row["name"] as? String,
+                let command = row["command"] as? String
+            else {
+                return nil
+            }
+
+            let launchArgs = (row["launch_args"] as? [String]) ?? []
+            let installed = (row["installed"] as? Bool) ?? false
+            let resolvedPath = row["resolved_path"] as? String
+
+            var installMethod: AgentInstallMethod?
+            if let methodDict = row["install_method"] as? [String: Any],
+               let type = methodDict["type"] as? String,
+               let package = methodDict["package"] as? String
+            {
+                switch type {
+                case "npm":
+                    installMethod = .npm(package: package)
+                case "uv":
+                    installMethod = .uv(package: package)
+                default:
+                    break
+                }
+            }
+
+            return AgentRegistryEntry(
+                id: id,
+                name: name,
+                command: command,
+                launchArgs: launchArgs,
+                installed: installed,
+                resolvedPath: resolvedPath,
+                installMethod: installMethod
+            )
         }
     }
 

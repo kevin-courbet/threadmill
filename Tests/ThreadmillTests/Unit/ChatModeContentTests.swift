@@ -7,12 +7,12 @@ final class ChatModeContentTests: XCTestCase {
         let cache = ChatSessionViewModelCache()
         var createCount = 0
 
-        let first = cache.resolve(conversationID: "conversation-1") {
+        let first = cache.resolve(conversationID: "conversation-1", sessionID: "session-1") {
             createCount += 1
             return ChatSessionViewModel(agentSessionManager: nil, sessionID: "session-1", threadID: "thread-1")
         }
 
-        let second = cache.resolve(conversationID: "conversation-1") {
+        let second = cache.resolve(conversationID: "conversation-1", sessionID: "session-1") {
             createCount += 1
             return ChatSessionViewModel(agentSessionManager: nil, sessionID: "session-1", threadID: "thread-1")
         }
@@ -25,12 +25,12 @@ final class ChatModeContentTests: XCTestCase {
         let cache = ChatSessionViewModelCache()
         var createCount = 0
 
-        let first = cache.resolve(conversationID: "conversation-1") {
+        let first = cache.resolve(conversationID: "conversation-1", sessionID: "session-1") {
             createCount += 1
             return ChatSessionViewModel(agentSessionManager: nil, sessionID: "session-1", threadID: "thread-1")
         }
 
-        let second = cache.resolve(conversationID: "conversation-2") {
+        let second = cache.resolve(conversationID: "conversation-2", sessionID: "session-2") {
             createCount += 1
             return ChatSessionViewModel(agentSessionManager: nil, sessionID: "session-2", threadID: "thread-1")
         }

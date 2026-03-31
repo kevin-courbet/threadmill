@@ -1,4 +1,3 @@
-import AppKit
 import Foundation
 import SwiftUI
 
@@ -133,38 +132,29 @@ private struct MarkdownInlineText: View {
     }
 }
 
-private struct CombinedTextBlockView: NSViewRepresentable {
+private struct CombinedTextBlockView: View {
     let id: String
     let blocks: [MarkdownBlock]
 
-    func makeNSView(context: Context) -> NSTextView {
-        let textView = NSTextView()
-        textView.drawsBackground = false
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.textContainerInset = .zero
-        textView.textContainer?.lineFragmentPadding = 0
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.heightTracksTextView = false
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        return textView
+    var body: some View {
+        Text(buildAttributedText())
+            .font(.system(size: 14))
+            .foregroundStyle(.primary)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    func updateNSView(_ nsView: NSTextView, context: Context) {
-        nsView.textStorage?.setAttributedString(buildAttributedText())
-    }
+    private func buildAttributedText() -> AttributedString {
+        var result = AttributedString()
 
-    private func buildAttributedText() -> NSAttributedString {
-        let result = NSMutableAttributedString()
         for (index, block) in blocks.enumerated() {
             if index > 0 {
-                result.append(NSAttributedString(string: "\n\n"))
+                result += AttributedString("\n\n")
             }
+
             switch block {
             case let .heading(level, text):
-                let attributed = (try? AttributedString(markdown: text)) ?? AttributedString(text)
-                let ns = NSMutableAttributedString(attributedString: NSAttributedString(attributed))
+                var attributed = (try? AttributedString(markdown: text)) ?? AttributedString(text)
                 let fontSize: CGFloat
                 switch level {
                 case 1: fontSize = 22
@@ -172,15 +162,17 @@ private struct CombinedTextBlockView: NSViewRepresentable {
                 case 3: fontSize = 17
                 default: fontSize = 15
                 }
-                ns.addAttribute(.font, value: NSFont.systemFont(ofSize: fontSize, weight: .semibold), range: NSRange(location: 0, length: ns.length))
-                result.append(ns)
+                attributed.font = .system(size: fontSize, weight: .semibold)
+                attributed.foregroundColor = .primary
+                result += attributed
             case let .paragraph(text):
                 let attributed = (try? AttributedString(markdown: text)) ?? AttributedString(text)
-                result.append(NSAttributedString(attributed))
+                result += attributed
             case .unordered, .ordered, .blockquote, .code:
                 break
             }
         }
+
         return result
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 
 struct ChatModeContent: View {
     @Environment(AppState.self) private var appState
@@ -14,25 +15,40 @@ struct ChatModeContent: View {
     var body: some View {
         if let chatConversationService = appState.chatConversationService {
             let selectedConversation = selectedConversation
-            let selectedProjectAgents = appState.selectedProject?.agents ?? []
-            let availableAgents = selectedProjectAgents.isEmpty
-                ? [AgentConfig(name: "opencode", command: "opencode", cwd: nil)]
-                : selectedProjectAgents
-            let viewModel = viewModelCache.resolve(
-                conversationID: selectedConversation?.id,
-                create: {
-                    ChatSessionViewModel(
-                        agentSessionManager: appState.agentSessionManager,
-                        sessionID: selectedConversation?.agentSessionID,
-                        threadID: thread.id,
-                        availableModes: [],
-                        selectedAgentName: selectedConversation?.agentType ?? availableAgents.first?.name ?? "opencode",
-                        availableAgents: availableAgents
+            let installedAgents = appState.agentRegistry.filter(\.installed).map(\.toAgentConfig)
+            let availableAgents = installedAgents.isEmpty
+                ? [AgentConfig(name: "opencode", command: "opencode acp", cwd: nil)]
+                : installedAgents
+            let _ = Logger.chat.info("ChatModeContent body — threadID=\(thread.id, privacy: .public), selectedConversationID=\(selectedConversation?.id ?? "nil", privacy: .public), selectedSessionID=\(selectedConversation?.agentSessionID ?? "nil", privacy: .public), reloadToken=\(reloadToken, privacy: .public)")
+            Group {
+                if let selectedConversation {
+                    let viewModel = viewModelCache.resolve(
+                        conversationID: selectedConversation.id,
+                        sessionID: selectedConversation.agentSessionID,
+                        create: {
+                            Logger.chat.info("ChatModeContent creating ChatSessionViewModel — threadID=\(thread.id, privacy: .public), conversationID=\(selectedConversation.id, privacy: .public), sessionID=\(selectedConversation.agentSessionID ?? "nil", privacy: .public)")
+                            return ChatSessionViewModel(
+                                agentSessionManager: appState.agentSessionManager,
+                                sessionID: selectedConversation.agentSessionID,
+                                threadID: thread.id,
+                                availableModes: [],
+                                selectedAgentName: selectedConversation.agentType,
+                                availableAgents: availableAgents
+                            )
+                        }
+                    )
+
+                    ChatSessionView(viewModel: viewModel)
+                } else {
+                    ChatEmptyStateView(
+                        harnesses: chatHarnesses,
+                        onCreateConversationWithHarness: { harness in
+                            Logger.chat.info("ChatModeContent onCreateConversationWithHarness callback — threadID=\(thread.id, privacy: .public), harness=\(harness.title, privacy: .public), agentType=\(harness.agentType, privacy: .public)")
+                            onCreateConversationWithHarness(harness)
+                        }
                     )
                 }
-            )
-
-            ChatSessionView(viewModel: viewModel)
+            }
                 .task(id: reloadToken) {
                     await refreshConversationState(with: chatConversationService)
                 }
@@ -75,6 +91,45 @@ struct ChatModeContent: View {
     }
 }
 
+private struct ChatEmptyStateView: View {
+    let harnesses: [ChatHarness]
+    let onCreateConversationWithHarness: (ChatHarness) -> Void
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(.system(size: 40))
+                .foregroundStyle(.tertiary)
+
+            Text("No chat sessions")
+                .font(.headline)
+
+            Text("Create a session to start chatting in this thread.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            if let primaryHarness = harnesses.first {
+                Button("Start \(primaryHarness.title) Session") {
+                    Logger.chat.info("ChatEmptyState CTA tapped — harness=\(primaryHarness.title, privacy: .public), agentType=\(primaryHarness.agentType, privacy: .public)")
+                    onCreateConversationWithHarness(primaryHarness)
+                }
+                .buttonStyle(.borderedProminent)
+
+                if harnesses.count > 1 {
+                    ForEach(harnesses.dropFirst()) { harness in
+                        Button("Start \(harness.title) Session") {
+                            Logger.chat.info("ChatEmptyState CTA tapped — harness=\(harness.title, privacy: .public), agentType=\(harness.agentType, privacy: .public)")
+                            onCreateConversationWithHarness(harness)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 @MainActor
 final class ChatSessionViewModelCache {
     private var cachedConversationID: String?
@@ -82,8 +137,11 @@ final class ChatSessionViewModelCache {
 
     func resolve(
         conversationID: String?,
+        sessionID: String?,
         create: () -> ChatSessionViewModel
     ) -> ChatSessionViewModel {
+        let cacheHit = cachedViewModel != nil && cachedConversationID == conversationID
+        Logger.chat.info("ChatSessionViewModelCache resolve — conversationID=\(conversationID ?? "nil", privacy: .public), sessionID=\(sessionID ?? "nil", privacy: .public), cacheHit=\(cacheHit, privacy: .public)")
         if let cachedViewModel, cachedConversationID == conversationID {
             return cachedViewModel
         }

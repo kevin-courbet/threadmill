@@ -144,6 +144,7 @@ final class AppState {
         }
     }
     var threads: [ThreadModel] = []
+    var agentRegistry: [AgentRegistryEntry] = []
     var systemStats: SystemStatsResult?
     var pinnedThreadIDs: Set<String> = {
         guard let data = UserDefaults.standard.data(forKey: "pinnedThreadIDs"),
@@ -505,6 +506,25 @@ final class AppState {
         await syncService?.syncFromDaemon()
     }
 
+    func installAgent(agentID: String) async throws -> Bool {
+        guard let connectionManager else {
+            throw AppStateError.connectionManagerUnavailable
+        }
+        let result = try await connectionManager.request(
+            method: "agent.registry.install",
+            params: ["agent_id": agentID],
+            timeout: 120
+        )
+        guard let payload = result as? [String: Any] else {
+            return false
+        }
+        let success = (payload["success"] as? Bool) ?? false
+        if success {
+            await syncService?.syncFromDaemon()
+        }
+        return success
+    }
+
     func handleDaemonEvent(method: String, params: [String: Any]?) {
         switch method {
         case "thread.status_changed":
@@ -520,25 +540,9 @@ final class AppState {
              "state.delta",
              "preset.process_event":
             scheduleEventSync()
-        case "agent.status_changed":
-            handleAgentStatusChanged(params)
         default:
             break
         }
-    }
-
-    func startAgent(projectID: String, agentName: String) async throws -> UInt16 {
-        guard let connection = connectionForProject(id: projectID) as? AgentManaging else {
-            throw AppStateError.connectionManagerUnavailable
-        }
-        return try await connection.startAgent(projectID: projectID, agentName: agentName)
-    }
-
-    func stopAgent(channelID: UInt16) async throws {
-        guard let connection = connectionManager as? AgentManaging else {
-            throw AppStateError.connectionManagerUnavailable
-        }
-        try await connection.stopAgent(channelID: channelID)
     }
 
     func scheduleAttachSelectedPreset() {
@@ -1209,21 +1213,6 @@ final class AppState {
         } else {
             Logger.state.info("project.clone_progress clone=\(cloneID, privacy: .public) step=\(step, privacy: .public) message=\(message, privacy: .public)")
         }
-    }
-
-    private func handleAgentStatusChanged(_ params: [String: Any]?) {
-        guard
-            let params,
-            let channelID = params["channel_id"],
-            let agentName = params["agent_name"] as? String,
-            let event = params["event"] as? String
-        else {
-            Logger.state.error("Invalid agent.status_changed payload: \(String(describing: params))")
-            return
-        }
-
-        Logger.state.info("agent.status_changed channel=\(String(describing: channelID)) agent=\(agentName, privacy: .public) event=\(event, privacy: .public)")
-        scheduleEventSync()
     }
 
     private func threadProgressIndicatesFailure(step: String, errorText: String?) -> Bool {
