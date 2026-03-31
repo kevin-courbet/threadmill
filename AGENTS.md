@@ -42,6 +42,7 @@ Threadmill.app (SwiftUI)   ◄─ SSH tunnel + WS ─►   Spindle daemon (Rust/
 ├── GhosttyKit (Metal GPU terminal)                  ├── Git/tmux orchestration
 ├── WebSocket client                                 ├── .threadmill.yml config
 ├── WKWebView browser                               ├── threads.json state store
+├── AgentSessionManager (ACP frame relay)            ├── ChatService (agent lifecycle + ACP relay)
 └── PTY shim relay (threadmill-relay)                ├── File service (list/read/git_status)
                                                      └── threadmill-cli (agent CLI)
 ```
@@ -81,7 +82,7 @@ Each mode has session tabs in the toolbar (capsule-styled, aizen-inspired). Wind
 | `Connection/SSHTunnelManager.swift` | SSH tunnel child process lifecycle |
 | `Transport/ConnectionManager.swift` | Connection state machine, reconnect with backoff, DI-friendly |
 | `Transport/TerminalMultiplexer.swift` | channel_id → RelayEndpoint dispatch + preRegistrationBuffer |
-| `Transport/AgentSessionManager.swift` | ACP binary frame relay, per-channel deframing, session lifecycle |
+| `Transport/AgentSessionManager.swift` | Chat session lifecycle via chat.* RPCs, ACP binary frame relay, per-channel deframing |
 | `Transport/RelayEndpoint.swift` | Per-terminal Unix socket + bounded frame buffer |
 | `Terminal/GhosttySurfaceHost.swift` | ghostty_app lifecycle, surface registry, callbacks |
 | `Terminal/GhosttyTerminalView.swift` | NSViewRepresentable, endpoint swap on thread switch |
@@ -165,6 +166,8 @@ Beast's `/home/wsl/dev` is NFS-mounted at `/Volumes/wsl-dev`. **Edit Spindle fil
 | `src/services/thread.rs` | thread.create/close/hide/reopen/list + env var setup |
 | `src/services/terminal.rs` | terminal.attach/detach/resize, channel allocation, pipe-pane relay, scrollback replay |
 | `src/services/preset.rs` | preset.start/stop/restart, process monitoring, config-driven commands, base preset name resolution for multi-instance tabs |
+| `src/services/chat.rs` | ChatService: chat.start/load/stop/list/attach/detach/history, agent process lifecycle, ACP handshake, session ID rewriting, binary frame fanout, stall detection, history persistence |
+| `src/services/agent.rs` | Low-level agent process spawning (used internally by ChatService) |
 | `src/services/file.rs` | file.list/file.read/file.git_status, path authorization, TOCTOU hardening |
 | `src/bin/threadmill-cli.rs` | CLI for agent-side automation (clap) |
 | `tests/` | Integration tests (project, thread, terminal, preset, file, sync, binary, CLI) |
@@ -198,6 +201,7 @@ ssh beast "journalctl --user -u spindle -f"      # tail logs
 | Mode switcher (aizen pattern) | Chat/Terminal/Files/Browser modes with session tabs per mode |
 | GRDB for conversations + browser | Local persistence for chat/browser state across app restarts |
 | CodeEditSourceEditor + tree-sitter | Accurate language parsing and highlighting via CodeEditLanguages queries |
+| Spindle ChatService for agents | Agent process lifecycle, ACP handshake, session ID translation all daemon-side — Mac only relays post-handshake ACP |
 
 ---
 
@@ -213,9 +217,9 @@ Binary frames: `[u16be channel_id][raw terminal bytes]`. Not JSON. See `docs/age
 
 ## Protocol Quick Reference
 
-**RPC methods** (Mac → Spindle): `ping`, `project.{list,add,clone,remove,branches}`, `thread.{create,list,close,hide,reopen}`, `terminal.{attach,detach,resize}`, `preset.{start,stop,restart}`, `agent.{start,stop}`, `file.{list,read,git_status}`, `state.snapshot`
+**RPC methods** (Mac → Spindle): `ping`, `project.{list,add,clone,remove,branches}`, `thread.{create,list,close,hide,reopen}`, `terminal.{attach,detach,resize}`, `preset.{start,stop,restart}`, `chat.{start,load,stop,list,attach,detach,history}`, `file.{list,read,git_status}`, `state.snapshot`
 
-**Events** (Spindle → Mac): `thread.progress`, `thread.status_changed`, `thread.created`, `preset.process_event`, `agent.status_changed`, `project.added`, `project.removed`, `project.clone_progress`, `state.delta`
+**Events** (Spindle → Mac): `thread.progress`, `thread.status_changed`, `thread.created`, `preset.process_event`, `chat.session_ready`, `chat.session_added`, `chat.session_updated`, `chat.session_removed`, `chat.status_changed`, `project.added`, `project.removed`, `project.clone_progress`, `state.delta`
 
 Full protocol reference: `docs/agents/communication-protocol.md`
 JSON schema: `protocol/threadmill-rpc.schema.json`

@@ -1,5 +1,5 @@
 ---
-updated: 2026-03-25
+updated: 2026-03-31
 ---
 
 # Communication Protocol
@@ -104,6 +104,26 @@ Threadmill                         Spindle/tmux
    |<------------------------ {ok:true}|
 ```
 
+### Chat session (chat.start -> chat.attach -> binary ACP relay)
+
+```text
+User/App                   Threadmill                     Spindle
+   |                          |                             |
+   | start chat               | chat.start --------------->|
+   |                          |<-- {session_id, "starting"} |
+   |                          |            [Spindle spawns agent, does ACP handshake]
+   |                          |                             |<-- chat.session_ready event
+   |                          | chat.attach --------------->|
+   |                          |            [blocks until ready]
+   |                          |<-- {channel_id, acp_session_id, modes, models}
+   |                          |                             |
+   | send prompt              | [ch_id][session/prompt] ==>|
+   |                          |            [Spindle rewrites session ID, relays to agent stdin]
+   |                          |<=== [ch_id][session/update] |  (agent_message_chunk)
+   |                          |<=== [ch_id][session/update] |  (tool_call, tool_call_update)
+   |                          |<=== [ch_id][session/prompt response]
+```
+
 ### Reconnect flow (disconnect -> reconnect -> re-sync -> re-attach terminals)
 
 ```text
@@ -171,9 +191,14 @@ Server notification (event):
 {"thread_id":"<uuid>","preset":"terminal","event":"started|exited|crashed","exit_code":1}
 ```
 
-`AgentStatusChanged`
+`ChatSessionSummary`
 ```json
-{"channel_id":<u16>,"project_id":"<uuid>","agent_name":"opencode","event":"started|exited|crashed","exit_code":0}
+{"session_id":"<uuid>","agent_type":"opencode","status":"starting|ready|failed|ended","agent_status":"idle|busy|stalled","worker_count":0,"title":"...","model_id":"...","created_at":"RFC3339"}
+```
+
+`ChatSessionReadyEvent`
+```json
+{"acp_session_id":"<uuid>","thread_id":"<uuid>","session_id":"<uuid>","modes":<ModesInfo?>,"models":<ModelsInfo?>,"config_options":[ConfigOption?]}
 ```
 
 `FileBrowserEntry`
@@ -270,15 +295,43 @@ Server notification (event):
 - Params: `{"thread_id":"<uuid>","preset":"<name>"}`
 - Result: `{"ok":true}`
 
-`agent.start`
-- Params: `{"project_id":"<uuid>","agent_name":"<name>"}`
-- Result: `{"channel_id":<u16 1..65535>}`
-- Spawns the configured ACP agent process and returns a channel for binary frame relay
+`chat.start`
+- Params: `{"thread_id":"<uuid>","agent_name":"<name>"}`
+- Result: `{"session_id":"<uuid>","status":"starting"}`
+- Creates a chat session: Spindle spawns the agent process, performs the ACP handshake (initialize + session/new), and manages the session lifecycle. Returns immediately; session becomes "ready" asynchronously.
+- Agent config resolved from `.threadmill.yml` `agents` section; defaults to `opencode acp` if none defined.
+- Agent process runs in the thread's worktree directory.
 
-`agent.stop`
+`chat.load`
+- Params: `{"thread_id":"<uuid>","session_id":"<uuid>"}`
+- Result: `{"session_id":"<uuid>","status":"starting"}`
+- Restarts a stopped/ended session's agent process, reconnecting to the existing ACP session via `session/load`.
+
+`chat.stop`
+- Params: `{"thread_id":"<uuid>","session_id":"<uuid>"}`
+- Result: `{"archived":true}`
+- Stops the agent process and archives the session. History is preserved.
+
+`chat.list`
+- Params: `{"thread_id":"<uuid>"}`
+- Result: `[ChatSessionSummary]`
+- Returns all sessions for the thread (active, ended, and recovered).
+
+`chat.attach`
+- Params: `{"thread_id":"<uuid>","session_id":"<uuid>"}`
+- Result: `{"channel_id":<u16>,"acp_session_id":"<uuid>","modes":<ModesInfo?>,"models":<ModelsInfo?>,"config_options":[ConfigOption?]}`
+- Blocks until the session is ready (up to 35s), then allocates a binary channel for ACP frame relay. Returns the ACP session ID and initial capabilities (modes, models) from the handshake.
+- Multiple clients can attach to the same session (fanout).
+
+`chat.detach`
 - Params: `{"channel_id":<u16>}`
-- Result: `{}`
-- Terminates the agent process and releases the channel
+- Result: `{"detached":true|false}`
+- Releases a binary channel from a chat session.
+
+`chat.history`
+- Params: `{"thread_id":"<uuid>","session_id":"<uuid>","cursor":<optional u64>}`
+- Result: `{"updates":[Value],"next_cursor":<optional u64>}`
+- Returns persisted `session/update` payloads for a session, paginated.
 
 `file.list`
 - Params: `{"path":"<absolute path>"}`
@@ -325,8 +378,21 @@ Server notification (event):
 `preset.process_event`
 - Params: `PresetProcessEvent`
 
-`agent.status_changed`
-- Params: `AgentStatusChanged`
+`chat.session_ready`
+- Params: `ChatSessionReadyEvent`
+- Emitted when Spindle completes the ACP handshake for a chat session. Contains modes, models, and config options from the `session/new` response.
+
+`chat.session_added`
+- Params: `{"chat_session": ChatSessionSummary}`
+
+`chat.session_updated`
+- Params: `{"chat_session": ChatSessionSummary}`
+
+`chat.session_removed`
+- Params: `{"chat_session": ChatSessionSummary}`
+
+`chat.status_changed`
+- Params: `{"thread_id":"<uuid>","session_id":"<uuid>","old_status":"idle|busy|stalled","new_status":"idle|busy|stalled"}`
 
 `state.delta`
 - Params:
@@ -373,7 +439,7 @@ Every `terminal.attach` for a **new** target sends a scrollback replay: `tmux ca
 
 - Bytes: `[channel_id_be_u16][payload_bytes...]`
 - Channel IDs are ephemeral per WebSocket connection and must be reacquired after reconnect.
-- The same binary frame format is shared by **terminal** and **agent** channels.
+- The same binary frame format is shared by **terminal** and **chat** channels.
 
 ### Terminal binary frames
 - Client -> daemon: relay input payload for attached tmux pane via pipe-pane -I.
@@ -382,11 +448,14 @@ Every `terminal.attach` for a **new** target sends a scrollback replay: `tmux ca
 - Pre-registration buffering: binary frames arriving before `terminal.attach` response are buffered by `TerminalMultiplexer` and flushed when the endpoint is registered.
 - Scrollback replay: on attach, Spindle sends `tmux capture-pane -S -200` output with CRLF line endings (bare LF → CRLF). A 150ms delay before capture ensures the shell prompt is in the pane buffer for freshly created windows. `sanitize_scrollback` preserves one trailing newline for correct cursor positioning. See **Multi-instance terminal tabs** above.
 
-### Agent binary frames (ACP)
-- Client <-> daemon: relay agent process stdin/stdout as raw bytes.
-- Acquired via `agent.start`, which spawns the agent and returns `channel_id`.
-- Payload contains newline-delimited JSON-RPC (ACP protocol) between agent and client.
-- `AgentSessionManager` on the Mac side deframes bytes into ACP messages and manages session lifecycle (handshake, prompt, cancel, stop).
+### Chat binary frames (ACP)
+- Client <-> daemon: relay ACP protocol messages between Mac and agent process.
+- Acquired via `chat.attach`, which returns `channel_id` for a Spindle-managed chat session.
+- Spindle manages the agent process lifecycle and ACP handshake (initialize + session/new). The Mac app only sends post-handshake ACP requests (session/prompt, session/cancel, session/set_mode, session/set_model) and receives session/update notifications.
+- Payload contains newline-delimited JSON-RPC (ACP protocol).
+- Spindle transparently rewrites session IDs in both directions: the Mac uses the Spindle session ID, which Spindle translates to/from the agent's ACP session ID.
+- Multiple clients can attach to the same session; Spindle fans out agent output to all attached channels.
+- On WebSocket reconnect, the Mac calls `chat.attach` to reacquire a channel — the agent process and ACP session survive connection drops.
 
 ## Error Codes and Behavior
 
@@ -417,10 +486,11 @@ Every `terminal.attach` for a **new** target sends a scrollback replay: `tmux ca
 - `thread.status_changed`: update local thread status, attach/detach behavior by status.
 - `thread.progress`: log and mark failed when progress indicates failure.
 - `project.clone_progress`: log clone progress.
-- `agent.status_changed`: forwarded to `AgentSessionManager` for session lifecycle updates.
 - `thread.created`, `thread.removed`, `project.added`, `project.removed`, `state.delta`, `preset.process_event`: schedule full sync.
 
 Unknown events are ignored.
+
+Chat session lifecycle events (`chat.session_ready`, `chat.session_added`, etc.) are emitted but not currently consumed by `AppState` — the Mac app manages chat sessions through `chat.start` + `chat.attach` RPCs and receives streaming updates via binary frame relay.
 
 ## Constraints
 

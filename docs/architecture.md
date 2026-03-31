@@ -58,7 +58,7 @@ macOS (Threadmill)                              beast / WSL2 (Spindle)
 SwiftUI + AppKit                                Rust daemon (tokio)
 GRDB cache                                      state_store (threads.json)
 GhosttyKit terminal surface                     git + tmux orchestration
-ACP agent session manager                       agent process relay (stdin/stdout)
+AgentSessionManager (ACP frame relay)           ChatService (agent lifecycle + ACP relay)
 WKWebView browser                               file service (list/read/git_status)
 WebSocket client                                WebSocket server
 
@@ -89,7 +89,7 @@ All terminal sessions kept alive in ZStack with opacity/allowsHitTesting toggle.
 
 ### Chat Multi-Session
 
-`ChatConversation` records persisted in GRDB per thread. Each conversation maps to an ACP agent session (via `agentSessionID` + `agentType`). Multiple conversations shown as session tabs. `ChatSessionViewModel` subscribes to `AgentSessionManager` notifications and builds a structured timeline (messages, tool calls, tool call groups, turn summaries).
+`ChatConversation` records persisted in GRDB per thread. Each conversation maps to a Spindle-managed chat session (via `agentSessionID` + `agentType`). Spindle owns the agent process lifecycle, ACP handshake, and session ID translation. Multiple conversations shown as session tabs. `ChatSessionViewModel` subscribes to `AgentSessionManager` notifications and builds a structured timeline (messages, tool calls, tool call groups, turn summaries).
 
 ### Browser
 
@@ -126,7 +126,7 @@ JSON-RPC 2.0 methods currently routed by `rpc_router.rs`:
 - `thread.create`, `thread.list`, `thread.close`, `thread.reopen`, `thread.hide`
 - `terminal.attach`, `terminal.detach`, `terminal.resize`
 - `preset.start`, `preset.stop`, `preset.restart`
-- `agent.start`, `agent.stop`
+- `chat.start`, `chat.load`, `chat.stop`, `chat.list`, `chat.attach`, `chat.detach`, `chat.history`
 - `file.list`, `file.read`, `file.git_status`
 
 Daemon events currently emitted:
@@ -138,7 +138,7 @@ Daemon events currently emitted:
 - `project.removed`
 - `state.delta`
 - `preset.process_event`
-- `agent.status_changed`
+- `chat.session_ready`, `chat.session_added`, `chat.session_updated`, `chat.session_removed`, `chat.status_changed`
 - `project.clone_progress`
 
 Defined but not currently emitted by daemon:
@@ -395,14 +395,14 @@ Default endpoint is `ws://127.0.0.1:19990` and can be overridden with `THREADMIL
 - [x] Git status coloring in file tree
 
 ### M6: ACP Agent Chat
-- [x] ACP transport layer (`AgentSessionManager`, binary frame relay)
-- [x] `agent.start` / `agent.stop` RPC + `agent.status_changed` event
-- [x] `.threadmill.yml` agents section + `AgentConfig` in project model
+- [x] ACP transport layer (`AgentSessionManager` binary frame relay + Spindle `ChatService` lifecycle)
+- [x] `chat.start` / `chat.attach` / `chat.stop` RPCs — Spindle manages agent process, ACP handshake, session ID translation
+- [x] `.threadmill.yml` agents section + `AgentConfig` in project model (defaults to `opencode acp` when absent)
 - [x] `ChatSessionViewModel` with ACP streaming + timeline building
 - [x] Rich chat UI: tool call accordions, grouped tools, turn summaries, markdown, code blocks
 - [x] Animated gradient border, shimmer thinking, streaming perf coalescing
-- [x] Agent/mode/model selectors in chat input bar
-- [x] Reconnect-safe agent session lifecycle
+- [x] Agent/mode/model selectors in chat input bar (models populated from `configOptionUpdate`)
+- [x] Reconnect-safe agent session lifecycle (agent process survives WebSocket drops)
 
 ### Planned (Post-MVP)
 - [ ] Menu bar quick actions

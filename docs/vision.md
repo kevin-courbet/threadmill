@@ -109,15 +109,15 @@ ports:
 ### 10) Chat (ACP Agent Protocol)
 
 - [x] Multi-conversation per thread (GRDB-persisted)
-- [x] ACP binary frame relay via AgentSessionManager
-- [x] Agent spawning via `agent.start` / `agent.stop` RPC
+- [x] Spindle-managed agent lifecycle (`chat.start` / `chat.attach` / `chat.stop`)
+- [x] ACP binary frame relay via AgentSessionManager (Spindle handles handshake + session ID translation)
 - [x] Structured timeline: messages, tool calls, tool call groups, turn summaries
 - [x] Rich rendering: markdown, code blocks (tree-sitter), inline diffs, tool call accordions
 - [x] Animated gradient border (streaming/plan/idle), shimmer thinking indicator
-- [x] Agent/mode/model selectors in input bar
+- [x] Agent/mode/model selectors in input bar (models from `configOptionUpdate`)
 - [x] Enter=send, Shift+Enter=newline
 - [x] Session tabs for multiple conversations
-- [x] Reconnect-safe agent session lifecycle
+- [x] Reconnect-safe: agent process survives WebSocket drops, Mac re-attaches via `chat.attach`
 
 ### 11) Browser
 
@@ -196,10 +196,10 @@ ports:
 - [x] Git status coloring in file tree
 
 ### M6
-- [x] ACP agent chat (binary frame relay, structured timeline, rich rendering)
-- [x] agent.start / agent.stop RPC + agent.status_changed event
-- [x] `.threadmill.yml` agents section
-- [x] Agent/mode/model selectors
+- [x] ACP agent chat (Spindle ChatService + binary frame relay, structured timeline, rich rendering)
+- [x] `chat.start` / `chat.attach` / `chat.stop` RPCs (Spindle-managed agent lifecycle)
+- [x] `.threadmill.yml` agents section (defaults to `opencode acp` when absent)
+- [x] Agent/mode/model selectors (models from `configOptionUpdate`)
 
 ## Non-Goals
 
