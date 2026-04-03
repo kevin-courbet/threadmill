@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ThreadRow: View {
+    @Environment(AppState.self) private var appState
+
     let thread: ThreadModel
     let isSelected: Bool
     let isPinned: Bool
@@ -29,6 +31,10 @@ struct ThreadRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 6) {
+            GridLoadingIndicator(status: appState.agentStatus[thread.id]?.status)
+                .frame(width: 16, height: 16)
+                .padding(.trailing, 4)
+
             // Pin icon column — aligned with folder icon in section headers
             ZStack {
                 if isPinned || isHovered {
