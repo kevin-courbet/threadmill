@@ -347,6 +347,9 @@ final class ChatSessionViewModel {
     func handleSessionUpdate(_ update: SessionUpdateNotification) {
         switch update.update {
         case let .userMessageChunk(content):
+            if shouldSkipEchoedUserChunk(content) {
+                break
+            }
             upsertStreamingMessage(role: .user, content: content, messageID: streamingUserMessageID)
         case let .agentMessageChunk(content):
             isStreaming = true
@@ -720,6 +723,17 @@ final class ChatSessionViewModel {
         .joined(separator: "\n")
 
         return [toolCall.id, contentText, String(describing: toolCall.rawOutput)].joined(separator: "|")
+    }
+
+    private func shouldSkipEchoedUserChunk(_ content: ContentBlock) -> Bool {
+        guard case let .text(incomingText) = content,
+              let existingUserMessage = userMessages.first(where: { $0.id == streamingUserMessageID }),
+              !existingUserMessage.plainText.isEmpty
+        else {
+            return false
+        }
+
+        return existingUserMessage.plainText == incomingText.text
     }
 
     private func finishStreamingCycle(forceRebuild: Bool) {

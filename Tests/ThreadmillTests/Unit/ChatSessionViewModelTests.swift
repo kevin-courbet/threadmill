@@ -125,6 +125,34 @@ final class ChatSessionViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.isInputEnabled)
     }
 
+    func testHandleSessionUpdatePlanStoresCurrentPlan() {
+        let viewModel = ChatSessionViewModel(agentSessionManager: nil)
+        let plan = Plan(entries: [
+            PlanEntry(content: "Investigate issue", priority: .high, status: .inProgress),
+            PlanEntry(content: "Ship fix", priority: .medium, status: .pending),
+        ])
+
+        viewModel.handleSessionUpdate(
+            SessionUpdateNotification(
+                sessionId: SessionId("session-1"),
+                update: .plan(plan)
+            )
+        )
+
+        XCTAssertEqual(viewModel.currentPlan, plan)
+    }
+
+    func testSessionChangeClearsCurrentPlan() {
+        let viewModel = ChatSessionViewModel(agentSessionManager: nil, sessionID: "session-1", sessionState: .ready)
+        viewModel.currentPlan = Plan(entries: [
+            PlanEntry(content: "Persisted task", priority: .low, status: .pending),
+        ])
+
+        viewModel.updateSessionContext(sessionID: "session-2", sessionState: .ready)
+
+        XCTAssertNil(viewModel.currentPlan)
+    }
+
     func testInitRecoversMissingPersistedSessionAndPersistsReplacementSessionID() async throws {
         let connection = MockDaemonConnection(state: .connected)
         connection.requestHandler = { method, params, _ in

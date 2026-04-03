@@ -68,6 +68,13 @@ struct ToolCallTimelineItem: Identifiable {
     }
 }
 
+struct ThoughtTimelineItem: Identifiable {
+    let id: String
+    var text: String
+    var timestamp: Date
+    var renderVersion: Int = 0
+}
+
 struct TurnSummary: Identifiable {
     let id: String
     let toolCount: Int
@@ -104,6 +111,7 @@ struct TurnSummary: Identifiable {
 enum TimelineItem: Identifiable {
     case message(MessageTimelineItem)
     case toolCall(ToolCallTimelineItem)
+    case thought(ThoughtTimelineItem)
     case toolCallGroup(ToolCallGroup)
     case turnSummary(TurnSummary)
 
@@ -113,6 +121,8 @@ enum TimelineItem: Identifiable {
             return "message:\(message.id)"
         case let .toolCall(toolCall):
             return "tool-call:\(toolCall.id)"
+        case let .thought(thought):
+            return "thought:\(thought.id)"
         case let .toolCallGroup(group):
             return "tool-call-group:\(group.id)"
         case let .turnSummary(summary):
@@ -126,6 +136,8 @@ enum TimelineItem: Identifiable {
             return "\(stableId):\(message.renderVersion)"
         case let .toolCall(toolCall):
             return "\(stableId):\(toolCall.renderVersion)"
+        case let .thought(thought):
+            return "\(stableId):\(thought.renderVersion)"
         case let .toolCallGroup(group):
             let aggregateRenderVersion = group.toolCalls.reduce(into: 0) { accumulator, item in
                 accumulator &+= item.renderVersion
@@ -146,6 +158,8 @@ enum TimelineItem: Identifiable {
             return message.timestamp
         case let .toolCall(toolCall):
             return toolCall.timestamp
+        case let .thought(thought):
+            return thought.timestamp
         case let .toolCallGroup(group):
             return group.timestamp
         case .turnSummary:
