@@ -51,7 +51,7 @@ struct ChatMessageList: View {
         ScrollViewReader { proxy in
             ZStack(alignment: .bottomTrailing) {
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(spacing: ChatTokens.messageSpacing) {
                         if remainingItemCount > 0 {
                             loadMoreButton(proxy: proxy)
                         }
@@ -76,10 +76,11 @@ struct ChatMessageList: View {
                                 .frame(width: 0, height: 0)
                             )
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 14)
                 }
 
+                // Scroll-to-bottom FAB
                 if userScrolledUp {
                     Button {
                         userScrolledUp = false
@@ -88,13 +89,23 @@ struct ChatMessageList: View {
                         }
                     } label: {
                         Image(systemName: "arrow.down")
-                            .font(.system(size: 13, weight: .bold))
-                            .padding(9)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(ChatTokens.textMuted)
+                            .padding(10)
                     }
                     .buttonStyle(.plain)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .padding(.trailing, 18)
-                    .padding(.bottom, 14)
+                    .background(
+                        Circle()
+                            .fill(.ultraThinMaterial)
+                    )
+                    .overlay(
+                        Circle()
+                            .strokeBorder(ChatTokens.borderSubtle, lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.25), radius: 16, y: 8)
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 16)
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
                 }
             }
             .onAppear {
@@ -160,13 +171,19 @@ struct ChatMessageList: View {
             }
         } label: {
             Text("Load more (\(remainingItemCount) remaining)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.system(size: ChatTokens.captionFontSize))
+                .foregroundStyle(ChatTokens.textMuted)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.secondary.opacity(0.1)))
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(ChatTokens.surfaceCard)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(ChatTokens.borderSubtle, lineWidth: 0.5)
+                )
         }
         .buttonStyle(.plain)
     }
-
 }

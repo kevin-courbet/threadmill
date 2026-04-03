@@ -24,45 +24,70 @@ struct MessageBubbleView: View {
         .onHover { isHovering = $0 }
     }
 
+    // MARK: - User Bubble (right-aligned, blue-tinted)
+
     private var userRow: some View {
         HStack(spacing: 0) {
             Spacer(minLength: 36)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .trailing, spacing: 4) {
                 textContent
                 timestamp
-                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: 420, alignment: .leading)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(alignment: .topTrailing) {
+            .padding(.horizontal, ChatTokens.bubblePaddingH)
+            .padding(.vertical, ChatTokens.bubblePaddingV)
+            .frame(maxWidth: min(560, 560), alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: ChatTokens.radiusBubble, style: .continuous)
+                    .fill(ChatTokens.surfaceBubbleUser)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: ChatTokens.radiusBubble, style: .continuous)
+                    .strokeBorder(ChatTokens.borderAccentUser, lineWidth: 1)
+            )
+            .overlay(alignment: .bottomTrailing) {
                 copyButton
-                    .padding(8)
+                    .offset(y: 16)
             }
         }
     }
+
+    // MARK: - Agent Bubble (full-width, subtle glass bg)
 
     private var agentRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             textContent
             timestamp
         }
+        .padding(.horizontal, 18)
+        .padding(.vertical, ChatTokens.bubblePaddingV)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .topTrailing) {
+        .background(
+            RoundedRectangle(cornerRadius: ChatTokens.radiusBubble, style: .continuous)
+                .fill(ChatTokens.surfaceBubble)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: ChatTokens.radiusBubble, style: .continuous)
+                .strokeBorder(ChatTokens.borderSubtle, lineWidth: 1)
+        )
+        .overlay(alignment: .bottomTrailing) {
             copyButton
+                .offset(y: 16)
         }
     }
+
+    // MARK: - System Message (centered caption)
 
     private var systemRow: some View {
         VStack(spacing: 2) {
             Text(plainText.isEmpty ? "System" : plainText)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ChatTokens.textMuted)
             timestamp
         }
         .frame(maxWidth: .infinity)
     }
+
+    // MARK: - Shared Elements
 
     private var textContent: some View {
         Group {
@@ -70,7 +95,7 @@ struct MessageBubbleView: View {
                 MarkdownView(text: plainText, isStreaming: message.id == "streaming-agent")
             } else {
                 Text(plainText.isEmpty ? "..." : plainText)
-                    .font(.body)
+                    .font(.system(size: ChatTokens.bodyFontSize))
                     .textSelection(.enabled)
             }
         }
@@ -80,7 +105,7 @@ struct MessageBubbleView: View {
     private var timestamp: some View {
         Text(Self.timestampFormatter.string(from: message.timestamp))
             .font(.system(size: 10, weight: .regular))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(ChatTokens.textFaint)
     }
 
     private var copyButton: some View {
@@ -97,13 +122,22 @@ struct MessageBubbleView: View {
             }
         } label: {
             Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(copied ? Color.green : .secondary)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(copied ? ChatTokens.statusSuccess : ChatTokens.textMuted)
                 .padding(5)
-                .background(Color(nsColor: .windowBackgroundColor).opacity(0.55), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .background(
+                    RoundedRectangle(cornerRadius: ChatTokens.radiusCommandPill, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: ChatTokens.radiusCommandPill, style: .continuous)
+                        .strokeBorder(ChatTokens.borderSubtle, lineWidth: 0.5)
+                )
         }
         .buttonStyle(.plain)
         .opacity(isHovering || copied ? 1 : 0)
+        .animation(.easeOut(duration: ChatTokens.durFast), value: isHovering)
+        .animation(.easeOut(duration: ChatTokens.durFast), value: copied)
         .accessibilityLabel(copied ? "Copied" : "Copy message")
     }
 

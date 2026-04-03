@@ -10,26 +10,32 @@ struct ToolCallGroupView: View {
     @State private var forceExpandAll = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header: status dot + up-to-4 kind icons + "N tool calls" + chevron
             Button {
-                withAnimation(.easeInOut(duration: 0.16)) {
+                withAnimation(.easeInOut(duration: ChatTokens.durNormal)) {
                     isExpanded.toggle()
                 }
             } label: {
                 HStack(spacing: 8) {
                     statusDot
                     toolIcons
+
                     Text("\(group.toolCalls.count) tool calls")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: ChatTokens.captionFontSize, weight: .semibold))
+                        .foregroundStyle(ChatTokens.textPrimary)
+
                     Spacer(minLength: 0)
+
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ChatTokens.textFaint)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
+            // Expanded body
             if isExpanded {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(group.displayItems) { displayItem in
@@ -48,15 +54,11 @@ struct ToolCallGroupView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(8)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-        )
+        .padding(12)
+        .toolCallCard()
         .contextMenu {
             Button("Expand All") {
-                withAnimation(.easeInOut(duration: 0.16)) {
+                withAnimation(.easeInOut(duration: ChatTokens.durNormal)) {
                     isExpanded = true
                     forceExpandAll = true
                 }
@@ -75,21 +77,25 @@ struct ToolCallGroupView: View {
         }
     }
 
+    // MARK: - Status Dot
+
     private var statusDot: some View {
         Circle()
             .fill(statusColor)
-            .frame(width: 7, height: 7)
+            .frame(width: 8, height: 8)
     }
 
     private var statusColor: Color {
         if group.toolCalls.contains(where: { $0.toolCall.status == .failed }) {
-            return .red
+            return ChatTokens.statusError
         }
         if group.toolCalls.contains(where: { $0.toolCall.status == .inProgress || $0.toolCall.status == .pending }) {
-            return .yellow
+            return ChatTokens.statusWarning
         }
-        return .green
+        return ChatTokens.statusSuccess
     }
+
+    // MARK: - Tool Kind Icons
 
     private var toolIcons: some View {
         let kinds = Array(Set(group.toolCalls.compactMap { $0.toolCall.kind })).prefix(4)
@@ -97,24 +103,29 @@ struct ToolCallGroupView: View {
             ForEach(Array(kinds), id: \.rawValue) { kind in
                 Image(systemName: kind.symbolName)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ChatTokens.textMuted)
                     .frame(width: 12, height: 12)
             }
         }
     }
 
+    // MARK: - Exploration Cluster Row
+
     private func explorationRow(_ cluster: ExplorationCluster) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "folder")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ChatTokens.textMuted)
             Text(cluster.summaryText)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                .font(.system(size: ChatTokens.captionFontSize))
+                .foregroundStyle(ChatTokens.textMuted)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(ChatTokens.surfaceCard)
+        )
     }
 }

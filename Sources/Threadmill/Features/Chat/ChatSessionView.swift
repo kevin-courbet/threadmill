@@ -11,8 +11,9 @@ struct ChatSessionView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if case .starting = viewModel.sessionState {
-                ChatProcessingIndicator(thoughtText: "Starting session…")
-                    .padding(.horizontal, 24)
+                ChatProcessingIndicator(thoughtText: "Starting session\u{2026}")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
                     .padding(.bottom, 4)
                     .transition(.opacity)
             }
@@ -20,32 +21,33 @@ struct ChatSessionView: View {
             if case let .failed(error) = viewModel.sessionState {
                 HStack(spacing: 10) {
                     Text(error.localizedDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: ChatTokens.captionFontSize))
+                        .foregroundStyle(ChatTokens.statusError)
                         .lineLimit(2)
                     Button("Retry") {
                         Task { await viewModel.retrySession() }
                     }
                     .buttonStyle(.borderless)
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 18)
                 .padding(.bottom, 4)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if viewModel.isStreaming {
                 ChatProcessingIndicator(thoughtText: viewModel.currentThought)
-                    .padding(.horizontal, 24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 18)
                     .padding(.bottom, 4)
                     .transition(.opacity)
             }
 
             ChatInputBar(viewModel: viewModel)
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+                .padding(.bottom, 14)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(ChatTokens.surfaceMessages)
         .background {
             // Cmd+.: cancel streaming (macOS standard cancel)
             Button("") {

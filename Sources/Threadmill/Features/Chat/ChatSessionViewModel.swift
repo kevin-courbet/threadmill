@@ -39,6 +39,14 @@ final class ChatSessionViewModel {
     var sessionState: ChatSessionState
     private(set) var isHydrated = false
 
+    // Config options surfaced to the composer meta bar
+    var configOptions: [SessionConfigOption] = []
+    var configOptionValues: [String: String] = [:]
+
+    // Context window usage from ACP UsageUpdate events
+    var contextUsedTokens: Int = 0
+    var contextWindowSize: Int = 0
+
     var isInputEnabled: Bool {
         guard case .ready = sessionState else {
             return false
@@ -124,6 +132,9 @@ final class ChatSessionViewModel {
 
     func updateSessionContext(sessionID: String?, sessionState: ChatSessionState) {
         let didChangeSessionID = self.sessionID != sessionID
+        guard didChangeSessionID || !sessionStateMatches(self.sessionState, sessionState) else {
+            return
+        }
         self.sessionState = sessionState
 
         if didChangeSessionID {
@@ -223,6 +234,28 @@ final class ChatSessionViewModel {
         }
     }
 
+    func setConfigOption(key: String, value: String) async {
+        configOptionValues[key] = value
+
+        guard let agentSessionManager else {
+            return
+        }
+
+        guard let sessionID = readySessionID else {
+            return
+        }
+
+        do {
+            try await agentSessionManager.setConfigOption(
+                sessionID: sessionID,
+                key: key,
+                value: .select(SessionConfigValueId(value))
+            )
+        } catch {
+            return
+        }
+    }
+
     func cycleModeForward() async {
         guard !availableModes.isEmpty else {
             return
@@ -248,21 +281,26 @@ final class ChatSessionViewModel {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !trimmed.isEmpty else {
+            Logger.chat.error("sendPrompt — empty text, skipping")
             return
         }
 
         guard let agentSessionManager else {
+            Logger.chat.error("sendPrompt — no agentSessionManager")
             return
         }
 
         guard let sessionID = readySessionID else {
+            Logger.chat.error("sendPrompt — readySessionID is nil (sessionState=\(String(describing: self.sessionState), privacy: .public), sessionID=\(self.sessionID ?? "nil", privacy: .public))")
             return
         }
 
+        Logger.chat.error("sendPrompt — sending, sessionID=\(sessionID, privacy: .public), promptLength=\(trimmed.count, privacy: .public)")
         isStreaming = true
 
         do {
             try await agentSessionManager.sendPrompt(text: trimmed, sessionID: sessionID)
+            Logger.chat.error("sendPrompt — RPC returned OK, sessionID=\(sessionID, privacy: .public)")
         } catch {
             Logger.chat.error("sendPrompt failed — sessionID=\(sessionID, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
             sessionState = .failed(error)
@@ -322,7 +360,10 @@ final class ChatSessionViewModel {
             }
         case let .configOptionUpdate(configOptions):
             applyConfigOptionModels(configOptions)
-        case .plan, .availableCommandsUpdate, .usageUpdate:
+        case let .usageUpdate(usage):
+            contextUsedTokens = usage.used
+            contextWindowSize = usage.size
+        case .plan, .availableCommandsUpdate:
             break
         }
     }
@@ -735,10 +776,14 @@ final class ChatSessionViewModel {
     }
 
     private func consumeSessionUpdate(_ update: SessionUpdateNotification, incomingSessionID: String) {
+        let hydrated = self.isHydrated
+        let hydrating = self.isHydrating
+        Logger.chat.error("consumeSessionUpdate — type=\(String(describing: update.update).prefix(60), privacy: .public), incomingID=\(incomingSessionID.prefix(12), privacy: .public), selfID=\(self.sessionID?.prefix(12) ?? "nil", privacy: .public), isHydrated=\(hydrated, privacy: .public), isHydrating=\(hydrating, privacy: .public)")
         if sessionID == nil {
             sessionID = incomingSessionID
         }
         if shouldHydrateScrollback, (!isHydrated || isHydrating) {
+            Logger.chat.error("consumeSessionUpdate — DEFERRED (hydrating)")
             deferredLiveUpdates.append(update)
             return
         }
@@ -746,6 +791,15 @@ final class ChatSessionViewModel {
             sessionState = .ready
         }
         handleSessionUpdate(update)
+    }
+
+    private func sessionStateMatches(_ lhs: ChatSessionState, _ rhs: ChatSessionState) -> Bool {
+        switch (lhs, rhs) {
+        case (.starting, .starting), (.ready, .ready), (.failed, .failed):
+            return true
+        default:
+            return false
+        }
     }
 
     private var shouldHydrateScrollback: Bool {
@@ -842,7 +896,13 @@ final class ChatSessionViewModel {
     }
 
     private func applyConfigOptionModels(_ configOptions: [SessionConfigOption]) {
+        self.configOptions = configOptions
+
         for option in configOptions {
+            if case let .select(select) = option.kind {
+                configOptionValues[option.id.value] = select.currentValue.value
+            }
+
             guard option.id.value == "model" else {
                 continue
             }

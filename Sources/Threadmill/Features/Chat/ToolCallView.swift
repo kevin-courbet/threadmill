@@ -27,42 +27,56 @@ struct ToolCallView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            // Header row: status dot + kind icon + title + child count + chevron
             Button {
-                withAnimation(.easeInOut(duration: 0.16)) {
+                withAnimation(.easeInOut(duration: ChatTokens.durNormal)) {
                     isExpanded.toggle()
                 }
             } label: {
                 HStack(spacing: 8) {
-                    statusIndicator
+                    statusDot
                     Image(systemName: item.toolCall.resolvedKind.symbolName)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 13, height: 13)
+                        .foregroundStyle(ChatTokens.textMuted)
+                        .frame(width: 14, height: 14)
 
+                    // Command pill (monospace, like CodexMonitor's .tool-inline-command)
                     Text(item.toolCall.title)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: ChatTokens.codeFontSize, weight: .semibold, design: .monospaced))
                         .lineLimit(1)
+                        .foregroundStyle(ChatTokens.textPrimary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: ChatTokens.radiusCommandPill, style: .continuous)
+                                .fill(ChatTokens.surfaceCommand)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: ChatTokens.radiusCommandPill, style: .continuous)
+                                .strokeBorder(ChatTokens.borderSubtle, lineWidth: 0.5)
+                        )
 
                     if !childToolCalls.isEmpty {
                         Text("\(childToolCalls.count)")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(ChatTokens.textMuted)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 1)
-                            .background(Color.secondary.opacity(0.14), in: Capsule())
+                            .background(ChatTokens.surfaceCard, in: Capsule())
                     }
 
                     Spacer(minLength: 0)
 
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ChatTokens.textFaint)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
+            // Expanded body
             if isExpanded {
                 VStack(alignment: .leading, spacing: 8) {
                     if let rawInput = item.toolCall.rawInput?.formattedString {
@@ -94,14 +108,12 @@ struct ToolCallView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(8)
-        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-        )
+        .padding(12)
+        .toolCallCard()
         .padding(.leading, CGFloat(depth) * 14)
     }
+
+    // MARK: - Content Views
 
     @ViewBuilder
     private func contentView(_ content: ToolCallContent) -> some View {
@@ -121,17 +133,30 @@ struct ToolCallView: View {
             }
         case let .terminal(terminal):
             section(title: "Terminal") {
-                ScrollView(.horizontal) {
-                    Text("terminal: \(terminal.terminalId)")
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
-                        .textSelection(.enabled)
-                }
-                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                terminalOutput(terminal.terminalId)
             }
         }
+    }
+
+    // Terminal output area matching CodexMonitor's .tool-inline-terminal
+    private func terminalOutput(_ terminalId: String) -> some View {
+        ScrollView(.horizontal) {
+            Text("terminal: \(terminalId)")
+                .font(.system(size: ChatTokens.codeFontSize, weight: .regular, design: .monospaced))
+                .foregroundStyle(ChatTokens.textMuted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .textSelection(.enabled)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(ChatTokens.surfaceCard)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(ChatTokens.borderHeavy, lineWidth: 1)
+        )
     }
 
     @ViewBuilder
@@ -145,49 +170,57 @@ struct ToolCallView: View {
         } else {
             ScrollView(.horizontal) {
                 Text(text)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: ChatTokens.codeFontSize, design: .monospaced))
+                    .foregroundStyle(ChatTokens.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
                     .textSelection(.enabled)
             }
-            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: ChatTokens.radiusCommandPill, style: .continuous)
+                    .fill(ChatTokens.surfaceCommand)
+            )
         }
     }
 
     @ViewBuilder
     private func section<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title)
+            Text(title.uppercased())
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ChatTokens.textFaint)
+                .tracking(0.8)
             content()
         }
     }
+
+    // MARK: - Status Dot
+
+    private var statusDot: some View {
+        Circle()
+            .fill(statusColor)
+            .frame(width: 8, height: 8)
+    }
+
+    private var statusColor: Color {
+        switch item.toolCall.status {
+        case .completed:
+            return ChatTokens.statusSuccess
+        case .inProgress, .pending:
+            return ChatTokens.statusWarning
+        case .failed:
+            return ChatTokens.statusError
+        }
+    }
+
+    // MARK: - Helpers
 
     private var languageHint: String? {
         if let path = item.toolCall.locations?.compactMap(\.path).first {
             return URL(fileURLWithPath: path).pathExtension
         }
         return nil
-    }
-
-    private var statusIndicator: some View {
-        Group {
-            switch item.toolCall.status {
-            case .completed:
-                Image(systemName: "circle.fill")
-                    .foregroundStyle(Color.green)
-            case .inProgress, .pending:
-                Image(systemName: "circle.fill")
-                    .foregroundStyle(Color.yellow)
-            case .failed:
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(Color.red)
-            }
-        }
-        .font(.system(size: 9, weight: .semibold))
-        .frame(width: 10, height: 10)
     }
 
     private func fencedCode(in text: String) -> (language: String?, code: String)? {
