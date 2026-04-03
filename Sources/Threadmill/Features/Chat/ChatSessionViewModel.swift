@@ -57,12 +57,15 @@ final class ChatSessionViewModel {
     private var streamingAgentMessageID = UUID().uuidString
     private var pendingAgentChunks: [ContentBlock] = []
     private var messageFlushTask: Task<Void, Never>?
+    private var lastMessageFlushAt: Date?
     private var pendingToolCallTimelineIDs: Set<String> = []
     private var pendingStreamingRebuild = false
     private var cancellables: Set<AnyCancellable> = []
     private let toolCallFlushSubject = PassthroughSubject<Void, Never>()
     private var isHydrating = false
+    private var isRecoveringSession = false
     private var deferredLiveUpdates: [SessionUpdateNotification] = []
+    private let onSessionIDRecovered: ((String) -> Void)?
 
     init(
         agentSessionManager: AgentSessionManager?,
@@ -71,7 +74,8 @@ final class ChatSessionViewModel {
         threadID: String? = nil,
         availableModes: [ModeInfo] = [],
         selectedAgentName: String = "opencode",
-        availableAgents: [AgentConfig] = []
+        availableAgents: [AgentConfig] = [],
+        onSessionIDRecovered: ((String) -> Void)? = nil
     ) {
         self.agentSessionManager = agentSessionManager
         self.sessionID = sessionID
@@ -80,6 +84,7 @@ final class ChatSessionViewModel {
         self.availableModes = availableModes
         self.selectedAgentName = selectedAgentName
         self.availableAgents = availableAgents
+        self.onSessionIDRecovered = onSessionIDRecovered
 
         agentSessionManager?.onSessionUpdate = { [weak self] incomingSessionID, update in
             guard let self else {
@@ -93,6 +98,12 @@ final class ChatSessionViewModel {
 
         if let sessionID, let agentSessionManager, agentSessionManager.hasSession(sessionID: sessionID) {
             configureSession(from: agentSessionManager, sessionID: sessionID)
+        }
+
+        if shouldRecoverSession {
+            Task { [weak self] in
+                await self?.recoverSessionIfNeeded()
+            }
         }
 
         if shouldHydrateScrollback {
@@ -126,6 +137,12 @@ final class ChatSessionViewModel {
             configureSession(from: manager, sessionID: sessionID)
         }
 
+        if shouldRecoverSession {
+            Task { [weak self] in
+                await self?.recoverSessionIfNeeded()
+            }
+        }
+
         guard shouldHydrateScrollback else {
             return
         }
@@ -137,6 +154,10 @@ final class ChatSessionViewModel {
 
     func retrySession() async {
         sessionState = .starting
+        await recoverSessionIfNeeded(force: true)
+        guard case .ready = sessionState else {
+            return
+        }
         if shouldHydrateScrollback {
             await hydrateFromScrollback(force: true)
             return
@@ -504,16 +525,33 @@ final class ChatSessionViewModel {
     }
 
     private func scheduleMessageFlush() {
-        messageFlushTask?.cancel()
+        let flushInterval: TimeInterval = 0.05
+        let now = Date()
 
-        messageFlushTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(50))
-            guard let self, !Task.isCancelled else {
+        if let lastMessageFlushAt {
+            let elapsed = now.timeIntervalSince(lastMessageFlushAt)
+            if elapsed >= flushInterval {
+                flushPendingAgentChunks()
                 return
             }
-            self.flushPendingAgentChunks()
-            self.messageFlushTask = nil
+
+            guard messageFlushTask == nil else {
+                return
+            }
+
+            let delay = max(flushInterval - elapsed, 0)
+            messageFlushTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard let self, !Task.isCancelled else {
+                    return
+                }
+                self.flushPendingAgentChunks()
+                self.messageFlushTask = nil
+            }
+            return
         }
+
+        flushPendingAgentChunks()
     }
 
     private func flushPendingAgentChunks() {
@@ -521,6 +559,7 @@ final class ChatSessionViewModel {
             return
         }
 
+        lastMessageFlushAt = Date()
         let chunks = pendingAgentChunks
         pendingAgentChunks.removeAll(keepingCapacity: true)
         upsertStreamingMessage(role: .assistant, contents: chunks, messageID: streamingAgentMessageID)
@@ -686,10 +725,7 @@ final class ChatSessionViewModel {
             }
         } catch {
             Logger.chat.error("hydrateFromScrollback failed — sessionID=\(sessionID, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
-            isHydrated = true
-            if case .starting = sessionState {
-                sessionState = .ready
-            }
+            sessionState = .failed(error)
         }
     }
 
@@ -719,6 +755,66 @@ final class ChatSessionViewModel {
         return sessionID != nil && threadID != nil && agentSessionManager != nil
     }
 
+    private var shouldRecoverSession: Bool {
+        guard let sessionID, let manager = agentSessionManager, threadID != nil else {
+            return false
+        }
+
+        if isRecoveringSession {
+            return false
+        }
+
+        guard case .ready = sessionState else {
+            return false
+        }
+
+        return !manager.hasSession(sessionID: sessionID)
+    }
+
+    private func recoverSessionIfNeeded(force: Bool = false) async {
+        guard let manager = agentSessionManager, let threadID else {
+            return
+        }
+
+        if isRecoveringSession {
+            return
+        }
+
+        if !force, let sessionID, manager.hasSession(sessionID: sessionID) {
+            return
+        }
+
+        isRecoveringSession = true
+        let previousSessionID = sessionID
+        sessionState = .starting
+
+        defer {
+            isRecoveringSession = false
+        }
+
+        let selectedAgent = availableAgents.first(where: { $0.name == selectedAgentName })
+            ?? AgentConfig(name: selectedAgentName, command: "\(selectedAgentName) acp", cwd: nil)
+
+        do {
+            let restoredSessionID = try await manager.restoreSession(
+                sessionID: sessionID,
+                agentConfig: selectedAgent,
+                threadID: threadID
+            )
+            sessionID = restoredSessionID
+            configureSession(from: manager, sessionID: restoredSessionID)
+            sessionState = .ready
+
+            if previousSessionID != restoredSessionID {
+                onSessionIDRecovered?(restoredSessionID)
+            }
+        } catch {
+            let previous = previousSessionID ?? "nil"
+            Logger.chat.error("recoverSessionIfNeeded failed — previousSessionID=\(previous, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
+            sessionState = .failed(error)
+        }
+    }
+
     private var readySessionID: String? {
         guard case .ready = sessionState else {
             return nil
@@ -740,6 +836,7 @@ final class ChatSessionViewModel {
         currentThought = ""
         messageFlushTask?.cancel()
         messageFlushTask = nil
+        lastMessageFlushAt = nil
         streamingUserMessageID = UUID().uuidString
         streamingAgentMessageID = UUID().uuidString
     }

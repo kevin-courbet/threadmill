@@ -233,6 +233,40 @@ final class AgentSessionManagerTests: XCTestCase {
         XCTAssertEqual(response.nextCursor, 100)
     }
 
+    func testRestoreSessionFallsBackToStartWhenAttachFails() async throws {
+        let connection = MockDaemonConnection(state: .connected)
+        connection.requestHandler = { method, params, _ in
+            switch method {
+            case "chat.attach":
+                let sessionID = params?["session_id"] as? String
+                if sessionID == "persisted-session" {
+                    throw TestError.forcedFailure
+                }
+
+                return [
+                    "channel_id": 77,
+                    "acp_session_id": "acp-\(sessionID ?? "new-session")",
+                ] as [String: Any]
+            case "chat.start":
+                return ["session_id": "new-session"] as [String: Any]
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let manager = AgentSessionManager(connectionManager: connection)
+        let sessionID = try await manager.restoreSession(
+            sessionID: "persisted-session",
+            agentConfig: AgentConfig(name: "opencode", command: "opencode", cwd: nil),
+            threadID: "thread-1"
+        )
+
+        XCTAssertEqual(sessionID, "new-session")
+        XCTAssertTrue(connection.requests.contains(where: { $0.method == "chat.attach" && ($0.params?["session_id"] as? String) == "persisted-session" }))
+        XCTAssertTrue(connection.requests.contains(where: { $0.method == "chat.start" }))
+        XCTAssertTrue(connection.requests.contains(where: { $0.method == "chat.attach" && ($0.params?["session_id"] as? String) == "new-session" }))
+    }
+
     // MARK: - Helpers
 
     /// Creates a requestHandler that responds to chat.start and chat.attach RPCs.

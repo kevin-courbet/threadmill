@@ -125,6 +125,52 @@ final class ChatSessionViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.isInputEnabled)
     }
 
+    func testInitRecoversMissingPersistedSessionAndPersistsReplacementSessionID() async throws {
+        let connection = MockDaemonConnection(state: .connected)
+        connection.requestHandler = { method, params, _ in
+            switch method {
+            case "chat.attach":
+                let sessionID = params?["session_id"] as? String
+                if sessionID == "persisted-session" {
+                    throw TestError.forcedFailure
+                }
+
+                return [
+                    "channel_id": 611,
+                    "acp_session_id": "acp-\(sessionID ?? "new-session")",
+                ] as [String: Any]
+            case "chat.start":
+                return ["session_id": "new-session"] as [String: Any]
+            case "chat.history":
+                return ["updates": []] as [String: Any]
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let manager = AgentSessionManager(connectionManager: connection)
+        var recoveredSessionID: String?
+        let viewModel = ChatSessionViewModel(
+            agentSessionManager: manager,
+            sessionID: "persisted-session",
+            sessionState: .ready,
+            threadID: "thread-1",
+            selectedAgentName: "opencode",
+            availableAgents: [AgentConfig(name: "opencode", command: "opencode acp", cwd: nil)],
+            onSessionIDRecovered: { recoveredSessionID = $0 }
+        )
+
+        let didRecover = await waitForCondition {
+            viewModel.sessionID == "new-session" && viewModel.isInputEnabled
+        }
+
+        XCTAssertTrue(didRecover)
+        XCTAssertEqual(recoveredSessionID, "new-session")
+        XCTAssertTrue(connection.requests.contains(where: { $0.method == "chat.attach" && ($0.params?["session_id"] as? String) == "persisted-session" }))
+        XCTAssertTrue(connection.requests.contains(where: { $0.method == "chat.start" }))
+        XCTAssertTrue(connection.requests.contains(where: { $0.method == "chat.attach" && ($0.params?["session_id"] as? String) == "new-session" }))
+    }
+
     private static func makeHistoryPayload(
         updates: [SessionUpdateNotification],
         nextCursor: UInt64?

@@ -34,7 +34,18 @@ struct ChatModeContent: View {
                                 threadID: thread.id,
                                 availableModes: [],
                                 selectedAgentName: selectedConversation.agentType,
-                                availableAgents: availableAgents
+                                availableAgents: availableAgents,
+                                onSessionIDRecovered: { recoveredSessionID in
+                                    do {
+                                        guard var conversation = try appState.databaseManager?.conversation(id: selectedConversation.id) else {
+                                            return
+                                        }
+                                        conversation.linkSession(recoveredSessionID)
+                                        try appState.databaseManager?.saveConversation(conversation)
+                                    } catch {
+                                        Logger.chat.error("Failed persisting recovered session — conversationID=\(selectedConversation.id, privacy: .public), sessionID=\(recoveredSessionID, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
+                                    }
+                                }
                             )
                         }
                     )

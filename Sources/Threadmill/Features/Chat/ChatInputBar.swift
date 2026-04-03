@@ -32,8 +32,7 @@ struct ChatInputBar: View {
     }
 
     var body: some View {
-        let inputEnabled = viewModel.isInputEnabled
-        let _ = Logger.chat.info("ChatInputBar render — isInputEnabled=\(inputEnabled, privacy: .public), isStreaming=\(viewModel.isStreaming, privacy: .public), canSend=\(canSend, privacy: .public), textLength=\(text.count, privacy: .public)")
+        let _ = Logger.chat.info("ChatInputBar render — isInputEnabled=\(viewModel.isInputEnabled, privacy: .public), isStreaming=\(viewModel.isStreaming, privacy: .public), canSend=\(canSend, privacy: .public), textLength=\(text.count, privacy: .public)")
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 modelSelector
@@ -81,6 +80,7 @@ struct ChatInputBar: View {
                 .frame(height: editorHeight)
             }
             .frame(height: editorHeight)
+            .disabled(!viewModel.isInputEnabled)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -96,7 +96,6 @@ struct ChatInputBar: View {
             .keyboardShortcut("m", modifiers: [.command, .shift])
             .hidden()
         }
-        .disabled(!inputEnabled)
     }
 
     private var modelSelector: some View {

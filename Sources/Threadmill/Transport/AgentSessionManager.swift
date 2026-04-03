@@ -113,6 +113,39 @@ final class AgentSessionManager: ChatManaging {
     }
 
     @discardableResult
+    func restoreSession(sessionID: String?, agentConfig: AgentConfig, threadID: String) async throws -> String {
+        if let sessionID {
+            if hasSession(sessionID: sessionID) {
+                return sessionID
+            }
+
+            var context = SessionContext(
+                id: sessionID,
+                threadID: threadID,
+                channelID: nil,
+                agentConfig: agentConfig,
+                acpSessionID: sessionID
+            )
+
+            sessionsByID[sessionID] = context
+            if updatesBySessionID[sessionID] == nil {
+                updatesBySessionID[sessionID] = []
+            }
+
+            do {
+                try await attachSession(&context)
+                sessionsByID[sessionID] = context
+                return sessionID
+            } catch {
+                cleanupSession(sessionID: sessionID)
+                Logger.agent.error("Failed to restore session \(sessionID, privacy: .public); starting replacement: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        return try await startSession(agentConfig: agentConfig, threadID: threadID)
+    }
+
+    @discardableResult
     func switchAgent(sessionID: String, agentConfig: AgentConfig) async throws -> String {
         guard let existing = sessionsByID[sessionID] else {
             throw AgentSessionManagerError.unknownSession(sessionID)
