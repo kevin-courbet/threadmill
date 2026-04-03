@@ -31,7 +31,7 @@ struct MessageBubbleView: View {
             Spacer(minLength: 36)
             HStack(alignment: .lastTextBaseline, spacing: 6) {
                 textContent
-                timestamp
+                timestampWithCopy
             }
             .padding(.horizontal, ChatTokens.bubblePaddingH)
             .padding(.vertical, 10)
@@ -44,10 +44,6 @@ struct MessageBubbleView: View {
                 RoundedRectangle(cornerRadius: ChatTokens.radiusBubble, style: .continuous)
                     .strokeBorder(ChatTokens.borderSubtle, lineWidth: 1)
             )
-            .overlay(alignment: .bottomTrailing) {
-                copyButton
-                    .offset(y: 16)
-            }
         }
     }
 
@@ -56,13 +52,10 @@ struct MessageBubbleView: View {
     private var agentRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             textContent
-            timestamp
+            timestampWithCopy
         }
         .padding(.horizontal, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .topTrailing) {
-            copyButton
-        }
     }
 
     // MARK: - System Message (centered caption)

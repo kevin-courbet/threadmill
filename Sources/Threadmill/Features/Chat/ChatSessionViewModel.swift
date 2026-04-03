@@ -10,6 +10,18 @@ enum ChatSessionState {
     case failed(any Error)
 }
 
+enum PermissionMode: String, CaseIterable {
+    case fullAccess = "full-access"
+    case ask = "ask"
+
+    var displayName: String {
+        switch self {
+        case .fullAccess: "Full access"
+        case .ask: "Ask"
+        }
+    }
+}
+
 enum ChatSessionStateError: LocalizedError {
     case missingSessionIdentifier
 
@@ -43,6 +55,9 @@ final class ChatSessionViewModel {
     // Config options surfaced to the composer meta bar
     var configOptions: [SessionConfigOption] = []
     var configOptionValues: [String: String] = [:]
+
+    // Permission mode — controls whether permission requests are auto-approved or surfaced to user
+    var permissionMode: PermissionMode = .fullAccess
 
     // Context window usage from ACP UsageUpdate events
     var contextUsedTokens: Int = 0

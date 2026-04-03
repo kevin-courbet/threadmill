@@ -331,28 +331,41 @@ struct ChatInputBar: View {
         }
     }
 
-    // MARK: - Access Dropdown (full access / standard)
+    // MARK: - Access Dropdown (full access / ask)
 
     private var accessDropdown: some View {
         let accessOption = viewModel.configOptions.first { $0.id.value == "access" || $0.id.value == "approval_mode" }
-        return Group {
-            if let accessOption, case let .select(select) = accessOption.kind {
-                let key = accessOption.id.value
-                let options: [(id: String, name: String)] = {
-                    switch select.options {
-                    case let .ungrouped(opts): return opts.map { ($0.value.value, $0.name) }
-                    case let .grouped(groups): return groups.flatMap(\.options).map { ($0.value.value, $0.name) }
-                    }
-                }()
-                MetaBarDropdown(
-                    icon: "lock.shield",
-                    label: "Access",
-                    options: options,
-                    selection: viewModel.configOptionValues[key] ?? select.currentValue.value,
-                    disabled: viewModel.isStreaming
-                ) { value in
-                    Task { await viewModel.setConfigOption(key: key, value: value) }
+
+        // If agent advertises access config, use its options and wire through ACP
+        if let accessOption, case let .select(select) = accessOption.kind {
+            let key = accessOption.id.value
+            let options: [(id: String, name: String)] = {
+                switch select.options {
+                case let .ungrouped(opts): return opts.map { ($0.value.value, $0.name) }
+                case let .grouped(groups): return groups.flatMap(\.options).map { ($0.value.value, $0.name) }
                 }
+            }()
+            return MetaBarDropdown(
+                icon: "lock.shield",
+                label: "Access",
+                options: options,
+                selection: viewModel.configOptionValues[key] ?? select.currentValue.value,
+                disabled: viewModel.isStreaming
+            ) { value in
+                Task { await viewModel.setConfigOption(key: key, value: value) }
+            }
+        }
+
+        // Local fallback: always show Full access / Ask toggle
+        return MetaBarDropdown(
+            icon: "lock.shield",
+            label: "Access",
+            options: PermissionMode.allCases.map { ($0.rawValue, $0.displayName) },
+            selection: viewModel.permissionMode.rawValue,
+            disabled: viewModel.isStreaming
+        ) { value in
+            if let mode = PermissionMode(rawValue: value) {
+                viewModel.permissionMode = mode
             }
         }
     }
