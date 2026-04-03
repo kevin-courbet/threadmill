@@ -35,7 +35,7 @@ struct ToolCallView: View {
         }
         .padding(.horizontal, isGrouped ? 0 : 12)
         .padding(.vertical, isGrouped ? 6 : 12)
-        .if(!isGrouped) { $0.toolCallCard() }
+
         .padding(.leading, CGFloat(depth) * 14)
     }
 
