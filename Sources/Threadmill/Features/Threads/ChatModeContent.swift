@@ -240,26 +240,31 @@ enum ChatModeActions {
                     agentType: selectedHarness.agentType
                 )
 
-                if let agentSessionManager = appState.agentSessionManager {
-                    let installedAgents = appState.agentRegistry.filter(\.installed).map(\.toAgentConfig)
-                    let agentConfig = installedAgents.first(where: { $0.name == selectedHarness.agentType })
-                        ?? AgentConfig(name: selectedHarness.agentType, command: "\(selectedHarness.agentType) acp", cwd: nil)
+                errorMessageBinding.wrappedValue = nil
+                selectedChatConversationIDBinding.wrappedValue = conversation.id
+                tabStateManager.setSelectedSessionID(conversation.id, modeID: TabItem.chat.id, threadID: threadID)
+                chatReloadToken.wrappedValue += 1
 
-                    let startedSessionID = try await agentSessionManager.startSession(agentConfig: agentConfig, threadID: threadID)
-                    conversation.linkSession(startedSessionID)
-                    try appState.databaseManager?.saveConversation(conversation)
+                guard let agentSessionManager = appState.agentSessionManager else {
+                    return
                 }
 
-                await MainActor.run {
-                    errorMessageBinding.wrappedValue = nil
-                    selectedChatConversationIDBinding.wrappedValue = conversation.id
-                    tabStateManager.setSelectedSessionID(conversation.id, modeID: TabItem.chat.id, threadID: threadID)
-                    chatReloadToken.wrappedValue += 1
+                let installedAgents = appState.agentRegistry.filter(\.installed).map(\.toAgentConfig)
+                let agentConfig = installedAgents.first(where: { $0.name == selectedHarness.agentType })
+                    ?? AgentConfig(name: selectedHarness.agentType, command: "\(selectedHarness.agentType) acp", cwd: nil)
+
+                Task {
+                    do {
+                        let startedSessionID = try await agentSessionManager.startSession(agentConfig: agentConfig, threadID: threadID)
+                        conversation.linkSession(startedSessionID)
+                        try appState.databaseManager?.saveConversation(conversation)
+                        chatReloadToken.wrappedValue += 1
+                    } catch {
+                        errorMessageBinding.wrappedValue = error.localizedDescription
+                    }
                 }
             } catch {
-                await MainActor.run {
-                    errorMessageBinding.wrappedValue = error.localizedDescription
-                }
+                errorMessageBinding.wrappedValue = error.localizedDescription
             }
         }
     }

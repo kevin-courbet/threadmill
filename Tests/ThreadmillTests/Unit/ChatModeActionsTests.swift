@@ -146,6 +146,87 @@ final class ChatModeActionsTests: XCTestCase {
         XCTAssertEqual(reloadToken, 4)
     }
 
+    func testCreateChatConversationSelectsConversationBeforeSessionStartCompletes() async {
+        let appState = AppState()
+        let database = MockDatabaseManager()
+        let connection = MockDaemonConnection()
+        let syncService = MockSyncService()
+        let multiplexer = MockTerminalMultiplexer()
+        let chatConversationService = MockChatConversationService()
+        let agentSessionManager = AgentSessionManager(connectionManager: connection)
+
+        let pool = makeSingleRemoteConnectionPool(connection: connection)
+        appState.configure(
+            connectionPool: pool,
+            databaseManager: database,
+            syncService: syncService,
+            multiplexer: multiplexer,
+            chatConversationService: chatConversationService,
+            agentSessionManager: agentSessionManager
+        )
+
+        let thread = ThreadModel(
+            id: "thread-1",
+            projectId: "project-1",
+            name: "feature/chat",
+            branch: "feature/chat",
+            worktreePath: "/tmp/worktree",
+            status: .active,
+            sourceType: "new_feature",
+            createdAt: Date(),
+            tmuxSession: "tm_thread-1",
+            portOffset: nil
+        )
+        appState.threads = [thread]
+        appState.selectedThreadID = thread.id
+
+        var createdConversation = ChatConversation(threadID: thread.id)
+        createdConversation.id = "conversation-3"
+        chatConversationService.createConversationResult = .success(createdConversation)
+
+        connection.requestHandler = { method, _, _ in
+            if method == "chat.start" {
+                throw TestError.forcedFailure
+            }
+            throw TestError.missingStub
+        }
+
+        var selectedConversationID: String?
+        var reloadToken = 0
+        var errorMessage: String?
+        let tabStateManager = ThreadTabStateManager()
+
+        ChatModeActions.createChatConversation(
+            thread: thread,
+            appState: appState,
+            selectedChatConversationIDBinding: Binding(
+                get: { selectedConversationID },
+                set: { selectedConversationID = $0 }
+            ),
+            chatReloadToken: Binding(
+                get: { reloadToken },
+                set: { reloadToken = $0 }
+            ),
+            tabStateManager: tabStateManager,
+            errorMessageBinding: Binding(
+                get: { errorMessage },
+                set: { errorMessage = $0 }
+            ),
+            harness: .opencode
+        )
+
+        let didSelectConversation = await waitForCondition {
+            selectedConversationID == "conversation-3" && reloadToken == 1
+        }
+
+        XCTAssertTrue(didSelectConversation)
+
+        let didSurfaceSessionStartError = await waitForCondition {
+            errorMessage != nil
+        }
+        XCTAssertTrue(didSurfaceSessionStartError)
+    }
+
     func testArchiveChatConversationsSurfacesErrorAndSkipsReloadOnFailure() async {
         let appState = AppState()
         let database = MockDatabaseManager()
