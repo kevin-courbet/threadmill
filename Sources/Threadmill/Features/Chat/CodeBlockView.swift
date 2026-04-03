@@ -71,19 +71,22 @@ struct CodeBlockView: View {
                     Image(systemName: copied ? "checkmark" : "doc.on.doc")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(copied ? Color.green : .secondary)
+                        .frame(width: 14, height: 14)
                 }
                 .buttonStyle(.plain)
 
-                Button {
-                    withAnimation(.easeInOut(duration: 0.16)) {
-                        isExpanded.toggle()
+                if isCollapsible {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            isExpanded.toggle()
+                        }
+                    } label: {
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
                     }
-                } label: {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
@@ -91,7 +94,14 @@ struct CodeBlockView: View {
             Divider()
 
             SourceEditorSnippet(code: displayCode, language: codeLanguage)
-                .frame(minHeight: 64, maxHeight: isExpanded ? 360 : 220)
+                .id(isExpanded)
+                .frame(
+                    height: min(
+                        CGFloat(displayLineCount) * 18 + 8,
+                        isCollapsible && !isExpanded ? 220 : 360
+                    )
+                )
+                .clipped()
 
             if isCollapsible, !isExpanded {
                 Button {
@@ -113,9 +123,7 @@ struct CodeBlockView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.16), lineWidth: 0.5)
         )
-        .onAppear {
-            isExpanded = !isCollapsible
-        }
+
     }
 
     private func icon(for language: String) -> String {

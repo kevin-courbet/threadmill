@@ -91,37 +91,30 @@ struct MessageBubbleView: View {
             .foregroundStyle(ChatTokens.textFaint)
     }
 
-    private var copyButton: some View {
-        Button {
-            guard !plainText.isEmpty else {
-                return
+    private var timestampWithCopy: some View {
+        HStack(spacing: 4) {
+            timestamp
+            Button {
+                guard !plainText.isEmpty else { return }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(plainText, forType: .string)
+                copied = true
+                Task {
+                    try? await Task.sleep(for: .seconds(1.2))
+                    copied = false
+                }
+            } label: {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(copied ? ChatTokens.statusSuccess : ChatTokens.textMuted)
+                    .frame(width: 14, height: 14)
             }
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(plainText, forType: .string)
-            copied = true
-            Task {
-                try? await Task.sleep(for: .seconds(1.2))
-                copied = false
-            }
-        } label: {
-            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(copied ? ChatTokens.statusSuccess : ChatTokens.textMuted)
-                .padding(5)
-                .background(
-                    RoundedRectangle(cornerRadius: ChatTokens.radiusCommandPill, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: ChatTokens.radiusCommandPill, style: .continuous)
-                        .strokeBorder(ChatTokens.borderSubtle, lineWidth: 0.5)
-                )
+            .buttonStyle(.plain)
+            .opacity(isHovering || copied ? 1 : 0)
+            .animation(.easeOut(duration: ChatTokens.durFast), value: isHovering)
+            .animation(.easeOut(duration: ChatTokens.durFast), value: copied)
+            .accessibilityLabel(copied ? "Copied" : "Copy message")
         }
-        .buttonStyle(.plain)
-        .opacity(isHovering || copied ? 1 : 0)
-        .animation(.easeOut(duration: ChatTokens.durFast), value: isHovering)
-        .animation(.easeOut(duration: ChatTokens.durFast), value: copied)
-        .accessibilityLabel(copied ? "Copied" : "Copy message")
     }
 
     private var plainText: String {

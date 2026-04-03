@@ -67,7 +67,8 @@ let package = Package(
         .testTarget(
             name: "ThreadmillTests",
             dependencies: ["Threadmill"],
-            path: "Tests/ThreadmillTests"
+            path: "Tests/ThreadmillTests",
+            exclude: ["Integration/README.md"]
         )
     ]
 )
