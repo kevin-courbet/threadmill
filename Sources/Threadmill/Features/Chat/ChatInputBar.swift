@@ -133,8 +133,8 @@ struct ChatInputBar: View {
         return s.trimmingCharacters(in: .whitespaces)
     }
 
-    /// Effort suffixes stripped from model names/IDs to derive the base model.
-    private static let effortSuffixes = ["low", "medium", "high", "auto"]
+    /// All known reasoning/effort level suffixes that appear in model IDs or names.
+    private static let effortSuffixes = ["minimal", "low", "medium", "high", "xhigh", "max", "auto"]
 
     /// Parsed model entry: a raw model split into base identity + effort level.
     private struct ParsedModel {
@@ -201,12 +201,27 @@ struct ChatInputBar: View {
         return Self.parseModel(ModelInfo(modelId: currentID, name: "")).baseKey
     }
 
-    /// Effort levels available for the currently selected base model.
+    /// Human-readable effort level names.
+    private static let effortDisplayNames: [String: String] = [
+        "minimal": "Minimal",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "xhigh": "Extra High",
+        "max": "Max",
+        "auto": "Auto",
+    ]
+
+    /// Effort levels available for the currently selected base model (ordered by intensity).
     private var effortLevelsForCurrentModel: [(id: String, name: String)] {
         guard let baseKey = currentBaseKey else { return [] }
-        return parsedModels
+        let available = parsedModels
             .filter { $0.baseKey == baseKey && $0.effort != nil }
-            .map { ($0.effort!, $0.effort!.capitalized) }
+            .map { $0.effort! }
+        // Preserve canonical ordering
+        return Self.effortSuffixes
+            .filter { available.contains($0) }
+            .map { ($0, Self.effortDisplayNames[$0] ?? $0.capitalized) }
     }
 
     /// The effort level of the currently selected model (parsed from its ID).

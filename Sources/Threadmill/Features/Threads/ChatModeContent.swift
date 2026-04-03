@@ -108,38 +108,65 @@ private struct ChatEmptyStateView: View {
     let harnesses: [ChatHarness]
     let onCreateConversationWithHarness: (ChatHarness) -> Void
 
+    @State private var hoveredHarness: ChatHarness?
+
     var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 40))
-                .foregroundStyle(.tertiary)
+        VStack(spacing: 28) {
+            Spacer()
 
-            Text("No chat sessions")
-                .font(.headline)
-
-            Text("Create a session to start chatting in this thread.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            if let primaryHarness = harnesses.first {
-                Button("Start \(primaryHarness.title) Session") {
-                    Logger.chat.info("ChatEmptyState CTA tapped — harness=\(primaryHarness.title, privacy: .public), agentType=\(primaryHarness.agentType, privacy: .public)")
-                    onCreateConversationWithHarness(primaryHarness)
-                }
-                .buttonStyle(.borderedProminent)
-
-                if harnesses.count > 1 {
-                    ForEach(harnesses.dropFirst()) { harness in
-                        Button("Start \(harness.title) Session") {
-                            Logger.chat.info("ChatEmptyState CTA tapped — harness=\(harness.title, privacy: .public), agentType=\(harness.agentType, privacy: .public)")
-                            onCreateConversationWithHarness(harness)
-                        }
-                        .buttonStyle(.borderless)
-                    }
+            // Provider grid — big stylized icons as launch buttons
+            HStack(spacing: 20) {
+                ForEach(harnesses) { harness in
+                    providerCard(harness)
                 }
             }
+
+            Text("Start a session")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(ChatTokens.textMuted)
+
+            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(ChatTokens.surfaceMessages)
+    }
+
+    private func providerCard(_ harness: ChatHarness) -> some View {
+        let isHovered = hoveredHarness == harness
+        return Button {
+            Logger.chat.info("ChatEmptyState CTA tapped — harness=\(harness.title, privacy: .public), agentType=\(harness.agentType, privacy: .public)")
+            onCreateConversationWithHarness(harness)
+        } label: {
+            VStack(spacing: 10) {
+                ProviderGlyph(harness: harness, size: 72)
+
+                Text(harness.title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(isHovered ? ChatTokens.textStrong : ChatTokens.textMuted)
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isHovered ? ChatTokens.surfaceCardStrong : ChatTokens.surfaceCard)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        isHovered ? ChatTokens.borderHeavy : ChatTokens.borderSubtle,
+                        lineWidth: isHovered ? 1 : 0.5
+                    )
+            )
+            .shadow(
+                color: isHovered ? .black.opacity(0.2) : .clear,
+                radius: isHovered ? 12 : 0,
+                y: isHovered ? 4 : 0
+            )
+            .offset(y: isHovered ? -2 : 0)
+            .scaleEffect(isHovered ? 1.03 : 1.0)
+        }
+        .buttonStyle(.plain)
+        .onHover { hoveredHarness = $0 ? harness : nil }
+        .animation(.easeOut(duration: ChatTokens.durFast), value: isHovered)
     }
 }
 

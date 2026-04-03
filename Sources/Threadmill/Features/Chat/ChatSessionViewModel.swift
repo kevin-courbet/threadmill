@@ -70,6 +70,7 @@ final class ChatSessionViewModel {
     private var streamingAgentMessageID = UUID().uuidString
     private var pendingAgentChunks: [ContentBlock] = []
     private var thoughtAccumulator = ""
+    private var streamingThoughtID = UUID().uuidString
     private var messageFlushTask: Task<Void, Never>?
     private var lastMessageFlushAt: Date?
     private var pendingToolCallTimelineIDs: Set<String> = []
@@ -358,6 +359,7 @@ final class ChatSessionViewModel {
             if case let .text(textContent) = content {
                 thoughtAccumulator += textContent.text
                 currentThought = textContent.text
+                upsertStreamingThought()
             }
         case let .toolCall(toolCallUpdate):
             upsertToolCall(from: toolCallUpdate)
@@ -656,6 +658,26 @@ final class ChatSessionViewModel {
         rebuildTimelineWithGrouping(isStreaming: false)
     }
 
+    private func upsertStreamingThought() {
+        let trimmed = thoughtAccumulator.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let thought = ThoughtTimelineItem(
+            id: streamingThoughtID,
+            text: thoughtAccumulator,
+            timestamp: Date(),
+            renderVersion: thoughtAccumulator.count
+        )
+        let stableID = "thought:\(streamingThoughtID)"
+        if let existingIndex = itemIndex[stableID], timelineItems.indices.contains(existingIndex) {
+            timelineItems[existingIndex] = .thought(thought)
+            return
+        }
+
+        timelineItems.append(.thought(thought))
+        rebuildItemIndex()
+    }
+
     private func upsertToolCallInTimeline(toolCallID: String) {
         guard let toolCall = toolCallsByID[toolCallID] else {
             return
@@ -747,7 +769,7 @@ final class ChatSessionViewModel {
         if !thoughtAccumulator.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             thoughts.append(
                 ThoughtTimelineItem(
-                    id: UUID().uuidString,
+                    id: streamingThoughtID,
                     text: thoughtAccumulator,
                     timestamp: Date(),
                     renderVersion: 1
@@ -759,6 +781,7 @@ final class ChatSessionViewModel {
         turnStartedAt = nil
         streamingUserMessageID = UUID().uuidString
         streamingAgentMessageID = UUID().uuidString
+        streamingThoughtID = UUID().uuidString
 
         let shouldRebuild = forceRebuild || pendingStreamingRebuild
         pendingStreamingRebuild = false
@@ -945,6 +968,7 @@ final class ChatSessionViewModel {
         pendingStreamingRebuild = false
         isStreaming = false
         thoughtAccumulator = ""
+        streamingThoughtID = UUID().uuidString
         currentThought = ""
         currentPlan = nil
         messageFlushTask?.cancel()

@@ -56,11 +56,7 @@ struct ChatMessageList: View {
                             loadMoreButton(proxy: proxy)
                         }
 
-                        if let plan = viewModel.currentPlan, !plan.entries.isEmpty {
-                            PlanCardView(plan: plan)
-                        }
-
-                        ForEach(displayItems, id: \.renderId) { item in
+                        ForEach(displayItems, id: \.stableId) { item in
                             itemView(item)
                                 .id(item.stableId)
                         }

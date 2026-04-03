@@ -29,12 +29,12 @@ struct MessageBubbleView: View {
     private var userRow: some View {
         HStack(spacing: 0) {
             Spacer(minLength: 36)
-            VStack(alignment: .trailing, spacing: 4) {
+            HStack(alignment: .lastTextBaseline, spacing: 6) {
                 textContent
                 timestamp
             }
             .padding(.horizontal, ChatTokens.bubblePaddingH)
-            .padding(.vertical, ChatTokens.bubblePaddingV)
+            .padding(.vertical, 10)
             .frame(maxWidth: min(560, 560), alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: ChatTokens.radiusBubble, style: .continuous)

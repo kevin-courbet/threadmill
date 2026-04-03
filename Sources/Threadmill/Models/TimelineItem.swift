@@ -148,8 +148,11 @@ enum TimelineItem: Identifiable {
         }
     }
 
+    // Identity must be stable across content updates so SwiftUI reuses views
+    // (preserving @State/@StateObject) instead of destroying and recreating them.
+    // renderId is kept for scroll-trigger detection only.
     var id: String {
-        renderId
+        stableId
     }
 
     var timestamp: Date {
