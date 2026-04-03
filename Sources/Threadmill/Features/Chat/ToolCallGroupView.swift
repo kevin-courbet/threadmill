@@ -6,8 +6,16 @@ struct ToolCallGroupView: View {
     let group: ToolCallGroup
     var childToolCalls: [String: [ToolCallTimelineItem]] = [:]
 
-    @State private var isExpanded = false
+    @State private var isExpanded: Bool
     @State private var forceExpandAll = false
+
+    init(group: ToolCallGroup, childToolCalls: [String: [ToolCallTimelineItem]] = [:]) {
+        self.group = group
+        self.childToolCalls = childToolCalls
+        // Start expanded when created during streaming transition so the height
+        // matches the individual tool calls being replaced — avoids scroll jump.
+        _isExpanded = State(initialValue: group.isStreaming)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -62,6 +70,17 @@ struct ToolCallGroupView: View {
             }
         }
         .padding(.horizontal, 4)
+        .onAppear {
+            guard group.isStreaming, isExpanded else { return }
+            // Collapse after the view settles so height shrinks smoothly
+            // rather than causing an instant content-height drop + scroll jump
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                withAnimation(.easeOut(duration: 0.25)) {
+                    isExpanded = false
+                }
+            }
+        }
         .contextMenu {
             Button("Expand All") {
                 withAnimation(.easeInOut(duration: ChatTokens.durNormal)) {

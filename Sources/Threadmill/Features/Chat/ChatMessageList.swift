@@ -6,6 +6,9 @@ struct ChatMessageList: View {
     @State private var loadedItemCount = 140
     @State private var isNearBottom = true
     @State private var userScrolledUp = false
+    /// Brief suppression window after sending a prompt so the user-message-to-top
+    /// scroll isn't immediately overridden by the streaming auto-scroll.
+    @State private var scrollSuppressed = false
 
     private let bottomAnchorID = "chat-timeline-bottom-anchor"
     private let initialWindow = 140
@@ -113,28 +116,31 @@ struct ChatMessageList: View {
                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
             }
             .onChange(of: items.count) { oldCount, newCount in
+                // Virtual window management only — scrolling is handled by the other observers
                 if oldCount == 0 {
                     loadedItemCount = min(initialWindow, newCount)
                 } else if !isNearBottom {
                     loadedItemCount += max(0, newCount - oldCount)
                 }
-
-                guard viewModel.isStreaming, !userScrolledUp else {
-                    return
-                }
-                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
             }
-            .onChange(of: viewModel.isStreaming) { _, streaming in
-                guard streaming, !userScrolledUp else {
-                    return
+            .onChange(of: viewModel.lastSentUserMessageStableID) { _, stableID in
+                guard let stableID, !userScrolledUp else { return }
+                // Prompt just sent — anchor the user message at top of the viewport.
+                // Content grows below; we never start pinned to the absolute bottom.
+                scrollSuppressed = true
+                withAnimation(.easeOut(duration: 0.35)) {
+                    proxy.scrollTo(stableID, anchor: .top)
                 }
-                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(500))
+                    scrollSuppressed = false
+                }
             }
             .onChange(of: lastRenderID) { _, _ in
-                guard viewModel.isStreaming, !userScrolledUp else {
-                    return
+                guard viewModel.isStreaming, !userScrolledUp, !scrollSuppressed else { return }
+                withAnimation(.easeOut(duration: 0.3)) {
+                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                 }
-                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
             }
         }
     }

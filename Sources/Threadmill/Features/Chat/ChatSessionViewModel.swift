@@ -3,6 +3,7 @@ import Combine
 import Foundation
 import Observation
 import os
+import SwiftUI
 
 enum ChatSessionState {
     case starting
@@ -18,6 +19,17 @@ enum PermissionMode: String, CaseIterable {
         switch self {
         case .fullAccess: "Full access"
         case .ask: "Ask"
+        }
+    }
+}
+
+enum StallError: LocalizedError {
+    case sessionUnresponsive(seconds: Int)
+
+    var errorDescription: String? {
+        switch self {
+        case let .sessionUnresponsive(seconds):
+            return "Agent session unresponsive for \(seconds)s. The agent process may have crashed."
         }
     }
 }
@@ -40,6 +52,9 @@ final class ChatSessionViewModel {
     var itemIndex: [String: Int] = [:]
 
     var isStreaming = false
+    /// Set once per sendPrompt — the stableId of the user message just added.
+    /// ChatMessageList watches this to scroll the message to the top of the viewport.
+    var lastSentUserMessageStableID: String?
     var currentThought = ""
     var thoughts: [ThoughtTimelineItem] = []
     var currentMode: String?
@@ -59,6 +74,13 @@ final class ChatSessionViewModel {
     // Permission mode — controls whether permission requests are auto-approved or surfaced to user
     var permissionMode: PermissionMode = .fullAccess
 
+    var pendingPermissions: [PendingPermissionRequest] {
+        guard let sessionID, let agentSessionManager else { return [] }
+        return agentSessionManager.pendingPermissionRequests.values
+            .filter { $0.sessionID == sessionID }
+            .sorted { $0.timestamp < $1.timestamp }
+    }
+
     // Context window usage from ACP UsageUpdate events
     var contextUsedTokens: Int = 0
     var contextWindowSize: Int = 0
@@ -66,6 +88,13 @@ final class ChatSessionViewModel {
 
     // Turn timer — set when streaming starts, cleared when it ends
     var turnStartedAt: Date?
+    /// Time since last ACP frame during streaming. Nil when not streaming.
+    var lastActivityAt: Date?
+    /// True when streaming but no frames received for stallWarningThreshold seconds
+    var isStalled = false
+    private var stallCheckTask: Task<Void, Never>?
+    private static let stallWarningThreshold: TimeInterval = 30
+    private static let stallFailureThreshold: TimeInterval = 90
 
     var isInputEnabled: Bool {
         guard case .ready = sessionState else {
@@ -92,6 +121,11 @@ final class ChatSessionViewModel {
     private var pendingStreamingRebuild = false
     private var cancellables: Set<AnyCancellable> = []
     private let toolCallFlushSubject = PassthroughSubject<Void, Never>()
+
+    // Text reveal buffer — smooths bursty chunk delivery into steady character-level appearance
+    private var textRevealBuffer = ""
+    private var textRevealTask: Task<Void, Never>?
+    private var textRevealStartTime: Date?
     private var isHydrating = false
     private var isRecoveringSession = false
     private var deferredLiveUpdates: [SessionUpdateNotification] = []
@@ -125,6 +159,9 @@ final class ChatSessionViewModel {
             }
             self.consumeSessionUpdate(update, incomingSessionID: incomingSessionID)
         }
+
+        // Sync initial permission mode
+        agentSessionManager?.permissionMode = permissionMode
 
         if let sessionID, let agentSessionManager, agentSessionManager.hasSession(sessionID: sessionID) {
             configureSession(from: agentSessionManager, sessionID: sessionID)
@@ -278,6 +315,20 @@ final class ChatSessionViewModel {
         }
     }
 
+    func setPermissionMode(_ mode: PermissionMode) {
+        permissionMode = mode
+        agentSessionManager?.permissionMode = mode
+    }
+
+    func approvePermission(_ request: PendingPermissionRequest, optionId: String) async {
+        await agentSessionManager?.respondToPermissionRequest(id: request.id, optionId: optionId)
+    }
+
+    func denyPermission(_ request: PendingPermissionRequest) async {
+        let denyOptionId = request.options.first { $0.label.localizedCaseInsensitiveContains("deny") }?.id ?? "deny"
+        await agentSessionManager?.respondToPermissionRequest(id: request.id, optionId: denyOptionId)
+    }
+
     func cycleModeForward() async {
         guard !availableModes.isEmpty else {
             return
@@ -325,9 +376,13 @@ final class ChatSessionViewModel {
             content: .text(TextContent(text: trimmed)),
             messageID: streamingUserMessageID
         )
+        lastSentUserMessageStableID = "message:\(streamingUserMessageID)"
 
         isStreaming = true
         turnStartedAt = Date()
+        lastActivityAt = Date()
+        isStalled = false
+        startStallDetection()
 
         do {
             try await agentSessionManager.sendPrompt(text: trimmed, sessionID: sessionID)
@@ -369,6 +424,14 @@ final class ChatSessionViewModel {
             upsertStreamingMessage(role: .user, content: content, messageID: streamingUserMessageID)
         case let .agentMessageChunk(content):
             isStreaming = true
+            if pendingStreamingRebuild {
+                // Collapse tool calls into a group before text appears
+                withAnimation(.easeOut(duration: 0.25)) {
+                    rebuildTimelineWithGrouping(isStreaming: true)
+                }
+                pendingStreamingRebuild = false
+                textRevealStartTime = Date().addingTimeInterval(0.15)
+            }
             enqueueAgentChunk(content)
         case let .agentThoughtChunk(content):
             if case let .text(textContent) = content {
@@ -651,7 +714,82 @@ final class ChatSessionViewModel {
         lastMessageFlushAt = Date()
         let chunks = pendingAgentChunks
         pendingAgentChunks.removeAll(keepingCapacity: true)
-        upsertStreamingMessage(role: .assistant, contents: chunks, messageID: streamingAgentMessageID)
+
+        for chunk in chunks {
+            if case let .text(textContent) = chunk {
+                textRevealBuffer += textContent.text
+            } else {
+                // Non-text content (images, etc.): drain text buffer first, then pass through
+                drainTextRevealBuffer()
+                upsertStreamingMessage(role: .assistant, contents: [chunk], messageID: streamingAgentMessageID)
+            }
+        }
+
+        startTextRevealIfNeeded()
+    }
+
+    /// Immediately flush the entire reveal buffer (used when streaming ends or non-text content arrives).
+    private func drainTextRevealBuffer() {
+        textRevealTask?.cancel()
+        textRevealTask = nil
+        textRevealStartTime = nil
+        guard !textRevealBuffer.isEmpty else {
+            return
+        }
+        let text = textRevealBuffer
+        textRevealBuffer = ""
+        upsertStreamingMessage(role: .assistant, contents: [.text(TextContent(text: text))], messageID: streamingAgentMessageID)
+    }
+
+    /// Drain the reveal buffer at a steady rate, converting bursty chunks into smooth character-level appearance.
+    ///
+    /// The reveal rate adapts to the buffer depth: we always try to spread the current buffer
+    /// over ~200ms (12 ticks at 16ms). This means the drain rate naturally converges to the
+    /// agent's output rate — a large buffer drains faster, a small one slower. The buffer acts
+    /// as a smoothing reservoir that absorbs bursty chunk delivery.
+    ///
+    /// Clamped to [2, 60] chars/tick so we never stall visibly or dump a wall of text.
+    private func startTextRevealIfNeeded() {
+        guard textRevealTask == nil, !textRevealBuffer.isEmpty else {
+            return
+        }
+
+        textRevealTask = Task { [weak self] in
+            // Honor collapse animation delay
+            if let startTime = self?.textRevealStartTime {
+                let delay = startTime.timeIntervalSinceNow
+                if delay > 0 {
+                    try? await Task.sleep(for: .seconds(delay))
+                }
+                self?.textRevealStartTime = nil
+            }
+
+            let ticksTarget = 12 // spread buffer over ~200ms (12 × 16ms)
+
+            while let self, !Task.isCancelled, !self.textRevealBuffer.isEmpty {
+                let count = self.textRevealBuffer.count
+
+                // Spread current buffer evenly over the target window, clamped to sane bounds
+                let charsToReveal = min(max((count + ticksTarget - 1) / ticksTarget, 2), 60)
+
+                let actual = min(charsToReveal, count)
+                let end = self.textRevealBuffer.index(
+                    self.textRevealBuffer.startIndex,
+                    offsetBy: actual
+                )
+                let text = String(self.textRevealBuffer[..<end])
+                self.textRevealBuffer = String(self.textRevealBuffer[end...])
+
+                self.upsertStreamingMessage(
+                    role: .assistant,
+                    contents: [.text(TextContent(text: text))],
+                    messageID: self.streamingAgentMessageID
+                )
+
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+            self?.textRevealTask = nil
+        }
     }
 
     private func flushPendingToolCallTimelineUpdates() {
@@ -773,11 +911,38 @@ final class ChatSessionViewModel {
         return existingUserMessage.plainText == incomingText.text
     }
 
+    private func startStallDetection() {
+        stallCheckTask?.cancel()
+        stallCheckTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled, let self, self.isStreaming, let lastActivity = self.lastActivityAt else {
+                    continue
+                }
+                let elapsed = Date().timeIntervalSince(lastActivity)
+                if elapsed >= Self.stallFailureThreshold {
+                    Logger.chat.error("Session stalled for \(Int(elapsed))s — marking as failed")
+                    self.sessionState = .failed(StallError.sessionUnresponsive(seconds: Int(elapsed)))
+                    self.finishStreamingCycle(forceRebuild: true)
+                    return
+                } else if elapsed >= Self.stallWarningThreshold {
+                    self.isStalled = true
+                }
+            }
+        }
+    }
+
     private func finishStreamingCycle(forceRebuild: Bool) {
+        stallCheckTask?.cancel()
+        stallCheckTask = nil
+        isStalled = false
+        lastActivityAt = nil
+
         messageFlushTask?.cancel()
         messageFlushTask = nil
 
         flushPendingAgentChunks()
+        drainTextRevealBuffer()
         flushPendingToolCallTimelineUpdates()
 
         isStreaming = false
@@ -873,6 +1038,8 @@ final class ChatSessionViewModel {
         let hydrated = self.isHydrated
         let hydrating = self.isHydrating
         Logger.chat.error("consumeSessionUpdate — type=\(String(describing: update.update).prefix(60), privacy: .public), incomingID=\(incomingSessionID.prefix(12), privacy: .public), selfID=\(self.sessionID?.prefix(12) ?? "nil", privacy: .public), isHydrated=\(hydrated, privacy: .public), isHydrating=\(hydrating, privacy: .public)")
+        lastActivityAt = Date()
+        isStalled = false
         if sessionID == nil {
             sessionID = incomingSessionID
         }
@@ -981,6 +1148,10 @@ final class ChatSessionViewModel {
         pendingAgentChunks.removeAll(keepingCapacity: true)
         pendingToolCallTimelineIDs.removeAll(keepingCapacity: true)
         pendingStreamingRebuild = false
+        textRevealBuffer = ""
+        textRevealTask?.cancel()
+        textRevealTask = nil
+        textRevealStartTime = nil
         isStreaming = false
         thoughtAccumulator = ""
         streamingThoughtID = UUID().uuidString

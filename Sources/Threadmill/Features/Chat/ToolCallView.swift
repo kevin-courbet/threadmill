@@ -34,7 +34,7 @@ struct ToolCallView: View {
             if isExpanded { expandedBody }
         }
         .padding(.horizontal, isGrouped ? 0 : 12)
-        .padding(.vertical, isGrouped ? 6 : 12)
+        .padding(.vertical, isGrouped ? 6 : 4)
 
         .padding(.leading, CGFloat(depth) * 14)
     }
