@@ -26,7 +26,7 @@ final class AppStateEventHandlingTests: XCTestCase {
     }
 
     func testHandleDaemonEventThreadCreatedTriggersSync() async {
-        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+        let (_, _, syncService, _, _, appState) = makeConfiguredAppStateWithDoubles()
 
         appState.handleDaemonEvent(method: "thread.created", params: ["thread_id": "thread-2"])
 
@@ -35,7 +35,7 @@ final class AppStateEventHandlingTests: XCTestCase {
     }
 
     func testHandleDaemonEventThreadRemovedTriggersSync() async {
-        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+        let (_, _, syncService, _, _, appState) = makeConfiguredAppStateWithDoubles()
 
         appState.handleDaemonEvent(method: "thread.removed", params: ["thread_id": "thread-2"])
 
@@ -44,7 +44,7 @@ final class AppStateEventHandlingTests: XCTestCase {
     }
 
     func testHandleDaemonEventUnknownEventDoesNotCrash() async {
-        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+        let (_, _, syncService, _, _, appState) = makeConfiguredAppStateWithDoubles()
 
         appState.handleDaemonEvent(method: "thread.unknown", params: ["foo": "bar"])
         try? await Task.sleep(nanoseconds: 20_000_000)
@@ -53,7 +53,7 @@ final class AppStateEventHandlingTests: XCTestCase {
     }
 
     func testHandleDaemonEventCloneProgressDoesNotTriggerSync() async {
-        let (_, _, syncService, _, appState) = makeConfiguredAppStateWithDoubles()
+        let (_, _, syncService, _, _, appState) = makeConfiguredAppStateWithDoubles()
 
         appState.handleDaemonEvent(
             method: "project.clone_progress",
@@ -69,7 +69,7 @@ final class AppStateEventHandlingTests: XCTestCase {
     }
 
     func testAttachSkipsCreatingAndFailedThreads() async {
-        let (connection, _, _, multiplexer, appState) = makeConfiguredAppStateWithDoubles()
+        let (connection, _, _, multiplexer, _, appState) = makeConfiguredAppStateWithDoubles()
         connection.requestHandler = { _, _, _ in NSNull() }
 
         appState.threads = [makeThread(id: "thread-1", status: .creating)]
@@ -87,7 +87,7 @@ final class AppStateEventHandlingTests: XCTestCase {
     }
 
     func testAttachPermanentTmuxErrorStopsRetry() async {
-        let (connection, _, _, multiplexer, appState) = makeConfiguredAppStateWithDoubles()
+        let (connection, _, _, multiplexer, _, appState) = makeConfiguredAppStateWithDoubles()
         appState.projects = [makeProject(id: "project-1")]
         appState.threads = [makeThread(id: "thread-1", status: .active)]
         appState.selectedThreadID = "thread-1"
@@ -111,7 +111,7 @@ final class AppStateEventHandlingTests: XCTestCase {
     }
 
     func testThreadProgressFailureCancelsPendingAttach() async {
-        let (connection, _, _, multiplexer, appState) = makeConfiguredAppStateWithDoubles()
+        let (connection, _, _, multiplexer, _, appState) = makeConfiguredAppStateWithDoubles()
         appState.projects = [makeProject(id: "project-1")]
         appState.threads = [makeThread(id: "thread-1", status: .active)]
         appState.selectedThreadID = "thread-1"
@@ -154,7 +154,7 @@ final class AppStateEventHandlingTests: XCTestCase {
     }
 
     func testThreadProgressFailureUpdatesStatusToFailed() {
-        let (_, database, _, _, appState) = makeConfiguredAppStateWithDoubles()
+        let (_, database, _, _, _, appState) = makeConfiguredAppStateWithDoubles()
         appState.threads = [
             ThreadModel(
                 id: "thread-1",
@@ -323,24 +323,98 @@ final class AppStateEventHandlingTests: XCTestCase {
         XCTAssertEqual(appState.agentStatus["thread-2"]?.status, .busy(workerCount: 2))
     }
 
-    private func makeConfiguredAppState() -> AppState {
-        makeConfiguredAppStateWithDoubles().4
+    func testChatStatusBusyToIdleNotifiesAgentFinished() {
+        let (_, _, _, _, notificationService, appState) = makeConfiguredAppStateWithDoubles()
+        appState.threads = [makeThread(id: "thread-1", status: .active)]
+        appState.projects = [makeProject(id: "project-1")]
+        appState.connectionStatus = .connected
+
+        appState.handleDaemonEvent(
+            method: "chat.status_changed",
+            params: [
+                "thread_id": "thread-1",
+                "session_id": "session-1",
+                "old_status": "idle",
+                "new_status": "busy",
+                "worker_count": 1,
+            ]
+        )
+        appState.handleDaemonEvent(
+            method: "chat.status_changed",
+            params: [
+                "thread_id": "thread-1",
+                "session_id": "session-1",
+                "old_status": "busy",
+                "new_status": "idle",
+                "worker_count": 0,
+            ]
+        )
+
+        XCTAssertEqual(notificationService.notifications.count, 1)
+        XCTAssertEqual(notificationService.notifications.first?.threadName, "Demo")
+        XCTAssertEqual(notificationService.notifications.first?.projectName, "demo")
     }
 
-    private func makeConfiguredAppStateWithDoubles() -> (MockDaemonConnection, MockDatabaseManager, MockSyncService, MockTerminalMultiplexer, AppState) {
+    func testChatStatusBusyToIdleDoesNotNotifyWhenFrontmostAndSelectedThread() {
+        let (_, _, _, _, notificationService, appState) = makeConfiguredAppStateWithDoubles(isAppFrontmost: { true })
+        appState.threads = [makeThread(id: "thread-1", status: .active)]
+        appState.selectedThreadID = "thread-1"
+
+        appState.handleDaemonEvent(
+            method: "chat.status_changed",
+            params: [
+                "thread_id": "thread-1",
+                "session_id": "session-1",
+                "old_status": "busy",
+                "new_status": "idle",
+                "worker_count": 0,
+            ]
+        )
+
+        XCTAssertTrue(notificationService.notifications.isEmpty)
+    }
+
+    func testDisconnectClearStatusDoesNotNotify() {
+        let (_, _, _, _, notificationService, appState) = makeConfiguredAppStateWithDoubles()
+        appState.threads = [makeThread(id: "thread-1", status: .active)]
+        appState.connectionStatus = .disconnected
+
+        appState.handleDaemonEvent(
+            method: "chat.status_changed",
+            params: [
+                "thread_id": "thread-1",
+                "session_id": "session-1",
+                "old_status": "busy",
+                "new_status": "idle",
+                "worker_count": 0,
+            ]
+        )
+
+        XCTAssertTrue(notificationService.notifications.isEmpty)
+    }
+
+    private func makeConfiguredAppState() -> AppState {
+        makeConfiguredAppStateWithDoubles().5
+    }
+
+    private func makeConfiguredAppStateWithDoubles(
+        isAppFrontmost: @escaping @MainActor () -> Bool = { false }
+    ) -> (MockDaemonConnection, MockDatabaseManager, MockSyncService, MockTerminalMultiplexer, MockNotificationService, AppState) {
         let connection = MockDaemonConnection(state: .connected)
         let database = MockDatabaseManager()
         let sync = MockSyncService()
         let multiplexer = MockTerminalMultiplexer()
-        let appState = AppState()
+        let notificationService = MockNotificationService()
+        let appState = AppState(isAppFrontmost: isAppFrontmost)
         appState.configure(
             connectionPool: makeSingleRemoteConnectionPool(connection: connection),
             databaseManager: database,
             syncService: sync,
-            multiplexer: multiplexer
+            multiplexer: multiplexer,
+            notificationService: notificationService
         )
         appState.projects = [makeProject(id: "project-1")]
-        return (connection, database, sync, multiplexer, appState)
+        return (connection, database, sync, multiplexer, notificationService, appState)
     }
 
     private func makeThread(id: String, status: ThreadStatus) -> ThreadModel {

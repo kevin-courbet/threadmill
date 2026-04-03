@@ -18,6 +18,15 @@ enum AgentStatus: Equatable {
             return nil
         }
     }
+
+    var isBusyOrStalled: Bool {
+        switch self {
+        case .busy, .stalled:
+            true
+        case .idle:
+            false
+        }
+    }
 }
 
 struct AgentActivityInfo: Equatable {

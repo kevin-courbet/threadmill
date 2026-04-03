@@ -4,6 +4,23 @@ import Foundation
 import Observation
 import os
 
+enum ChatSessionState {
+    case starting
+    case ready
+    case failed(any Error)
+}
+
+enum ChatSessionStateError: LocalizedError {
+    case missingSessionIdentifier
+
+    var errorDescription: String? {
+        switch self {
+        case .missingSessionIdentifier:
+            return "Session is unavailable."
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class ChatSessionViewModel {
@@ -19,9 +36,14 @@ final class ChatSessionViewModel {
     var selectedAgentName: String
     var availableAgents: [AgentConfig]
     var sessionTitle: String?
+    var sessionState: ChatSessionState
+    private(set) var isHydrated = false
 
     var isInputEnabled: Bool {
-        !isStreaming && agentSessionManager != nil
+        guard case .ready = sessionState else {
+            return false
+        }
+        return !isStreaming && agentSessionManager != nil && sessionID != nil
     }
 
     var userMessages: [MessageTimelineItem] = []
@@ -39,10 +61,13 @@ final class ChatSessionViewModel {
     private var pendingStreamingRebuild = false
     private var cancellables: Set<AnyCancellable> = []
     private let toolCallFlushSubject = PassthroughSubject<Void, Never>()
+    private var isHydrating = false
+    private var deferredLiveUpdates: [SessionUpdateNotification] = []
 
     init(
         agentSessionManager: AgentSessionManager?,
         sessionID: String? = nil,
+        sessionState: ChatSessionState = .ready,
         threadID: String? = nil,
         availableModes: [ModeInfo] = [],
         selectedAgentName: String = "opencode",
@@ -50,6 +75,7 @@ final class ChatSessionViewModel {
     ) {
         self.agentSessionManager = agentSessionManager
         self.sessionID = sessionID
+        self.sessionState = sessionState
         self.threadID = threadID
         self.availableModes = availableModes
         self.selectedAgentName = selectedAgentName
@@ -69,12 +95,53 @@ final class ChatSessionViewModel {
             configureSession(from: agentSessionManager, sessionID: sessionID)
         }
 
+        if shouldHydrateScrollback {
+            Task { [weak self] in
+                await self?.hydrateFromScrollback()
+            }
+        } else {
+            isHydrated = true
+        }
+
         toolCallFlushSubject
             .throttle(for: .milliseconds(60), scheduler: RunLoop.main, latest: true)
             .sink { [weak self] in
                 self?.flushPendingToolCallTimelineUpdates()
             }
             .store(in: &cancellables)
+    }
+
+    func updateSessionContext(sessionID: String?, sessionState: ChatSessionState) {
+        let didChangeSessionID = self.sessionID != sessionID
+        self.sessionState = sessionState
+
+        if didChangeSessionID {
+            resetTimelineStateForSessionChange()
+            isHydrated = false
+        }
+
+        self.sessionID = sessionID
+
+        if let sessionID, let manager = agentSessionManager, manager.hasSession(sessionID: sessionID) {
+            configureSession(from: manager, sessionID: sessionID)
+        }
+
+        guard shouldHydrateScrollback else {
+            return
+        }
+
+        Task { [weak self] in
+            await self?.hydrateFromScrollback()
+        }
+    }
+
+    func retrySession() async {
+        sessionState = .starting
+        if shouldHydrateScrollback {
+            await hydrateFromScrollback(force: true)
+            return
+        }
+        sessionState = .failed(ChatSessionStateError.missingSessionIdentifier)
     }
 
     func selectAgent(named name: String) async {
@@ -94,15 +161,6 @@ final class ChatSessionViewModel {
             } catch {
                 return
             }
-        } else if let threadID, let agentSessionManager {
-            do {
-                sessionID = try await agentSessionManager.startSession(agentConfig: selectedAgent, threadID: threadID)
-                if let sessionID {
-                    configureSession(from: agentSessionManager, sessionID: sessionID)
-                }
-            } catch {
-                return
-            }
         }
 
         selectedAgentName = name
@@ -114,8 +172,7 @@ final class ChatSessionViewModel {
             return
         }
 
-        guard let sessionID = await ensureSessionReady() else {
-            currentMode = modeID
+        guard let sessionID = readySessionID else {
             return
         }
 
@@ -133,8 +190,7 @@ final class ChatSessionViewModel {
             return
         }
 
-        guard let sessionID = await ensureSessionReady() else {
-            currentModelID = modelID
+        guard let sessionID = readySessionID else {
             return
         }
 
@@ -178,7 +234,7 @@ final class ChatSessionViewModel {
             return
         }
 
-        guard let sessionID = await ensureSessionReady() else {
+        guard let sessionID = readySessionID else {
             return
         }
 
@@ -188,6 +244,7 @@ final class ChatSessionViewModel {
             try await agentSessionManager.sendPrompt(text: trimmed, sessionID: sessionID)
         } catch {
             Logger.chat.error("sendPrompt failed — sessionID=\(sessionID, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
+            sessionState = .failed(error)
             finishStreamingCycle(forceRebuild: true)
             return
         }
@@ -200,7 +257,7 @@ final class ChatSessionViewModel {
             return
         }
 
-        guard let sessionID = await ensureSessionReady() else {
+        guard let sessionID = readySessionID else {
             return
         }
 
@@ -574,32 +631,65 @@ final class ChatSessionViewModel {
         }
     }
 
-    private func ensureSessionReady() async -> String? {
-        guard let agentSessionManager else {
-            return sessionID
+    func hydrateFromScrollback(force: Bool = false) async {
+        guard shouldHydrateScrollback else {
+            isHydrated = true
+            return
         }
 
-        guard let threadID else {
-            return sessionID
+        if isHydrating {
+            return
         }
 
-        if let sessionID, agentSessionManager.hasSession(sessionID: sessionID) {
-            return sessionID
+        if isHydrated, !force {
+            return
         }
 
-        guard let agentConfig = resolvedAgentConfig() else {
-            Logger.chat.error("ensureSessionReady — no resolved agent config for \(self.selectedAgentName, privacy: .public)")
-            return nil
+        guard let sessionID,
+              let threadID,
+              let agentSessionManager
+        else {
+            return
+        }
+
+        isHydrating = true
+        if case .failed = sessionState {
+            sessionState = .starting
+        }
+
+        defer {
+            isHydrating = false
         }
 
         do {
-            let startedSessionID = try await agentSessionManager.startSession(agentConfig: agentConfig, threadID: threadID)
-            sessionID = startedSessionID
-            configureSession(from: agentSessionManager, sessionID: startedSessionID)
-            return startedSessionID
+            var cursor: UInt64?
+            repeat {
+                let response = try await agentSessionManager.chatHistory(threadID: threadID, sessionID: sessionID, cursor: cursor)
+                for update in response.updates {
+                    handleSessionUpdate(update)
+                }
+                cursor = response.nextCursor
+            } while cursor != nil
+
+            finishStreamingCycle(forceRebuild: true)
+            isHydrated = true
+            if case .starting = sessionState {
+                sessionState = .ready
+            }
+
+            if !deferredLiveUpdates.isEmpty {
+                let pending = deferredLiveUpdates
+                deferredLiveUpdates.removeAll(keepingCapacity: true)
+                for update in pending {
+                    handleSessionUpdate(update)
+                }
+            }
         } catch {
-            Logger.chat.error("ensureSessionReady failed — \(error.localizedDescription, privacy: .public)")
-            return nil
+            Logger.chat.error("hydrateFromScrollback failed — sessionID=\(sessionID, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
+            isHydrated = true
+            if case .starting = sessionState {
+                sessionState = .ready
+            }
         }
     }
 
@@ -609,17 +699,49 @@ final class ChatSessionViewModel {
     }
 
     private func consumeSessionUpdate(_ update: SessionUpdateNotification, incomingSessionID: String) {
+        if sessionID == nil {
+            sessionID = incomingSessionID
+        }
+        if shouldHydrateScrollback, (!isHydrated || isHydrating) {
+            deferredLiveUpdates.append(update)
+            return
+        }
+        if case .starting = sessionState {
+            sessionState = .ready
+        }
         handleSessionUpdate(update)
     }
 
-    private func resolvedAgentConfig() -> AgentConfig? {
-        if let exact = availableAgents.first(where: { $0.name == selectedAgentName }) {
-            return exact
+    private var shouldHydrateScrollback: Bool {
+        guard case .ready = sessionState else {
+            return false
         }
-        if let first = availableAgents.first {
-            return first
+        return sessionID != nil && threadID != nil && agentSessionManager != nil
+    }
+
+    private var readySessionID: String? {
+        guard case .ready = sessionState else {
+            return nil
         }
-        return nil
+        return sessionID
+    }
+
+    private func resetTimelineStateForSessionChange() {
+        timelineItems.removeAll(keepingCapacity: false)
+        itemIndex.removeAll(keepingCapacity: false)
+        userMessages.removeAll(keepingCapacity: false)
+        agentMessages.removeAll(keepingCapacity: false)
+        toolCallsByID.removeAll(keepingCapacity: false)
+        deferredLiveUpdates.removeAll(keepingCapacity: true)
+        pendingAgentChunks.removeAll(keepingCapacity: true)
+        pendingToolCallTimelineIDs.removeAll(keepingCapacity: true)
+        pendingStreamingRebuild = false
+        isStreaming = false
+        currentThought = ""
+        messageFlushTask?.cancel()
+        messageFlushTask = nil
+        streamingUserMessageID = UUID().uuidString
+        streamingAgentMessageID = UUID().uuidString
     }
 
     private func applyConfigOptionModels(_ configOptions: [SessionConfigOption]) {

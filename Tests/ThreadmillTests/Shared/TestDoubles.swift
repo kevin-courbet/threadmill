@@ -93,6 +93,20 @@ final class MockSyncService: SyncServicing {
 }
 
 @MainActor
+final class MockNotificationService: NotificationServicing {
+    private(set) var requestPermissionCallCount = 0
+    private(set) var notifications: [(threadName: String, projectName: String?)] = []
+
+    func requestPermission() {
+        requestPermissionCallCount += 1
+    }
+
+    func notifyAgentFinished(threadName: String, projectName: String?) {
+        notifications.append((threadName, projectName))
+    }
+}
+
+@MainActor
 final class MockDatabaseManager: DatabaseManaging {
     var remotes: [Remote] = []
     var repos: [Repo] = []
@@ -499,5 +513,4 @@ func makeFrame(channelID: UInt16, payload: [UInt8]) -> Data {
     frame.append(contentsOf: payload)
     return frame
 }
-
 

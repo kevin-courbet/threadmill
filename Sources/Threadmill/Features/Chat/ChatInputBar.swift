@@ -10,7 +10,7 @@ struct ChatInputBar: View {
     @State private var isEditorFocused = false
 
     private var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.isStreaming
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.isStreaming && viewModel.isInputEnabled
     }
 
     private var editorHeight: CGFloat {
@@ -96,6 +96,7 @@ struct ChatInputBar: View {
             .keyboardShortcut("m", modifiers: [.command, .shift])
             .hidden()
         }
+        .disabled(!inputEnabled)
     }
 
     private var modelSelector: some View {

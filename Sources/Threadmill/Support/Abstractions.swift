@@ -95,6 +95,12 @@ protocol ChatManaging: AnyObject {
 }
 
 @MainActor
+protocol NotificationServicing: AnyObject {
+    func requestPermission()
+    func notifyAgentFinished(threadName: String, projectName: String?)
+}
+
+@MainActor
 protocol SyncServicing: AnyObject {
     func syncFromDaemon() async
     func syncAgentRegistry() async

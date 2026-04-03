@@ -21,6 +21,7 @@ struct ChatModeContent: View {
                 : installedAgents
             Group {
                 if let selectedConversation {
+                    let state: ChatSessionState = selectedConversation.agentSessionID == nil ? .starting : .ready
                     let viewModel = viewModelCache.resolve(
                         conversationID: selectedConversation.id,
                         sessionID: selectedConversation.agentSessionID,
@@ -29,6 +30,7 @@ struct ChatModeContent: View {
                             return ChatSessionViewModel(
                                 agentSessionManager: appState.agentSessionManager,
                                 sessionID: selectedConversation.agentSessionID,
+                                sessionState: state,
                                 threadID: thread.id,
                                 availableModes: [],
                                 selectedAgentName: selectedConversation.agentType,
@@ -36,6 +38,7 @@ struct ChatModeContent: View {
                             )
                         }
                     )
+                    let _ = viewModel.updateSessionContext(sessionID: selectedConversation.agentSessionID, sessionState: state)
 
                     ChatSessionView(viewModel: viewModel)
                 } else {
@@ -217,15 +220,24 @@ enum ChatModeActions {
         }
 
         let threadID = thread.id
-        let directory = thread.worktreePath
 
         Task {
             do {
                 let selectedHarness = harness ?? .opencode
-                let conversation = try await chatConversationService.createConversation(
+                var conversation = try await chatConversationService.createConversation(
                     threadID: threadID,
                     agentType: selectedHarness.agentType
                 )
+
+                if let agentSessionManager = appState.agentSessionManager {
+                    let installedAgents = appState.agentRegistry.filter(\.installed).map(\.toAgentConfig)
+                    let agentConfig = installedAgents.first(where: { $0.name == selectedHarness.agentType })
+                        ?? AgentConfig(name: selectedHarness.agentType, command: "\(selectedHarness.agentType) acp", cwd: nil)
+
+                    let startedSessionID = try await agentSessionManager.startSession(agentConfig: agentConfig, threadID: threadID)
+                    conversation.linkSession(startedSessionID)
+                    try appState.databaseManager?.saveConversation(conversation)
+                }
 
                 await MainActor.run {
                     errorMessageBinding.wrappedValue = nil

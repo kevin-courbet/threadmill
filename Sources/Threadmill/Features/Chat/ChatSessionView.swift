@@ -10,6 +10,29 @@ struct ChatSessionView: View {
             ChatMessageList(viewModel: viewModel)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+            if case .starting = viewModel.sessionState {
+                ChatProcessingIndicator(thoughtText: "Starting session…")
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 4)
+                    .transition(.opacity)
+            }
+
+            if case let .failed(error) = viewModel.sessionState {
+                HStack(spacing: 10) {
+                    Text(error.localizedDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    Button("Retry") {
+                        Task { await viewModel.retrySession() }
+                    }
+                    .buttonStyle(.borderless)
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             if viewModel.isStreaming {
                 ChatProcessingIndicator(thoughtText: viewModel.currentThought)
                     .padding(.horizontal, 24)

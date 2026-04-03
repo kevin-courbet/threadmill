@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import os
@@ -193,6 +194,7 @@ final class AppState {
     private(set) var agentSessionManager: AgentSessionManager?
 
     private(set) var databaseManager: (any DatabaseManaging)?
+    private var notificationService: (any NotificationServicing)?
     private var provisioningService: (any Provisioning)?
     private var syncService: (any SyncServicing)?
     private var multiplexer: (any TerminalMultiplexing)?
@@ -207,11 +209,17 @@ final class AppState {
     private var lastAttachErrors: [AttachmentKey: String] = [:]
     private var workspacePathsByRemoteID: [String: String] = [:]
     private var projectsByID: [String: Project] = [:]
+    private let isAppFrontmost: @MainActor () -> Bool
 
-    init(statsPollingEnabled: Bool = false, statsRefreshInterval: TimeInterval = 5) {
+    init(
+        statsPollingEnabled: Bool = false,
+        statsRefreshInterval: TimeInterval = 5,
+        isAppFrontmost: @escaping @MainActor () -> Bool = { NSApp.isActive }
+    ) {
         self.statsPollingEnabled = statsPollingEnabled
         let refreshInterval = max(statsRefreshInterval, 0.1)
         statsRefreshIntervalNanoseconds = UInt64(refreshInterval * 1_000_000_000)
+        self.isAppFrontmost = isAppFrontmost
     }
 
     private var connectionManager: (any ConnectionManaging)? {
@@ -427,7 +435,8 @@ final class AppState {
         provisioningService: (any Provisioning)? = nil,
         chatConversationService: (any ChatConversationManaging)? = nil,
         fileService: (any FileBrowsing)? = nil,
-        agentSessionManager: AgentSessionManager? = nil
+        agentSessionManager: AgentSessionManager? = nil,
+        notificationService: (any NotificationServicing)? = nil
     ) {
         self.connectionPool = connectionPool
         self.databaseManager = databaseManager
@@ -436,6 +445,7 @@ final class AppState {
         self.multiplexer = multiplexer
         self.chatConversationService = chatConversationService
         self.agentSessionManager = agentSessionManager
+        self.notificationService = notificationService
         self.fileService = fileService ?? FileService(connectionProvider: { [weak self] in
             self?.connectionForSelectedThread() ?? self?.defaultConnectionManager()
         })
@@ -1242,6 +1252,7 @@ final class AppState {
             return
         }
 
+        let previousThreadStatus = agentStatus[threadID]?.status
         let workerCount = parseOptionalInt(params["worker_count"]) ?? 0
         if let status = AgentStatus.fromDaemonStatus(newStatus, workerCount: workerCount) {
             agentStatus[threadID] = AgentActivityInfo(
@@ -1254,6 +1265,28 @@ final class AppState {
         }
 
         updateChatSessionStatus(threadID: threadID, sessionID: sessionID, status: newStatus, workerCount: workerCount)
+        notifyIfAgentFinished(threadID: threadID, previousStatus: previousThreadStatus)
+    }
+
+    private func notifyIfAgentFinished(threadID: String, previousStatus: AgentStatus?) {
+        guard let previousStatus, previousStatus.isBusyOrStalled else {
+            return
+        }
+        guard let currentStatus = agentStatus[threadID]?.status, currentStatus == .idle else {
+            return
+        }
+        guard connectionStatus.isConnected else {
+            return
+        }
+        guard !(isAppFrontmost() && selectedThreadID == threadID) else {
+            return
+        }
+
+        let threadName = threads.first(where: { $0.id == threadID })?.name ?? threadID
+        let projectName = threads
+            .first(where: { $0.id == threadID })
+            .flatMap { projectsByID[$0.projectId]?.name }
+        notificationService?.notifyAgentFinished(threadName: threadName, projectName: projectName)
     }
 
     private func handleChatSessionAdded(_ params: [String: Any]?) {

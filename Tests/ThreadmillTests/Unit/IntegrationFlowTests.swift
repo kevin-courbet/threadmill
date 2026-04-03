@@ -110,6 +110,10 @@ final class IntegrationFlowTests: XCTestCase {
                     "channel_id": 611,
                     "acp_session_id": "acp-session-test",
                 ] as [String: Any]
+            case "chat.history":
+                return [
+                    "updates": [],
+                ] as [String: Any]
             default:
                 throw TestError.missingStub
             }
