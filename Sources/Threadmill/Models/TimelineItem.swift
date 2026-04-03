@@ -51,9 +51,21 @@ struct MessageTimelineItem: Identifiable {
 struct ToolCallTimelineItem: Identifiable {
     var toolCall: ToolCall
     var renderVersion: Int = 0
+    var startedAt: Date
+    var completedAt: Date?
+
+    init(toolCall: ToolCall) {
+        self.toolCall = toolCall
+        self.startedAt = Date()
+    }
 
     var id: String { toolCall.id }
     var timestamp: Date { toolCall.timestamp }
+
+    var durationSeconds: Double? {
+        guard let completedAt else { return nil }
+        return completedAt.timeIntervalSince(startedAt)
+    }
 }
 
 struct TurnSummary: Identifiable {

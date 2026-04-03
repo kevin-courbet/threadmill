@@ -530,12 +530,16 @@ final class ChatSessionViewModel {
     }
 
     private func applyToolCallUpdate(_ update: ToolCallUpdateDetails) {
-        guard var existing = toolCallsByID[update.toolCallId]?.toolCall else {
+        guard var item = toolCallsByID[update.toolCallId] else {
             return
         }
+        var existing = item.toolCall
 
         if let status = update.status {
             existing.status = status
+            if (status == .completed || status == .failed), item.completedAt == nil {
+                item.completedAt = Date()
+            }
         }
         if let title = update.title {
             existing.title = title
@@ -556,10 +560,9 @@ final class ChatSessionViewModel {
             existing.rawOutput = rawOutput
         }
 
-        var timelineItem = toolCallsByID[update.toolCallId] ?? ToolCallTimelineItem(toolCall: existing)
-        timelineItem.toolCall = existing
-        timelineItem.renderVersion &+= 1
-        toolCallsByID[update.toolCallId] = timelineItem
+        item.toolCall = existing
+        item.renderVersion &+= 1
+        toolCallsByID[update.toolCallId] = item
     }
 
     private func rebuildItemIndex() {

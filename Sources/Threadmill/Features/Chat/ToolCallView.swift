@@ -7,14 +7,16 @@ struct ToolCallView: View {
     var childToolCalls: [ToolCallTimelineItem] = []
     var depth: Int = 0
     var forceExpanded: Bool = false
+    var isGrouped: Bool = false
 
     @State private var isExpanded: Bool
 
-    init(item: ToolCallTimelineItem, childToolCalls: [ToolCallTimelineItem] = [], depth: Int = 0, forceExpanded: Bool = false) {
+    init(item: ToolCallTimelineItem, childToolCalls: [ToolCallTimelineItem] = [], depth: Int = 0, forceExpanded: Bool = false, isGrouped: Bool = false) {
         self.item = item
         self.childToolCalls = childToolCalls
         self.depth = depth
         self.forceExpanded = forceExpanded
+        self.isGrouped = isGrouped
 
         let call = item.toolCall
         let autoExpand = call.kind == .edit || call.kind == .delete || call.content.contains {
@@ -58,6 +60,12 @@ struct ToolCallView: View {
 
                     Spacer(minLength: 0)
 
+                    if let duration = item.durationSeconds {
+                        Text(formatDuration(duration))
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(ChatTokens.textFaint)
+                    }
+
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(ChatTokens.textFaint)
@@ -98,8 +106,9 @@ struct ToolCallView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(12)
-        .toolCallCard()
+        .padding(.horizontal, isGrouped ? 0 : 12)
+        .padding(.vertical, isGrouped ? 6 : 12)
+        .if(!isGrouped) { $0.toolCallCard() }
         .padding(.leading, CGFloat(depth) * 14)
     }
 
@@ -206,6 +215,18 @@ struct ToolCallView: View {
 
     // MARK: - Helpers
 
+    /// Stable title that never goes blank — falls back to kind name or tool call ID prefix.
+    private var displayTitle: String {
+        let title = item.toolCall.title
+        if !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return title
+        }
+        if let kind = item.toolCall.kind {
+            return kind.rawValue.capitalized
+        }
+        return "Tool \(item.toolCall.id.prefix(6))"
+    }
+
     private var languageHint: String? {
         if let path = item.toolCall.locations?.compactMap(\.path).first {
             return URL(fileURLWithPath: path).pathExtension
@@ -224,6 +245,18 @@ struct ToolCallView: View {
         }
         let language = String(first.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
         return (language.isEmpty ? nil : language, lines.dropFirst().dropLast().joined(separator: "\n"))
+    }
+
+    private func formatDuration(_ seconds: Double) -> String {
+        if seconds < 1 {
+            return String(format: "%.0fms", seconds * 1000)
+        } else if seconds < 60 {
+            return String(format: "%.1fs", seconds)
+        } else {
+            let minutes = Int(seconds) / 60
+            let secs = Int(seconds) % 60
+            return "\(minutes)m \(secs)s"
+        }
     }
 
     private func looksLikeCode(_ text: String) -> Bool {
