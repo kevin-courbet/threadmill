@@ -35,11 +35,14 @@ struct ChatSessionView: View {
             }
 
             if viewModel.isStreaming {
-                ChatProcessingIndicator(thoughtText: viewModel.currentThought)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 4)
-                    .transition(.opacity)
+                ChatProcessingIndicator(
+                    thoughtText: viewModel.currentThought,
+                    turnStartedAt: viewModel.turnStartedAt
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 4)
+                .transition(.opacity)
             }
 
             ChatInputBar(viewModel: viewModel)

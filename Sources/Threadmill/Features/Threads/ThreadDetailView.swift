@@ -93,13 +93,19 @@ struct ThreadDetailView: View {
                     Button("") { newActiveTab() }
                         .keyboardShortcut("t", modifiers: .command)
                         .hidden()
-                    // Cmd+Shift+]: next session tab
+                    // Cmd+Shift+] / Ctrl+Tab: next session tab
                     Button("") { selectNextSessionTab() }
                         .keyboardShortcut("]", modifiers: [.command, .shift])
                         .hidden()
-                    // Cmd+Shift+[: previous session tab
+                    Button("") { selectNextSessionTab() }
+                        .keyboardShortcut(.tab, modifiers: .control)
+                        .hidden()
+                    // Cmd+Shift+[ / Ctrl+Shift+Tab: previous session tab
                     Button("") { selectPreviousSessionTab() }
                         .keyboardShortcut("[", modifiers: [.command, .shift])
+                        .hidden()
+                    Button("") { selectPreviousSessionTab() }
+                        .keyboardShortcut(.tab, modifiers: [.control, .shift])
                         .hidden()
                 }
                 .task(id: thread.id) {

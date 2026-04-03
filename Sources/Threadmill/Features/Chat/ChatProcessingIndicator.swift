@@ -1,9 +1,10 @@
 import AppKit
 import SwiftUI
 
-/// Compact inline indicator — small pill hugging its content, left-aligned.
+/// Compact inline indicator — spinner + thought text + live elapsed timer.
 struct ChatProcessingIndicator: View {
     let thoughtText: String
+    var turnStartedAt: Date?
 
     private var displayText: String {
         let trimmed = thoughtText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -15,8 +16,14 @@ struct ChatProcessingIndicator: View {
             ChatProcessingSpinner(size: 10)
                 .frame(width: 10, height: 10)
 
-            ShimmerEffect(text: displayText, font: .systemFont(ofSize: 11, weight: .medium))
-                .fixedSize()
+            Text(displayText)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(ChatTokens.textMuted)
+                .lineLimit(1)
+
+            if let turnStartedAt {
+                ElapsedTimerText(since: turnStartedAt)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
@@ -28,6 +35,28 @@ struct ChatProcessingIndicator: View {
             Capsule(style: .continuous)
                 .strokeBorder(ChatTokens.borderSubtle, lineWidth: 0.5)
         )
+    }
+}
+
+/// Live-updating elapsed time label. Ticks every second via TimelineView.
+private struct ElapsedTimerText: View {
+    let since: Date
+
+    var body: some View {
+        TimelineView(.periodic(from: since, by: 1)) { context in
+            let elapsed = context.date.timeIntervalSince(since)
+            Text(Self.format(elapsed))
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(ChatTokens.textFaint)
+        }
+    }
+
+    private static func format(_ seconds: TimeInterval) -> String {
+        let s = max(0, Int(seconds))
+        if s < 60 {
+            return "\(s)s"
+        }
+        return "\(s / 60)m \(s % 60)s"
     }
 }
 

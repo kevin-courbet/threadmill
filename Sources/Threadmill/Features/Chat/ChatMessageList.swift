@@ -56,6 +56,10 @@ struct ChatMessageList: View {
                             loadMoreButton(proxy: proxy)
                         }
 
+                        if let plan = viewModel.currentPlan, !plan.entries.isEmpty {
+                            PlanCardView(plan: plan)
+                        }
+
                         ForEach(displayItems, id: \.renderId) { item in
                             itemView(item)
                                 .id(item.stableId)
@@ -147,10 +151,12 @@ struct ChatMessageList: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         case let .toolCall(toolCall):
             ToolCallView(item: toolCall, childToolCalls: childToolCalls[toolCall.id] ?? [])
+        case let .thought(thought):
+            ThoughtView(item: thought, isStreaming: viewModel.isStreaming)
         case let .toolCallGroup(group):
             ToolCallGroupView(group: group, childToolCalls: childToolCalls)
-        case let .turnSummary(summary):
-            TurnSummaryView(summary: summary)
+        case .turnSummary:
+            EmptyView()
         }
     }
 

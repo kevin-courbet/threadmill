@@ -123,4 +123,14 @@ extension View {
                     .strokeBorder(ChatTokens.borderSubtle, lineWidth: 1)
             )
     }
+
+    /// Conditionally apply a modifier
+    @ViewBuilder
+    func `if`<Modified: View>(_ condition: Bool, transform: (Self) -> Modified) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
+    }
 }

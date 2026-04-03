@@ -25,6 +25,12 @@ struct ToolCallGroupView: View {
                         .font(.system(size: ChatTokens.captionFontSize, weight: .semibold))
                         .foregroundStyle(ChatTokens.textPrimary)
 
+                    if let duration = group.durationSeconds {
+                        Text(Self.formatDuration(duration))
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(ChatTokens.textFaint)
+                    }
+
                     Spacer(minLength: 0)
 
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
@@ -44,7 +50,8 @@ struct ToolCallGroupView: View {
                             ToolCallView(
                                 item: item,
                                 childToolCalls: childToolCalls[item.id] ?? [],
-                                forceExpanded: forceExpandAll
+                                forceExpanded: forceExpandAll,
+                                isGrouped: true
                             )
                         case let .exploration(cluster):
                             explorationRow(cluster)
@@ -54,8 +61,7 @@ struct ToolCallGroupView: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(12)
-        .toolCallCard()
+        .padding(.horizontal, 4)
         .contextMenu {
             Button("Expand All") {
                 withAnimation(.easeInOut(duration: ChatTokens.durNormal)) {
@@ -127,5 +133,17 @@ struct ToolCallGroupView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(ChatTokens.surfaceCard)
         )
+    }
+
+    private static func formatDuration(_ seconds: Double) -> String {
+        if seconds < 1 {
+            return "\(Int((seconds * 1000).rounded()))ms"
+        }
+        if seconds < 60 {
+            return String(format: "%.1fs", seconds)
+        }
+        let minutes = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return "\(minutes)m \(secs)s"
     }
 }

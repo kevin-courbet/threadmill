@@ -106,6 +106,33 @@ struct ChatInputBar: View {
 
     // MARK: - Model + Effort Grouping
 
+    /// Vendor/provider prefixes stripped from display names — everyone knows "Opus" is Claude.
+    private static func shortenModelName(_ name: String) -> String {
+        var s = name
+        // Strip vendor prefixes (case-insensitive, preserving rest of casing)
+        let prefixes = [
+            "Anthropic ", "anthropic/",
+            "Claude ", "claude-",
+            "OpenAI ", "openai/",
+            "Google ", "google/",
+            "Meta ", "meta/", "Meta-", "meta-",
+            "Mistral ", "mistral/",
+            "DeepSeek ", "deepseek/", "deepseek-",
+            "Cohere ", "cohere/",
+            "xAI ", "xai/",
+        ]
+        for prefix in prefixes {
+            if s.lowercased().hasPrefix(prefix.lowercased()) {
+                s = String(s.dropFirst(prefix.count))
+            }
+        }
+        // Capitalize first letter if it got lowercased
+        if let first = s.first, first.isLowercase {
+            s = first.uppercased() + s.dropFirst()
+        }
+        return s.trimmingCharacters(in: .whitespaces)
+    }
+
     /// Effort suffixes stripped from model names/IDs to derive the base model.
     private static let effortSuffixes = ["low", "medium", "high", "auto"]
 
@@ -161,7 +188,7 @@ struct ChatInputBar: View {
         var result: [(id: String, name: String)] = []
         for pm in parsedModels {
             guard seen.insert(pm.baseKey).inserted else { continue }
-            result.append((pm.baseKey, pm.baseName))
+            result.append((pm.baseKey, Self.shortenModelName(pm.baseName)))
         }
         return result
     }

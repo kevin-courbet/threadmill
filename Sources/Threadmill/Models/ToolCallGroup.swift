@@ -29,10 +29,21 @@ struct ToolCallGroup: Identifiable {
     let toolCalls: [ToolCallTimelineItem]
     let displayItems: [ToolCallGroupDisplayItem]
     let timestamp: Date
+    let isStreaming: Bool
+
+    /// Wall-clock duration: earliest startedAt → latest completedAt.
+    /// Not the sum — parallel tool calls overlap.
+    var durationSeconds: Double? {
+        let earliest = toolCalls.map(\.startedAt).min()
+        let latest = toolCalls.compactMap(\.completedAt).max()
+        guard let earliest, let latest else { return nil }
+        return latest.timeIntervalSince(earliest)
+    }
 
     init(id: String, toolCalls: [ToolCallTimelineItem], isStreaming: Bool) {
         self.id = id
         self.toolCalls = toolCalls
+        self.isStreaming = isStreaming
         timestamp = toolCalls.map(\.timestamp).min() ?? Date()
         displayItems = ToolCallGroup.buildDisplayItems(toolCalls: toolCalls, isStreaming: isStreaming)
     }

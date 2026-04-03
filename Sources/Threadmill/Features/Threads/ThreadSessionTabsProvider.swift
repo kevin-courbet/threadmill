@@ -285,8 +285,8 @@ struct ThreadModeKeyboardShortcuts: View {
             Button("") { selectModeWithShortcut(index: 2) }.keyboardShortcut("2", modifiers: .command).hidden()
             Button("") { selectModeWithShortcut(index: 3) }.keyboardShortcut("3", modifiers: .command).hidden()
             Button("") { selectModeWithShortcut(index: 4) }.keyboardShortcut("4", modifiers: .command).hidden()
-            Button("") { cycleModeForward() }.keyboardShortcut(.tab, modifiers: .control).hidden()
-            Button("") { cycleModeBackward() }.keyboardShortcut(.tab, modifiers: [.control, .shift]).hidden()
+            // Ctrl+Tab / Ctrl+Shift+Tab intentionally not bound here —
+            // they cycle session tabs, handled in ThreadDetailView.
         }
     }
 

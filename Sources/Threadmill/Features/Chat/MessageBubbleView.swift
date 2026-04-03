@@ -24,7 +24,7 @@ struct MessageBubbleView: View {
         .onHover { isHovering = $0 }
     }
 
-    // MARK: - User Bubble (right-aligned, blue-tinted)
+    // MARK: - User Bubble (right-aligned, neutral surface)
 
     private var userRow: some View {
         HStack(spacing: 0) {
@@ -38,11 +38,11 @@ struct MessageBubbleView: View {
             .frame(maxWidth: min(560, 560), alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: ChatTokens.radiusBubble, style: .continuous)
-                    .fill(ChatTokens.surfaceBubbleUser)
+                    .fill(ChatTokens.surfaceCardStrong)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: ChatTokens.radiusBubble, style: .continuous)
-                    .strokeBorder(ChatTokens.borderAccentUser, lineWidth: 1)
+                    .strokeBorder(ChatTokens.borderSubtle, lineWidth: 1)
             )
             .overlay(alignment: .bottomTrailing) {
                 copyButton
@@ -51,27 +51,17 @@ struct MessageBubbleView: View {
         }
     }
 
-    // MARK: - Agent Bubble (full-width, subtle glass bg)
+    // MARK: - Agent Message (flat, no bubble)
 
     private var agentRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             textContent
             timestamp
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, ChatTokens.bubblePaddingV)
+        .padding(.horizontal, 4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: ChatTokens.radiusBubble, style: .continuous)
-                .fill(ChatTokens.surfaceBubble)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: ChatTokens.radiusBubble, style: .continuous)
-                .strokeBorder(ChatTokens.borderSubtle, lineWidth: 1)
-        )
-        .overlay(alignment: .bottomTrailing) {
+        .overlay(alignment: .topTrailing) {
             copyButton
-                .offset(y: 16)
         }
     }
 

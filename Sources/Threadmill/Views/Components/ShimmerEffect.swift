@@ -142,16 +142,22 @@ final class ShimmerTextNSView: NSView {
     private func applyShimmerState() {
         shimmerGradientLayer.removeAnimation(forKey: "threadmill.shimmer")
 
-        guard scenePhase == .active, !reduceMotion, bounds.width > 0 else {
-            return
-        }
+        if scenePhase == .active, !reduceMotion, bounds.width > 0 {
+            // Hide static base text — only the shimmer gradient reveals letters
+            baseTextLayer.opacity = 0
+            shimmerGradientLayer.isHidden = false
 
-        let animation = CABasicAnimation(keyPath: "transform.translation.x")
-        animation.fromValue = -bounds.width
-        animation.toValue = bounds.width
-        animation.duration = 2.2
-        animation.repeatCount = .infinity
-        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        shimmerGradientLayer.add(animation, forKey: "threadmill.shimmer")
+            let animation = CABasicAnimation(keyPath: "transform.translation.x")
+            animation.fromValue = -bounds.width
+            animation.toValue = bounds.width
+            animation.duration = 2.2
+            animation.repeatCount = .infinity
+            animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            shimmerGradientLayer.add(animation, forKey: "threadmill.shimmer")
+        } else {
+            // Reduce-motion fallback: show static text, hide shimmer
+            baseTextLayer.opacity = 1
+            shimmerGradientLayer.isHidden = true
+        }
     }
 }

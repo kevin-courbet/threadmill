@@ -29,6 +29,7 @@ final class ChatSessionViewModel {
 
     var isStreaming = false
     var currentThought = ""
+    var thoughts: [ThoughtTimelineItem] = []
     var currentMode: String?
     var availableModes: [ModeInfo]
     var currentModelID: String?
@@ -46,6 +47,10 @@ final class ChatSessionViewModel {
     // Context window usage from ACP UsageUpdate events
     var contextUsedTokens: Int = 0
     var contextWindowSize: Int = 0
+    var currentPlan: Plan?
+
+    // Turn timer — set when streaming starts, cleared when it ends
+    var turnStartedAt: Date?
 
     var isInputEnabled: Bool {
         guard case .ready = sessionState else {
@@ -64,6 +69,7 @@ final class ChatSessionViewModel {
     private var streamingUserMessageID = UUID().uuidString
     private var streamingAgentMessageID = UUID().uuidString
     private var pendingAgentChunks: [ContentBlock] = []
+    private var thoughtAccumulator = ""
     private var messageFlushTask: Task<Void, Never>?
     private var lastMessageFlushAt: Date?
     private var pendingToolCallTimelineIDs: Set<String> = []
@@ -305,6 +311,7 @@ final class ChatSessionViewModel {
         )
 
         isStreaming = true
+        turnStartedAt = Date()
 
         do {
             try await agentSessionManager.sendPrompt(text: trimmed, sessionID: sessionID)
@@ -346,6 +353,7 @@ final class ChatSessionViewModel {
             enqueueAgentChunk(content)
         case let .agentThoughtChunk(content):
             if case let .text(textContent) = content {
+                thoughtAccumulator += textContent.text
                 currentThought = textContent.text
             }
         case let .toolCall(toolCallUpdate):
@@ -371,7 +379,9 @@ final class ChatSessionViewModel {
         case let .usageUpdate(usage):
             contextUsedTokens = usage.used
             contextWindowSize = usage.size
-        case .plan, .availableCommandsUpdate:
+        case let .plan(plan):
+            currentPlan = plan
+        case .availableCommandsUpdate:
             break
         }
     }
@@ -381,6 +391,7 @@ final class ChatSessionViewModel {
             enum Kind {
                 case message(MessageTimelineItem)
                 case toolCall(ToolCallTimelineItem)
+                case thought(ThoughtTimelineItem)
             }
 
             let timestamp: Date
@@ -394,8 +405,11 @@ final class ChatSessionViewModel {
         let toolEvents = toolCallsByID.values.map { toolCall in
             TimelineEvent(timestamp: toolCall.timestamp, kind: .toolCall(toolCall), sortID: "t:\(toolCall.id)")
         }
+        let thoughtEvents = thoughts.map { thought in
+            TimelineEvent(timestamp: thought.timestamp, kind: .thought(thought), sortID: "h:\(thought.id)")
+        }
 
-        let events = (messageEvents + toolEvents).sorted { lhs, rhs in
+        let events = (messageEvents + toolEvents + thoughtEvents).sorted { lhs, rhs in
             if lhs.timestamp == rhs.timestamp {
                 return lhs.sortID < rhs.sortID
             }
@@ -450,6 +464,9 @@ final class ChatSessionViewModel {
                 }
 
                 mergedItems.append(.message(message))
+            case let .thought(thought):
+                flushBufferedToolCalls(groupID: "before-thought-\(thought.id)")
+                mergedItems.append(.thought(thought))
             }
         }
 
@@ -679,6 +696,8 @@ final class ChatSessionViewModel {
             return envelope(id: left.id, content: left.plainText) == envelope(id: right.id, content: right.plainText)
         case let (.toolCall(left), .toolCall(right)):
             return envelope(id: left.id, content: toolCallEnvelopeText(left.toolCall)) == envelope(id: right.id, content: toolCallEnvelopeText(right.toolCall))
+        case let (.thought(left), .thought(right)):
+            return envelope(id: left.id, content: left.text) == envelope(id: right.id, content: right.text)
         default:
             return false
         }
@@ -711,7 +730,19 @@ final class ChatSessionViewModel {
         flushPendingToolCallTimelineUpdates()
 
         isStreaming = false
+        if !thoughtAccumulator.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            thoughts.append(
+                ThoughtTimelineItem(
+                    id: UUID().uuidString,
+                    text: thoughtAccumulator,
+                    timestamp: Date(),
+                    renderVersion: 1
+                )
+            )
+        }
+        thoughtAccumulator = ""
         currentThought = ""
+        turnStartedAt = nil
         streamingUserMessageID = UUID().uuidString
         streamingAgentMessageID = UUID().uuidString
 
@@ -893,12 +924,15 @@ final class ChatSessionViewModel {
         userMessages.removeAll(keepingCapacity: false)
         agentMessages.removeAll(keepingCapacity: false)
         toolCallsByID.removeAll(keepingCapacity: false)
+        thoughts.removeAll(keepingCapacity: false)
         deferredLiveUpdates.removeAll(keepingCapacity: true)
         pendingAgentChunks.removeAll(keepingCapacity: true)
         pendingToolCallTimelineIDs.removeAll(keepingCapacity: true)
         pendingStreamingRebuild = false
         isStreaming = false
+        thoughtAccumulator = ""
         currentThought = ""
+        currentPlan = nil
         messageFlushTask?.cancel()
         messageFlushTask = nil
         lastMessageFlushAt = nil
