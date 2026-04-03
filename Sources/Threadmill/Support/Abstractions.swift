@@ -92,6 +92,7 @@ protocol ChatConversationManaging: AnyObject {
 @MainActor
 protocol SyncServicing: AnyObject {
     func syncFromDaemon() async
+    func syncAgentRegistry() async
 }
 
 @MainActor

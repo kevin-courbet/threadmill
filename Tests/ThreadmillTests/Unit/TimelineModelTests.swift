@@ -124,8 +124,9 @@ final class TimelineModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.timelineItems.map(\.stableId), firstStableIDs)
         XCTAssertNotEqual(viewModel.timelineItems.map(\.renderId), firstRenderIDs)
-        XCTAssertEqual(viewModel.itemIndex["message:streaming-agent"], 0)
         XCTAssertFalse(viewModel.timelineItems.isEmpty)
+        let stableID = viewModel.timelineItems[0].stableId
+        XCTAssertEqual(viewModel.itemIndex[stableID], 0)
         guard case let .message(message) = viewModel.timelineItems[0] else {
             return XCTFail("Expected timeline item to be message")
         }

@@ -20,11 +20,7 @@ final class ChatSessionViewModel {
     var sessionTitle: String?
 
     var isInputEnabled: Bool {
-        let hasAgentSessionManager = agentSessionManager != nil
-        let hasSessionID = sessionID != nil
-        let result = !isStreaming && hasAgentSessionManager
-        Logger.chat.info("isInputEnabled evaluated — isStreaming=\(self.isStreaming, privacy: .public), hasAgentSessionManager=\(hasAgentSessionManager, privacy: .public), hasSessionID=\(hasSessionID, privacy: .public), result=\(result, privacy: .public)")
-        return result
+        !isStreaming && agentSessionManager != nil
     }
 
     var userMessages: [MessageTimelineItem] = []
@@ -34,8 +30,8 @@ final class ChatSessionViewModel {
     private let agentSessionManager: AgentSessionManager?
     private(set) var sessionID: String?
     private let threadID: String?
-    private let streamingUserMessageID = "streaming-user"
-    private let streamingAgentMessageID = "streaming-agent"
+    private var streamingUserMessageID = UUID().uuidString
+    private var streamingAgentMessageID = UUID().uuidString
     private var pendingAgentChunks: [ContentBlock] = []
     private var messageFlushTask: Task<Void, Never>?
     private var pendingToolCallTimelineIDs: Set<String> = []
@@ -62,7 +58,6 @@ final class ChatSessionViewModel {
                 return
             }
             if let expectedSessionID = self.sessionID, expectedSessionID != incomingSessionID {
-                Logger.chat.info("consumeSessionUpdate skipped — expectedSessionID=\(expectedSessionID, privacy: .public), incomingSessionID=\(incomingSessionID, privacy: .public)")
                 return
             }
             self.consumeSessionUpdate(update, incomingSessionID: incomingSessionID)
@@ -165,38 +160,29 @@ final class ChatSessionViewModel {
 
     func sendPrompt(text: String) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let sessionLabel = sessionID ?? "nil"
-        let managerAvailable = agentSessionManager != nil
-        let inputEnabled = isInputEnabled
-        Logger.chat.info("sendPrompt entry — promptPreview=\(String(trimmed.prefix(50)), privacy: .public), trimmedLength=\(trimmed.count, privacy: .public), sessionID=\(sessionLabel, privacy: .public), isInputEnabled=\(inputEnabled, privacy: .public), hasAgentSessionManager=\(managerAvailable, privacy: .public), isStreaming=\(self.isStreaming, privacy: .public)")
 
         guard !trimmed.isEmpty else {
-            Logger.chat.info("sendPrompt early return — trimmed prompt is empty, originalLength=\(text.count, privacy: .public), trimmedLength=\(trimmed.count, privacy: .public)")
             return
         }
 
         guard let agentSessionManager else {
-            Logger.chat.info("sendPrompt early return — agentSessionManager is nil, sessionID=\(sessionLabel, privacy: .public)")
             return
         }
 
         guard let sessionID = await ensureSessionReady() else {
-            Logger.chat.info("sendPrompt early return — ensureSessionReady returned nil, selectedAgentName=\(self.selectedAgentName, privacy: .public), threadID=\(self.threadID ?? "nil", privacy: .public)")
             return
         }
 
         isStreaming = true
-        Logger.chat.info("sendPrompt sending — sessionID=\(sessionID, privacy: .public), promptLength=\(trimmed.count, privacy: .public)")
 
         do {
             try await agentSessionManager.sendPrompt(text: trimmed, sessionID: sessionID)
         } catch {
-            Logger.chat.info("sendPrompt failed — sessionID=\(sessionID, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
+            Logger.chat.error("sendPrompt failed — sessionID=\(sessionID, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
             finishStreamingCycle(forceRebuild: true)
             return
         }
 
-        Logger.chat.info("sendPrompt completed — sessionID=\(sessionID, privacy: .public)")
         finishStreamingCycle(forceRebuild: false)
     }
 
@@ -603,6 +589,8 @@ final class ChatSessionViewModel {
 
         isStreaming = false
         currentThought = ""
+        streamingUserMessageID = UUID().uuidString
+        streamingAgentMessageID = UUID().uuidString
 
         let shouldRebuild = forceRebuild || pendingStreamingRebuild
         pendingStreamingRebuild = false
@@ -612,77 +600,41 @@ final class ChatSessionViewModel {
     }
 
     private func ensureSessionReady() async -> String? {
-        Logger.chat.info("ensureSessionReady entry — sessionID=\(self.sessionID ?? "nil", privacy: .public), threadID=\(self.threadID ?? "nil", privacy: .public), hasAgentSessionManager=\(self.agentSessionManager != nil, privacy: .public)")
-
         guard let agentSessionManager else {
-            Logger.chat.info("ensureSessionReady returning existing sessionID — agentSessionManager is nil, sessionID=\(self.sessionID ?? "nil", privacy: .public)")
             return sessionID
         }
 
         guard let threadID else {
-            Logger.chat.info("ensureSessionReady returning existing sessionID — threadID is nil, sessionID=\(self.sessionID ?? "nil", privacy: .public)")
             return sessionID
         }
 
         if let sessionID, agentSessionManager.hasSession(sessionID: sessionID) {
-            Logger.chat.info("ensureSessionReady found active session — sessionID=\(sessionID, privacy: .public)")
             return sessionID
         }
 
         guard let agentConfig = resolvedAgentConfig() else {
-            Logger.chat.info("ensureSessionReady failed — no resolved agent config, selectedAgentName=\(self.selectedAgentName, privacy: .public), availableAgentsCount=\(self.availableAgents.count, privacy: .public)")
+            Logger.chat.error("ensureSessionReady — no resolved agent config for \(self.selectedAgentName, privacy: .public)")
             return nil
         }
 
         do {
             let startedSessionID = try await agentSessionManager.startSession(agentConfig: agentConfig, threadID: threadID)
             sessionID = startedSessionID
-            Logger.chat.info("ensureSessionReady started new session — sessionID=\(startedSessionID, privacy: .public), agentName=\(agentConfig.name, privacy: .public), threadID=\(threadID, privacy: .public)")
             configureSession(from: agentSessionManager, sessionID: startedSessionID)
             return startedSessionID
         } catch {
-            Logger.chat.info("ensureSessionReady failed to start session — threadID=\(threadID, privacy: .public), agentName=\(agentConfig.name, privacy: .public), error=\(error.localizedDescription, privacy: .public)")
+            Logger.chat.error("ensureSessionReady failed — \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }
 
     private func configureSession(from manager: AgentSessionManager, sessionID: String) {
-        Logger.chat.info("configureSession entry — sessionID=\(sessionID, privacy: .public), availableModesBefore=\(self.availableModes.count, privacy: .public), availableModelsBefore=\(self.availableModels.count, privacy: .public), currentModeBefore=\(self.currentMode ?? "nil", privacy: .public), currentModelBefore=\(self.currentModelID ?? "nil", privacy: .public)")
         applyCapabilities(from: manager, sessionID: sessionID)
-        Logger.chat.info("configureSession applied capabilities — sessionID=\(sessionID, privacy: .public), availableModesAfter=\(self.availableModes.count, privacy: .public), availableModelsAfter=\(self.availableModels.count, privacy: .public), currentModeAfter=\(self.currentMode ?? "nil", privacy: .public), currentModelAfter=\(self.currentModelID ?? "nil", privacy: .public)")
+        Logger.chat.debug("configureSession — sessionID=\(sessionID, privacy: .public), modes=\(self.availableModes.count, privacy: .public), models=\(self.availableModels.count, privacy: .public)")
     }
 
     private func consumeSessionUpdate(_ update: SessionUpdateNotification, incomingSessionID: String) {
-        let updateType = sessionUpdateType(update.update)
-        Logger.chat.info("consumeSessionUpdate called — sessionID=\(incomingSessionID, privacy: .public), updateType=\(updateType, privacy: .public)")
         handleSessionUpdate(update)
-    }
-
-    private func sessionUpdateType(_ update: SessionUpdate) -> String {
-        switch update {
-        case .userMessageChunk:
-            return "userMessageChunk"
-        case .agentMessageChunk:
-            return "agentMessageChunk"
-        case .agentThoughtChunk:
-            return "agentThoughtChunk"
-        case .toolCall:
-            return "toolCall"
-        case .toolCallUpdate:
-            return "toolCallUpdate"
-        case .plan:
-            return "plan"
-        case .availableCommandsUpdate:
-            return "availableCommandsUpdate"
-        case .configOptionUpdate:
-            return "configOptionUpdate"
-        case .usageUpdate:
-            return "usageUpdate"
-        case .currentModeUpdate:
-            return "currentModeUpdate"
-        case .sessionInfoUpdate:
-            return "sessionInfoUpdate"
-        }
     }
 
     private func resolvedAgentConfig() -> AgentConfig? {

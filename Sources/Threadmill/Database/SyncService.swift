@@ -42,7 +42,7 @@ final class SyncService: SyncServicing {
         }
     }
 
-    private func syncAgentRegistry() async {
+    func syncAgentRegistry() async {
         do {
             let result = try await connectionManager.request(method: "agent.registry.list", params: [:], timeout: 10)
             let entries = parseAgentRegistry(result)

@@ -80,10 +80,15 @@ final class MockSurfaceHost: SurfaceHosting {
 final class MockSyncService: SyncServicing {
     var syncCount = 0
     var syncHandler: (() async -> Void)?
+    var registrySyncCount = 0
 
     func syncFromDaemon() async {
         syncCount += 1
         await syncHandler?()
+    }
+
+    func syncAgentRegistry() async {
+        registrySyncCount += 1
     }
 }
 

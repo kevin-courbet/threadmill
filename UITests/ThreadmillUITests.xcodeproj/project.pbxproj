@@ -85,7 +85,6 @@
 		C16AEB019B7B13AF97AE3B36 /* RelayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = C26AEB019B7B13AF97AE3B36 /* RelayEndpoint.swift */; };
 		C14C0327C175789DD90779DA /* RemoteConnectionPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24C0327C175789DD90779DA /* RemoteConnectionPool.swift */; };
 		C125FE6B6F848B0D07833F8D /* TerminalMultiplexer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C225FE6B6F848B0D07833F8D /* TerminalMultiplexer.swift */; };
-		C12D57004AD6539E21A0F665 /* AnimatedGradientBorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22D57004AD6539E21A0F665 /* AnimatedGradientBorder.swift */; };
 		C191BB38A648A0B66F1EE397 /* ConnectionStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C291BB38A648A0B66F1EE397 /* ConnectionStatusView.swift */; };
 		C1FAB810BE5059A4CD13AA52 /* FileIconView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2FAB810BE5059A4CD13AA52 /* FileIconView.swift */; };
 		C1453A92B82E8138D41D6A4B /* HoverButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2453A92B82E8138D41D6A4B /* HoverButton.swift */; };
@@ -98,8 +97,8 @@
 		C12F6BBB3A502FAFF5DB8ADB /* TabContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22F6BBB3A502FAFF5DB8ADB /* TabContainer.swift */; };
 		C167B23BF60C42480133CAA1 /* TabLabel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C267B23BF60C42480133CAA1 /* TabLabel.swift */; };
 		C136AD69D689DD988AA8BDF9 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C236AD69D689DD988AA8BDF9 /* ContentView.swift */; };
-		A1E9E8DF1370DC28B0F6474F /* TestHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E9E8DF1370DC28B0F6474F /* TestHarness.swift */; };
-		A1026710510B159C625584B0 /* TerminalE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2026710510B159C625584B0 /* TerminalE2ETests.swift */; };
+		A1C34BBD7682FAA084ED7731 /* TerminalE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C34BBD7682FAA084ED7731 /* TerminalE2ETests.swift */; };
+		A1159F6DB2F241B5D70B2825 /* TestHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2159F6DB2F241B5D70B2825 /* TestHarness.swift */; };
 		A10000000000000000000004 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* XCTest.framework */; };
 		A1000000000000000000000D /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A90000000000000000000001 /* GRDB */; };
 		A1000000000000000000000F /* GhosttyKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* GhosttyKit.xcframework */; };
@@ -188,7 +187,6 @@
 		C26AEB019B7B13AF97AE3B36 /* RelayEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RelayEndpoint.swift"; path = "../Sources/Threadmill/Transport/RelayEndpoint.swift"; sourceTree = SOURCE_ROOT; };
 		C24C0327C175789DD90779DA /* RemoteConnectionPool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RemoteConnectionPool.swift"; path = "../Sources/Threadmill/Transport/RemoteConnectionPool.swift"; sourceTree = SOURCE_ROOT; };
 		C225FE6B6F848B0D07833F8D /* TerminalMultiplexer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TerminalMultiplexer.swift"; path = "../Sources/Threadmill/Transport/TerminalMultiplexer.swift"; sourceTree = SOURCE_ROOT; };
-		C22D57004AD6539E21A0F665 /* AnimatedGradientBorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AnimatedGradientBorder.swift"; path = "../Sources/Threadmill/Views/Components/AnimatedGradientBorder.swift"; sourceTree = SOURCE_ROOT; };
 		C291BB38A648A0B66F1EE397 /* ConnectionStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ConnectionStatusView.swift"; path = "../Sources/Threadmill/Views/Components/ConnectionStatusView.swift"; sourceTree = SOURCE_ROOT; };
 		C2FAB810BE5059A4CD13AA52 /* FileIconView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "FileIconView.swift"; path = "../Sources/Threadmill/Views/Components/FileIconView.swift"; sourceTree = SOURCE_ROOT; };
 		C2453A92B82E8138D41D6A4B /* HoverButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "HoverButton.swift"; path = "../Sources/Threadmill/Views/Components/HoverButton.swift"; sourceTree = SOURCE_ROOT; };
@@ -201,8 +199,8 @@
 		C22F6BBB3A502FAFF5DB8ADB /* TabContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TabContainer.swift"; path = "../Sources/Threadmill/Views/Components/TabContainer.swift"; sourceTree = SOURCE_ROOT; };
 		C267B23BF60C42480133CAA1 /* TabLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "TabLabel.swift"; path = "../Sources/Threadmill/Views/Components/TabLabel.swift"; sourceTree = SOURCE_ROOT; };
 		C236AD69D689DD988AA8BDF9 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "ContentView.swift"; path = "../Sources/Threadmill/Views/ContentView.swift"; sourceTree = SOURCE_ROOT; };
-		A2E9E8DF1370DC28B0F6474F /* TestHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHarness.swift; sourceTree = "<group>"; };
-		A2026710510B159C625584B0 /* TerminalE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalE2ETests.swift; sourceTree = "<group>"; };
+		A2C34BBD7682FAA084ED7731 /* TerminalE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalE2ETests.swift; sourceTree = "<group>"; };
+		A2159F6DB2F241B5D70B2825 /* TestHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHarness.swift; sourceTree = "<group>"; };
 		A20000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000000000000000000005 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A20000000000000000000006 /* ThreadmillUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ThreadmillUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -240,8 +238,8 @@
 		A40000000000000000000002 /* ThreadmillUITests */ = {
 			isa = PBXGroup;
 			children = (
-				A2E9E8DF1370DC28B0F6474F /* TestHarness.swift */,
-				A2026710510B159C625584B0 /* TerminalE2ETests.swift */,				A20000000000000000000004 /* Info.plist */,
+				A2C34BBD7682FAA084ED7731 /* TerminalE2ETests.swift */,
+				A2159F6DB2F241B5D70B2825 /* TestHarness.swift */,				A20000000000000000000004 /* Info.plist */,
 			);
 			path = ThreadmillUITests;
 			sourceTree = "<group>";
@@ -412,7 +410,6 @@
 				C16AEB019B7B13AF97AE3B36 /* RelayEndpoint.swift in Sources */,
 				C14C0327C175789DD90779DA /* RemoteConnectionPool.swift in Sources */,
 				C125FE6B6F848B0D07833F8D /* TerminalMultiplexer.swift in Sources */,
-				C12D57004AD6539E21A0F665 /* AnimatedGradientBorder.swift in Sources */,
 				C191BB38A648A0B66F1EE397 /* ConnectionStatusView.swift in Sources */,
 				C1FAB810BE5059A4CD13AA52 /* FileIconView.swift in Sources */,
 				C1453A92B82E8138D41D6A4B /* HoverButton.swift in Sources */,
@@ -425,8 +422,8 @@
 				C12F6BBB3A502FAFF5DB8ADB /* TabContainer.swift in Sources */,
 				C167B23BF60C42480133CAA1 /* TabLabel.swift in Sources */,
 				C136AD69D689DD988AA8BDF9 /* ContentView.swift in Sources */,
-				A1E9E8DF1370DC28B0F6474F /* TestHarness.swift in Sources */,
-				A1026710510B159C625584B0 /* TerminalE2ETests.swift in Sources */,			);
+				A1C34BBD7682FAA084ED7731 /* TerminalE2ETests.swift in Sources */,
+				A1159F6DB2F241B5D70B2825 /* TestHarness.swift in Sources */,			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */

@@ -19,7 +19,6 @@ struct ChatModeContent: View {
             let availableAgents = installedAgents.isEmpty
                 ? [AgentConfig(name: "opencode", command: "opencode acp", cwd: nil)]
                 : installedAgents
-            let _ = Logger.chat.info("ChatModeContent body — threadID=\(thread.id, privacy: .public), selectedConversationID=\(selectedConversation?.id ?? "nil", privacy: .public), selectedSessionID=\(selectedConversation?.agentSessionID ?? "nil", privacy: .public), reloadToken=\(reloadToken, privacy: .public)")
             Group {
                 if let selectedConversation {
                     let viewModel = viewModelCache.resolve(
@@ -132,24 +131,28 @@ private struct ChatEmptyStateView: View {
 
 @MainActor
 final class ChatSessionViewModelCache {
-    private var cachedConversationID: String?
-    private var cachedViewModel: ChatSessionViewModel?
+    private var viewModelsByConversationID: [String: ChatSessionViewModel] = [:]
 
     func resolve(
         conversationID: String?,
         sessionID: String?,
         create: () -> ChatSessionViewModel
     ) -> ChatSessionViewModel {
-        let cacheHit = cachedViewModel != nil && cachedConversationID == conversationID
-        Logger.chat.info("ChatSessionViewModelCache resolve — conversationID=\(conversationID ?? "nil", privacy: .public), sessionID=\(sessionID ?? "nil", privacy: .public), cacheHit=\(cacheHit, privacy: .public)")
-        if let cachedViewModel, cachedConversationID == conversationID {
-            return cachedViewModel
+        guard let conversationID else {
+            return create()
+        }
+
+        if let cached = viewModelsByConversationID[conversationID] {
+            return cached
         }
 
         let viewModel = create()
-        cachedConversationID = conversationID
-        cachedViewModel = viewModel
+        viewModelsByConversationID[conversationID] = viewModel
         return viewModel
+    }
+
+    func remove(conversationID: String) {
+        viewModelsByConversationID.removeValue(forKey: conversationID)
     }
 }
 

@@ -4,6 +4,7 @@ import SwiftUI
 struct AgentsSettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var installingAgentID: String?
+    @State private var installError: String?
 
     var body: some View {
         Form {
@@ -28,16 +29,30 @@ struct AgentsSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .alert("Install Failed", isPresented: .init(
+            get: { installError != nil },
+            set: { if !$0 { installError = nil } }
+        )) {
+            Button("OK") { installError = nil }
+        } message: {
+            if let installError {
+                Text(installError)
+            }
+        }
     }
 
     private func installAgent(_ agent: AgentRegistryEntry) {
         installingAgentID = agent.id
+        installError = nil
         Task {
             defer { installingAgentID = nil }
             do {
-                _ = try await appState.installAgent(agentID: agent.id)
+                let success = try await appState.installAgent(agentID: agent.id)
+                if !success {
+                    installError = "Installation of \(agent.name) did not complete successfully."
+                }
             } catch {
-                Logger.state.error("Agent install failed: \(error)")
+                installError = error.localizedDescription
             }
         }
     }

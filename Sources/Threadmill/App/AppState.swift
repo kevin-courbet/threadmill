@@ -520,7 +520,7 @@ final class AppState {
         }
         let success = (payload["success"] as? Bool) ?? false
         if success {
-            await syncService?.syncFromDaemon()
+            await syncService?.syncAgentRegistry()
         }
         return success
     }

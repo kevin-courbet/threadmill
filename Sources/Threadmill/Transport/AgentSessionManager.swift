@@ -118,9 +118,7 @@ final class AgentSessionManager {
             throw AgentSessionManagerError.unknownSession(sessionID)
         }
 
-        if existing.channelID != nil {
-            try await chatStop(threadID: existing.threadID, sessionID: sessionID)
-        }
+        try await chatStop(threadID: existing.threadID, sessionID: sessionID)
         cleanupSession(sessionID: sessionID)
 
         return try await startSession(agentConfig: agentConfig, threadID: existing.threadID)
@@ -318,17 +316,12 @@ final class AgentSessionManager {
             return
         }
 
-        Logger.chat.info("AgentSessionManager handleBinaryFrame entry — frameBytes=\(frame.count, privacy: .public)")
-
         guard frame.count >= 2 else {
-            Logger.chat.info("AgentSessionManager handleBinaryFrame skipped — frame too short, frameBytes=\(frame.count, privacy: .public)")
             return
         }
 
         let channelID = (UInt16(frame[0]) << 8) | UInt16(frame[1])
-        Logger.chat.info("AgentSessionManager handleBinaryFrame channel parsed — channelID=\(channelID, privacy: .public), payloadBytes=\(max(0, frame.count - 2), privacy: .public)")
         guard sessionIDByChannel[channelID] != nil else {
-            Logger.chat.info("AgentSessionManager handleBinaryFrame skipped — unknown channelID=\(channelID, privacy: .public)")
             return
         }
 
@@ -599,7 +592,6 @@ final class AgentSessionManager {
                 capabilities.currentModeID = modeID
                 sessionCapabilitiesByID[sessionID] = capabilities
             }
-            Logger.chat.info("AgentSessionManager onSessionUpdate callback firing — sessionID=\(sessionID, privacy: .public), channelID=\(channelID, privacy: .public), updateType=\(self.sessionUpdateType(update.update), privacy: .public)")
             onSessionUpdate?(sessionID, update)
         } catch {
             Logger.agent.error("Failed to decode session/update on channel \(channelID): \(error)")
@@ -616,16 +608,11 @@ final class AgentSessionManager {
         sessionIDByChannel[channelID] = context.id
         incomingBuffers[channelID] = Data()
 
-        let sessionID = context.id
-        let threadID = context.threadID
-        let agentName = context.agentConfig.name
-        Logger.chat.info("AgentSessionManager attachChannel — sessionID=\(sessionID, privacy: .public), channelID=\(channelID, privacy: .public), threadID=\(threadID, privacy: .public), agentName=\(agentName, privacy: .public)")
-
-        let capabilities = parseCapabilities(modes: attach.modes, models: attach.models)
+        let capabilities = parseCapabilities(modes: attach.modes, models: attach.models, configOptions: attach.configOptions)
         sessionCapabilitiesByID[context.id] = capabilities
     }
 
-    private func parseCapabilities(modes: Any?, models: Any?) -> SessionCapabilities {
+    private func parseCapabilities(modes: Any?, models: Any?, configOptions: Any? = nil) -> SessionCapabilities {
         var caps = SessionCapabilities.empty
 
         if let modesDict = modes as? [String: Any] {
@@ -653,6 +640,30 @@ final class AgentSessionManager {
                     }
                     return ModelInfo(modelId: modelId, name: name)
                 }
+            }
+        }
+
+        if let configOptionsArray = configOptions as? [[String: Any]] {
+            do {
+                let data = try JSONSerialization.data(withJSONObject: configOptionsArray)
+                let options = try JSONDecoder().decode([SessionConfigOption].self, from: data)
+                for option in options where option.id.value == "model" {
+                    if case let .select(select) = option.kind {
+                        let allOptions: [SessionConfigSelectOption]
+                        switch select.options {
+                        case let .ungrouped(options):
+                            allOptions = options
+                        case let .grouped(groups):
+                            allOptions = groups.flatMap(\.options)
+                        }
+                        caps.availableModels = allOptions.map { selectOption in
+                            ModelInfo(modelId: selectOption.value.value, name: selectOption.name)
+                        }
+                        caps.currentModelID = select.currentValue.value
+                    }
+                }
+            } catch {
+                Logger.agent.error("Failed to parse config_options from chat.attach: \(error)")
             }
         }
 
@@ -713,30 +724,4 @@ final class AgentSessionManager {
         ObjectIdentifier(connection as AnyObject) == managedConnectionID
     }
 
-    private func sessionUpdateType(_ update: SessionUpdate) -> String {
-        switch update {
-        case .userMessageChunk:
-            return "userMessageChunk"
-        case .agentMessageChunk:
-            return "agentMessageChunk"
-        case .agentThoughtChunk:
-            return "agentThoughtChunk"
-        case .toolCall:
-            return "toolCall"
-        case .toolCallUpdate:
-            return "toolCallUpdate"
-        case .plan:
-            return "plan"
-        case .availableCommandsUpdate:
-            return "availableCommandsUpdate"
-        case .configOptionUpdate:
-            return "configOptionUpdate"
-        case .usageUpdate:
-            return "usageUpdate"
-        case .currentModeUpdate:
-            return "currentModeUpdate"
-        case .sessionInfoUpdate:
-            return "sessionInfoUpdate"
-        }
-    }
 }

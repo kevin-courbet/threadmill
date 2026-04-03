@@ -59,7 +59,11 @@ enum AgentInstallMethod: Codable, Hashable {
         case "uv":
             self = .uv(package: package)
         default:
-            self = .npm(package: package)
+            throw DecodingError.dataCorruptedError(
+                forKey: .type,
+                in: container,
+                debugDescription: "Unknown install method type: \(type)"
+            )
         }
     }
 
