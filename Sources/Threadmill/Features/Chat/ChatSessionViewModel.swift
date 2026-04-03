@@ -296,6 +296,14 @@ final class ChatSessionViewModel {
         }
 
         Logger.chat.error("sendPrompt — sending, sessionID=\(sessionID, privacy: .public), promptLength=\(trimmed.count, privacy: .public)")
+
+        // Add user message to timeline immediately — agent doesn't echo it back
+        upsertStreamingMessage(
+            role: .user,
+            content: .text(TextContent(text: trimmed)),
+            messageID: streamingUserMessageID
+        )
+
         isStreaming = true
 
         do {
