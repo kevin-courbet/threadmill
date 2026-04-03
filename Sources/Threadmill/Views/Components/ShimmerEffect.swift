@@ -3,15 +3,17 @@ import QuartzCore
 import SwiftUI
 
 struct ShimmerEffect: NSViewRepresentable {
+    @Environment(\.scenePhase) private var scenePhase
+
     let text: String
     var font: NSFont = .systemFont(ofSize: 12, weight: .medium)
 
     func makeNSView(context: Context) -> ShimmerTextNSView {
-        ShimmerTextNSView(text: text, font: font)
+        ShimmerTextNSView(text: text, font: font, scenePhase: scenePhase)
     }
 
     func updateNSView(_ nsView: ShimmerTextNSView, context: Context) {
-        nsView.update(text: text, font: font)
+        nsView.update(text: text, font: font, scenePhase: scenePhase)
     }
 }
 
@@ -22,19 +24,19 @@ final class ShimmerTextNSView: NSView {
 
     private var text: String
     private var font: NSFont
+    private var scenePhase: ScenePhase
     private var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-    private nonisolated(unsafe) var didBecomeObserver: NSObjectProtocol?
-    private nonisolated(unsafe) var didResignObserver: NSObjectProtocol?
     private nonisolated(unsafe) var displayOptionsObserver: NSObjectProtocol?
 
-    init(text: String, font: NSFont) {
+    init(text: String, font: NSFont, scenePhase: ScenePhase) {
         self.text = text
         self.font = font
+        self.scenePhase = scenePhase
         super.init(frame: .zero)
         wantsLayer = true
         setupLayers()
         installObservers()
-        update(text: text, font: font)
+        update(text: text, font: font, scenePhase: scenePhase)
     }
 
     @available(*, unavailable)
@@ -43,12 +45,6 @@ final class ShimmerTextNSView: NSView {
     }
 
     deinit {
-        if let didBecomeObserver {
-            NotificationCenter.default.removeObserver(didBecomeObserver)
-        }
-        if let didResignObserver {
-            NotificationCenter.default.removeObserver(didResignObserver)
-        }
         if let displayOptionsObserver {
             NotificationCenter.default.removeObserver(displayOptionsObserver)
         }
@@ -65,9 +61,10 @@ final class ShimmerTextNSView: NSView {
         updateFrames()
     }
 
-    func update(text: String, font: NSFont) {
+    func update(text: String, font: NSFont, scenePhase: ScenePhase) {
         self.text = text
         self.font = font
+        self.scenePhase = scenePhase
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
@@ -85,7 +82,7 @@ final class ShimmerTextNSView: NSView {
 
         invalidateIntrinsicContentSize()
         needsLayout = true
-        applyShimmerState(animated: true)
+        applyShimmerState()
     }
 
     private func setupLayers() {
@@ -119,32 +116,18 @@ final class ShimmerTextNSView: NSView {
     }
 
     private func installObservers() {
-        didBecomeObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didBecomeActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.applyShimmerState(animated: true)
-        }
-
-        didResignObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didResignActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.pauseShimmer()
-        }
-
         displayOptionsObserver = NotificationCenter.default.addObserver(
             forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self else {
-                return
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                self.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                self.applyShimmerState()
             }
-            self.reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-            self.applyShimmerState(animated: true)
         }
     }
 
@@ -156,10 +139,10 @@ final class ShimmerTextNSView: NSView {
         shimmerGradientLayer.frame = CGRect(x: -bounds.width, y: 0, width: bounds.width * 3, height: bounds.height)
     }
 
-    private func applyShimmerState(animated: Bool) {
+    private func applyShimmerState() {
         shimmerGradientLayer.removeAnimation(forKey: "threadmill.shimmer")
 
-        guard animated, NSApp.isActive, !reduceMotion else {
+        guard scenePhase == .active, !reduceMotion, bounds.width > 0 else {
             return
         }
 
@@ -170,9 +153,5 @@ final class ShimmerTextNSView: NSView {
         animation.repeatCount = .infinity
         animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         shimmerGradientLayer.add(animation, forKey: "threadmill.shimmer")
-    }
-
-    private func pauseShimmer() {
-        shimmerGradientLayer.removeAnimation(forKey: "threadmill.shimmer")
     }
 }

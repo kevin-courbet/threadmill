@@ -37,7 +37,7 @@ enum AgentSessionManagerError: LocalizedError {
 
 @MainActor
 @Observable
-final class AgentSessionManager {
+final class AgentSessionManager: ChatManaging {
     struct SessionCapabilities {
         var availableModes: [ModeInfo]
         var currentModeID: String?
@@ -349,6 +349,34 @@ final class AgentSessionManager {
 
     // MARK: - Chat RPCs
 
+    func chatHistory(threadID: String, sessionID: String, cursor: UInt64? = nil) async throws -> ChatHistoryResponse {
+        var params: [String: Any] = [
+            "thread_id": threadID,
+            "session_id": sessionID,
+        ]
+        if let cursor {
+            params["cursor"] = cursor
+        }
+
+        let result = try await connectionManager.request(
+            method: "chat.history",
+            params: params,
+            timeout: 20
+        )
+
+        return try decodeChatResponse(result, context: "chat.history")
+    }
+
+    func chatList(threadID: String) async throws -> [ChatSessionInfo] {
+        let result = try await connectionManager.request(
+            method: "chat.list",
+            params: ["thread_id": threadID],
+            timeout: 20
+        )
+
+        return try decodeChatResponse(result, context: "chat.list")
+    }
+
     private func chatStart(threadID: String, agentName: String) async throws -> String {
         let result = try await connectionManager.request(
             method: "chat.start",
@@ -401,6 +429,19 @@ final class AgentSessionManager {
             ],
             timeout: 10
         )
+    }
+
+    private func decodeChatResponse<Payload: Decodable>(_ result: Any, context: String) throws -> Payload {
+        guard JSONSerialization.isValidJSONObject(result) else {
+            throw AgentSessionManagerError.rpcError("\(context) returned invalid JSON payload")
+        }
+
+        let data = try JSONSerialization.data(withJSONObject: result)
+        do {
+            return try JSONDecoder().decode(Payload.self, from: data)
+        } catch {
+            throw AgentSessionManagerError.rpcError("\(context) decode failed: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - ACP Frame Transport

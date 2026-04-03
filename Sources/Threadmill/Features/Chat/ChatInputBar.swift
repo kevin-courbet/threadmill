@@ -7,6 +7,7 @@ struct ChatInputBar: View {
 
     @State private var text = ""
     @State private var measuredHeight: CGFloat = 44
+    @State private var isEditorFocused = false
 
     private var canSend: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.isStreaming
@@ -20,12 +21,14 @@ struct ChatInputBar: View {
         viewModel.currentMode?.lowercased() == "plan"
     }
 
-    private var inputBorderColor: Color {
-        isPlanMode ? Color.blue.opacity(0.9) : Color(nsColor: .separatorColor)
-    }
-
-    private var inputBorderStyle: StrokeStyle {
-        isPlanMode ? StrokeStyle(lineWidth: 1, dash: [6, 4]) : StrokeStyle(lineWidth: 1)
+    private var inputBorderStyle: AnimatedGradientBorderStyle {
+        if viewModel.isStreaming {
+            return .streaming
+        }
+        if isPlanMode {
+            return .plan
+        }
+        return .focusedIdle
     }
 
     var body: some View {
@@ -69,6 +72,7 @@ struct ChatInputBar: View {
                 ExpandingTextView(
                     text: $text,
                     measuredHeight: $measuredHeight,
+                    isFocused: $isEditorFocused,
                     onSubmit: send,
                     onCancel: viewModel.isStreaming ? {
                         Task { await viewModel.cancelCurrentPrompt() }
@@ -82,8 +86,7 @@ struct ChatInputBar: View {
         .padding(.vertical, 10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(inputBorderColor, style: inputBorderStyle)
+            AnimatedGradientBorder(style: inputBorderStyle, cornerRadius: 18, lineWidth: 1.2, isFocused: isEditorFocused)
                 .allowsHitTesting(false)
         }
         .background {
@@ -165,6 +168,7 @@ struct ChatInputBar: View {
 private struct ExpandingTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var measuredHeight: CGFloat
+    @Binding var isFocused: Bool
     let onSubmit: () -> Void
     let onCancel: (() -> Void)?
 
@@ -205,11 +209,14 @@ private struct ExpandingTextView: NSViewRepresentable {
         }
         textView.onSubmit = onSubmit
         textView.onCancel = onCancel
+        context.coordinator.parentIsFocused = $isFocused
         context.coordinator.recomputeHeight(for: textView)
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSTextViewDelegate {
         private let parent: ExpandingTextView
+        var parentIsFocused: Binding<Bool>?
 
         init(_ parent: ExpandingTextView) {
             self.parent = parent
@@ -221,6 +228,14 @@ private struct ExpandingTextView: NSViewRepresentable {
             }
             parent.text = textView.string
             recomputeHeight(for: textView)
+        }
+
+        func textDidBeginEditing(_ notification: Notification) {
+            parentIsFocused?.wrappedValue = true
+        }
+
+        func textDidEndEditing(_ notification: Notification) {
+            parentIsFocused?.wrappedValue = false
         }
 
         func recomputeHeight(for textView: NSTextView) {

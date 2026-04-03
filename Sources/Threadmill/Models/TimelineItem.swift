@@ -115,7 +115,10 @@ enum TimelineItem: Identifiable {
         case let .toolCall(toolCall):
             return "\(stableId):\(toolCall.renderVersion)"
         case let .toolCallGroup(group):
-            return "\(stableId):\(group.toolCalls.count)"
+            let aggregateRenderVersion = group.toolCalls.reduce(into: 0) { accumulator, item in
+                accumulator &+= item.renderVersion
+            }
+            return "\(stableId):\(group.toolCalls.count):\(aggregateRenderVersion)"
         case .turnSummary:
             return stableId
         }

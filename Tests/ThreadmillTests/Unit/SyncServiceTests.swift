@@ -9,6 +9,15 @@ final class SyncServiceTests: XCTestCase {
             switch method {
             case "project.list", "thread.list":
                 return [[String: Any]]()
+            case "state.snapshot":
+                return [
+                    "state_version": 1,
+                    "projects": [],
+                    "threads": [],
+                    "chat_sessions": [],
+                ] as [String: Any]
+            case "agent.registry.list":
+                return [[String: Any]]()
             default:
                 throw TestError.missingStub
             }
@@ -24,7 +33,7 @@ final class SyncServiceTests: XCTestCase {
 
         await syncService.syncFromDaemon()
 
-        XCTAssertEqual(connection.requests.map(\.method), ["project.list", "thread.list", "agent.registry.list"])
+        XCTAssertEqual(connection.requests.map(\.method), ["project.list", "thread.list", "state.snapshot", "agent.registry.list"])
         XCTAssertEqual(database.replaceAllFromDaemonRemoteIDs, ["remote-42"])
     }
 }

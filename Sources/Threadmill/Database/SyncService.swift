@@ -25,14 +25,17 @@ final class SyncService: SyncServicing {
             Logger.sync.info("syncFromDaemon START")
             let projectsResult = try await connectionManager.request(method: "project.list", params: nil, timeout: 10)
             let threadsResult = try await connectionManager.request(method: "thread.list", params: [:], timeout: 10)
+            let snapshotResult = try await connectionManager.request(method: "state.snapshot", params: [:], timeout: 10)
 
             let projects = parseProjects(projectsResult)
             let threads = parseThreads(threadsResult)
+            let chatSessions = parseChatSessions(snapshotResult)
             let presetCount = projects.flatMap(\.presets).count
             Logger.sync.info("Parsed \(projects.count) projects, \(threads.count) threads, \(presetCount) presets — writing to DB")
             try databaseManager.replaceAllFromDaemon(projects: projects, threads: threads, remoteId: remoteId)
             Logger.sync.info("DB write done — calling reloadFromDatabase")
             appState.reloadFromDatabase()
+            appState.updateChatSessionsFromSnapshot(chatSessions)
 
             await syncAgentRegistry()
 
@@ -194,6 +197,17 @@ final class SyncService: SyncServicing {
                 portOffset: parseOptionalInt(row["port_offset"] ?? row["portOffset"])
             )
         }
+    }
+
+    private func parseChatSessions(_ payload: Any) -> [ChatSessionInfo] {
+        guard
+            let snapshot = payload as? [String: Any],
+            let rows = snapshot["chat_sessions"] as? [[String: Any]]
+        else {
+            return []
+        }
+
+        return rows.compactMap(ChatSessionInfo.init(payload:))
     }
 
     private func parseOptionalInt(_ value: Any?) -> Int? {

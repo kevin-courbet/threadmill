@@ -229,6 +229,100 @@ final class AppStateEventHandlingTests: XCTestCase {
         XCTAssertNil(appState.selectedEndpoint)
     }
 
+    func testChatStatusChangedUpdatesAgentStatus() {
+        let appState = makeConfiguredAppState()
+
+        appState.handleDaemonEvent(
+            method: "chat.status_changed",
+            params: [
+                "thread_id": "thread-1",
+                "session_id": "session-1",
+                "old_status": "idle",
+                "new_status": "busy",
+                "worker_count": 2,
+            ]
+        )
+
+        guard let info = appState.agentStatus["thread-1"] else {
+            XCTFail("Expected agent status for thread-1")
+            return
+        }
+
+        XCTAssertEqual(info.workerCount, 2)
+        XCTAssertEqual(info.status, .busy(workerCount: 2))
+    }
+
+    func testChatSessionEventsMaintainLocalSessionListAndClearStatusWhenAllSessionsEnd() {
+        let appState = makeConfiguredAppState()
+
+        appState.handleDaemonEvent(
+            method: "chat.session_added",
+            params: [
+                "session": [
+                    "thread_id": "thread-1",
+                    "session_id": "session-1",
+                    "agent_status": "busy",
+                    "worker_count": 1,
+                ],
+            ]
+        )
+
+        XCTAssertEqual(appState.chatSessionsByThreadID["thread-1"]?.count, 1)
+        XCTAssertEqual(appState.agentStatus["thread-1"]?.status, .busy(workerCount: 1))
+
+        appState.handleDaemonEvent(
+            method: "chat.session_updated",
+            params: [
+                "session": [
+                    "thread_id": "thread-1",
+                    "session_id": "session-1",
+                    "agent_status": "stalled",
+                    "worker_count": 3,
+                ],
+            ]
+        )
+
+        XCTAssertEqual(appState.agentStatus["thread-1"]?.status, .stalled(workerCount: 3))
+
+        appState.handleDaemonEvent(
+            method: "chat.session_removed",
+            params: [
+                "thread_id": "thread-1",
+                "session_id": "session-1",
+            ]
+        )
+
+        XCTAssertNil(appState.chatSessionsByThreadID["thread-1"])
+        XCTAssertNil(appState.agentStatus["thread-1"])
+    }
+
+    func testConnectionDisconnectClearsAgentStatus() {
+        let appState = makeConfiguredAppState()
+        appState.agentStatus["thread-1"] = AgentActivityInfo(
+            status: .busy(workerCount: 1),
+            workerCount: 1,
+            lastUpdateTime: Date()
+        )
+
+        appState.connectionStatus = .disconnected
+
+        XCTAssertTrue(appState.agentStatus.isEmpty)
+    }
+
+    func testUpdateChatSessionsFromSnapshotHydratesAgentStatus() {
+        let appState = makeConfiguredAppState()
+
+        appState.updateChatSessionsFromSnapshot([
+            ChatSessionInfo(sessionID: "session-1", threadID: "thread-1", agentStatusValue: "idle", workerCount: 0),
+            ChatSessionInfo(sessionID: "session-2", threadID: "thread-2", agentStatusValue: "busy", workerCount: 2),
+        ])
+
+        XCTAssertEqual(appState.chatSessionsByThreadID["thread-1"]?.count, 1)
+        XCTAssertEqual(appState.chatSessionsByThreadID["thread-2"]?.count, 1)
+        XCTAssertEqual(appState.agentStatus["thread-1"]?.status, .idle)
+        XCTAssertEqual(appState.agentStatus["thread-2"]?.status, .busy(workerCount: 2))
+    }
+
     private func makeConfiguredAppState() -> AppState {
         makeConfiguredAppStateWithDoubles().4
     }

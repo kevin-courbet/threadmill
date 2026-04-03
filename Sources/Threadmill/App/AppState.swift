@@ -129,6 +129,7 @@ final class AppState {
                 pendingScheduledAttachTask = nil
                 stopStatsTimer()
                 systemStats = nil
+                agentStatus.removeAll()
             }
         }
     }
@@ -144,6 +145,8 @@ final class AppState {
         }
     }
     var threads: [ThreadModel] = []
+    var chatSessionsByThreadID: [String: [ChatSessionInfo]] = [:]
+    var agentStatus: [String: AgentActivityInfo] = [:]
     var agentRegistry: [AgentRegistryEntry] = []
     var systemStats: SystemStatsResult?
     var pinnedThreadIDs: Set<String> = {
@@ -533,6 +536,14 @@ final class AppState {
             handleThreadProgress(params)
         case "project.clone_progress":
             handleProjectCloneProgress(params)
+        case "chat.status_changed":
+            handleChatStatusChanged(params)
+        case "chat.session_added":
+            handleChatSessionAdded(params)
+        case "chat.session_updated":
+            handleChatSessionUpdated(params)
+        case "chat.session_removed":
+            handleChatSessionRemoved(params)
         case "thread.created",
              "thread.removed",
              "project.added",
@@ -1213,6 +1224,188 @@ final class AppState {
         } else {
             Logger.state.info("project.clone_progress clone=\(cloneID, privacy: .public) step=\(step, privacy: .public) message=\(message, privacy: .public)")
         }
+    }
+
+    func updateChatSessionsFromSnapshot(_ sessions: [ChatSessionInfo]) {
+        chatSessionsByThreadID = Dictionary(grouping: sessions, by: \.threadID)
+        recalculateAllAgentStatuses(timestamp: Date())
+    }
+
+    private func handleChatStatusChanged(_ params: [String: Any]?) {
+        guard
+            let params,
+            let threadID = params["thread_id"] as? String,
+            let sessionID = params["session_id"] as? String,
+            let newStatus = params["new_status"] as? String
+        else {
+            Logger.state.error("Invalid chat.status_changed payload: \(String(describing: params))")
+            return
+        }
+
+        let workerCount = parseOptionalInt(params["worker_count"]) ?? 0
+        if let status = AgentStatus.fromDaemonStatus(newStatus, workerCount: workerCount) {
+            agentStatus[threadID] = AgentActivityInfo(
+                status: status,
+                workerCount: workerCount,
+                lastUpdateTime: Date()
+            )
+        } else {
+            Logger.state.error("Unknown chat status '\(newStatus, privacy: .public)' for thread \(threadID, privacy: .public)")
+        }
+
+        updateChatSessionStatus(threadID: threadID, sessionID: sessionID, status: newStatus, workerCount: workerCount)
+    }
+
+    private func handleChatSessionAdded(_ params: [String: Any]?) {
+        guard let session = parseChatSession(from: params) else {
+            Logger.state.error("Invalid chat.session_added payload: \(String(describing: params))")
+            return
+        }
+        upsertChatSession(session)
+    }
+
+    private func handleChatSessionUpdated(_ params: [String: Any]?) {
+        guard let session = parseChatSession(from: params) else {
+            Logger.state.error("Invalid chat.session_updated payload: \(String(describing: params))")
+            return
+        }
+        upsertChatSession(session)
+    }
+
+    private func handleChatSessionRemoved(_ params: [String: Any]?) {
+        guard let params else {
+            Logger.state.error("chat.session_removed payload missing")
+            return
+        }
+
+        if let session = parseChatSession(from: params) {
+            removeChatSession(threadID: session.threadID, sessionID: session.sessionID)
+            return
+        }
+
+        guard
+            let threadID = params["thread_id"] as? String,
+            let sessionID = params["session_id"] as? String
+        else {
+            Logger.state.error("Invalid chat.session_removed payload: \(String(describing: params))")
+            return
+        }
+
+        removeChatSession(threadID: threadID, sessionID: sessionID)
+    }
+
+    private func parseChatSession(from params: [String: Any]?) -> ChatSessionInfo? {
+        guard let params else {
+            return nil
+        }
+        if let nested = params["session"] as? [String: Any] {
+            return ChatSessionInfo(payload: nested)
+        }
+        return ChatSessionInfo(payload: params)
+    }
+
+    private func upsertChatSession(_ session: ChatSessionInfo) {
+        var sessions = chatSessionsByThreadID[session.threadID] ?? []
+        if let index = sessions.firstIndex(where: { $0.sessionID == session.sessionID }) {
+            sessions[index] = session
+        } else {
+            sessions.append(session)
+        }
+        chatSessionsByThreadID[session.threadID] = sessions
+        recalculateAgentStatus(for: session.threadID, timestamp: Date())
+    }
+
+    private func updateChatSessionStatus(threadID: String, sessionID: String, status: String, workerCount: Int) {
+        guard var sessions = chatSessionsByThreadID[threadID],
+              let index = sessions.firstIndex(where: { $0.sessionID == sessionID })
+        else {
+            return
+        }
+
+        sessions[index].applyStatusUpdate(status: status, workerCount: workerCount)
+        chatSessionsByThreadID[threadID] = sessions
+        recalculateAgentStatus(for: threadID, timestamp: Date())
+    }
+
+    private func removeChatSession(threadID: String, sessionID: String) {
+        guard var sessions = chatSessionsByThreadID[threadID] else {
+            agentStatus.removeValue(forKey: threadID)
+            return
+        }
+
+        sessions.removeAll { $0.sessionID == sessionID }
+        if sessions.isEmpty {
+            chatSessionsByThreadID.removeValue(forKey: threadID)
+            agentStatus.removeValue(forKey: threadID)
+            return
+        }
+
+        chatSessionsByThreadID[threadID] = sessions
+        recalculateAgentStatus(for: threadID, timestamp: Date())
+    }
+
+    private func recalculateAllAgentStatuses(timestamp: Date) {
+        var recalculated: [String: AgentActivityInfo] = [:]
+        for threadID in chatSessionsByThreadID.keys {
+            if let status = aggregateAgentActivity(for: threadID, timestamp: timestamp) {
+                recalculated[threadID] = status
+            }
+        }
+        agentStatus = recalculated
+    }
+
+    private func recalculateAgentStatus(for threadID: String, timestamp: Date) {
+        if let status = aggregateAgentActivity(for: threadID, timestamp: timestamp) {
+            agentStatus[threadID] = status
+        } else {
+            agentStatus.removeValue(forKey: threadID)
+        }
+    }
+
+    private func aggregateAgentActivity(for threadID: String, timestamp: Date) -> AgentActivityInfo? {
+        guard let sessions = chatSessionsByThreadID[threadID], !sessions.isEmpty else {
+            return nil
+        }
+
+        let statuses = sessions.compactMap(\.agentStatus)
+        guard !statuses.isEmpty else {
+            return nil
+        }
+
+        let workerCount = max(sessions.map(\.workerCount).max() ?? 0, 0)
+        let status: AgentStatus
+        if statuses.contains(where: {
+            if case .stalled = $0 {
+                return true
+            }
+            return false
+        }) {
+            status = .stalled(workerCount: workerCount)
+        } else if statuses.contains(where: {
+            if case .busy = $0 {
+                return true
+            }
+            return false
+        }) {
+            status = .busy(workerCount: workerCount)
+        } else {
+            status = .idle
+        }
+
+        return AgentActivityInfo(status: status, workerCount: workerCount, lastUpdateTime: timestamp)
+    }
+
+    private func parseOptionalInt(_ value: Any?) -> Int? {
+        if let intValue = value as? Int {
+            return intValue
+        }
+        if let number = value as? NSNumber {
+            return number.intValue
+        }
+        if let text = value as? String {
+            return Int(text)
+        }
+        return nil
     }
 
     private func threadProgressIndicatesFailure(step: String, errorText: String?) -> Bool {

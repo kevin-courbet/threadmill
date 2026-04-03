@@ -1,4 +1,5 @@
 import ACPModel
+import Combine
 import Foundation
 import Observation
 import os
@@ -35,8 +36,9 @@ final class ChatSessionViewModel {
     private var pendingAgentChunks: [ContentBlock] = []
     private var messageFlushTask: Task<Void, Never>?
     private var pendingToolCallTimelineIDs: Set<String> = []
-    private var toolCallFlushTask: Task<Void, Never>?
     private var pendingStreamingRebuild = false
+    private var cancellables: Set<AnyCancellable> = []
+    private let toolCallFlushSubject = PassthroughSubject<Void, Never>()
 
     init(
         agentSessionManager: AgentSessionManager?,
@@ -66,6 +68,13 @@ final class ChatSessionViewModel {
         if let sessionID, let agentSessionManager, agentSessionManager.hasSession(sessionID: sessionID) {
             configureSession(from: agentSessionManager, sessionID: sessionID)
         }
+
+        toolCallFlushSubject
+            .throttle(for: .milliseconds(60), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] in
+                self?.flushPendingToolCallTimelineUpdates()
+            }
+            .store(in: &cancellables)
     }
 
     func selectAgent(named name: String) async {
@@ -226,7 +235,7 @@ final class ChatSessionViewModel {
         case let .toolCallUpdate(toolCallUpdate):
             applyToolCallUpdate(toolCallUpdate)
             pendingToolCallTimelineIDs.insert(toolCallUpdate.toolCallId)
-            scheduleToolCallFlush()
+            toolCallFlushSubject.send(())
         case let .currentModeUpdate(modeID):
             currentMode = modeID
         case let .sessionInfoUpdate(info):
@@ -438,24 +447,15 @@ final class ChatSessionViewModel {
     }
 
     private func scheduleMessageFlush() {
-        guard messageFlushTask == nil else {
-            return
-        }
+        messageFlushTask?.cancel()
 
         messageFlushTask = Task { [weak self] in
-            while let self {
-                try? await Task.sleep(for: .milliseconds(50))
-                guard !Task.isCancelled else {
-                    break
-                }
-
-                self.flushPendingAgentChunks()
-
-                if self.pendingAgentChunks.isEmpty {
-                    break
-                }
+            try? await Task.sleep(for: .milliseconds(50))
+            guard let self, !Task.isCancelled else {
+                return
             }
-            self?.messageFlushTask = nil
+            self.flushPendingAgentChunks()
+            self.messageFlushTask = nil
         }
     }
 
@@ -467,28 +467,6 @@ final class ChatSessionViewModel {
         let chunks = pendingAgentChunks
         pendingAgentChunks.removeAll(keepingCapacity: true)
         upsertStreamingMessage(role: .assistant, contents: chunks, messageID: streamingAgentMessageID)
-    }
-
-    private func scheduleToolCallFlush() {
-        guard toolCallFlushTask == nil else {
-            return
-        }
-
-        toolCallFlushTask = Task { [weak self] in
-            while let self {
-                try? await Task.sleep(for: .milliseconds(60))
-                guard !Task.isCancelled else {
-                    break
-                }
-
-                self.flushPendingToolCallTimelineUpdates()
-
-                if self.pendingToolCallTimelineIDs.isEmpty {
-                    break
-                }
-            }
-            self?.toolCallFlushTask = nil
-        }
     }
 
     private func flushPendingToolCallTimelineUpdates() {
@@ -538,22 +516,21 @@ final class ChatSessionViewModel {
     }
 
     private func hasEquivalentEnvelope(_ lhs: TimelineItem, _ rhs: TimelineItem) -> Bool {
-        guard lhs.stableId == rhs.stableId else {
-            return false
+        struct Envelope: Equatable {
+            let id: String
+            let contentLength: Int
+            let tail: Substring
         }
 
-        func envelope(_ text: String) -> (Int, Substring) {
-            let tail = text.suffix(64)
-            return (text.count, tail)
+        func envelope(id: String, content: String) -> Envelope {
+            Envelope(id: id, contentLength: content.count, tail: content.suffix(64))
         }
 
         switch (lhs, rhs) {
         case let (.message(left), .message(right)):
-            return envelope(left.plainText) == envelope(right.plainText)
+            return envelope(id: left.id, content: left.plainText) == envelope(id: right.id, content: right.plainText)
         case let (.toolCall(left), .toolCall(right)):
-            let leftSignature = toolCallEnvelopeText(left.toolCall)
-            let rightSignature = toolCallEnvelopeText(right.toolCall)
-            return envelope(leftSignature) == envelope(rightSignature)
+            return envelope(id: left.id, content: toolCallEnvelopeText(left.toolCall)) == envelope(id: right.id, content: toolCallEnvelopeText(right.toolCall))
         default:
             return false
         }
@@ -581,8 +558,6 @@ final class ChatSessionViewModel {
     private func finishStreamingCycle(forceRebuild: Bool) {
         messageFlushTask?.cancel()
         messageFlushTask = nil
-        toolCallFlushTask?.cancel()
-        toolCallFlushTask = nil
 
         flushPendingAgentChunks()
         flushPendingToolCallTimelineUpdates()

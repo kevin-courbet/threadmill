@@ -90,6 +90,11 @@ protocol ChatConversationManaging: AnyObject {
 }
 
 @MainActor
+protocol ChatManaging: AnyObject {
+    func chatHistory(threadID: String, sessionID: String, cursor: UInt64?) async throws -> ChatHistoryResponse
+}
+
+@MainActor
 protocol SyncServicing: AnyObject {
     func syncFromDaemon() async
     func syncAgentRegistry() async

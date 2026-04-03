@@ -209,6 +209,30 @@ final class AgentSessionManagerTests: XCTestCase {
         XCTAssertEqual(caps.availableModels.first?.name, "Claude Opus")
     }
 
+    func testChatHistoryDecodesResponseAndPassesCursor() async throws {
+        let connection = MockDaemonConnection(state: .connected)
+        connection.requestHandler = { method, params, _ in
+            switch method {
+            case "chat.history":
+                XCTAssertEqual(params?["thread_id"] as? String, "thread-1")
+                XCTAssertEqual(params?["session_id"] as? String, "session-1")
+                XCTAssertEqual((params?["cursor"] as? NSNumber)?.uint64Value, 42)
+                return [
+                    "updates": [],
+                    "next_cursor": 100,
+                ] as [String: Any]
+            default:
+                throw TestError.missingStub
+            }
+        }
+
+        let manager = AgentSessionManager(connectionManager: connection)
+        let response = try await manager.chatHistory(threadID: "thread-1", sessionID: "session-1", cursor: 42)
+
+        XCTAssertTrue(response.updates.isEmpty)
+        XCTAssertEqual(response.nextCursor, 100)
+    }
+
     // MARK: - Helpers
 
     /// Creates a requestHandler that responds to chat.start and chat.attach RPCs.
