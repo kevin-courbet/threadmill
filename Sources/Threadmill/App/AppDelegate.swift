@@ -5,7 +5,7 @@ import os
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isBootstrapped = false
     private let surfaceHost = GhosttySurfaceHost()
-    private let notificationService: any NotificationServicing = NotificationService()
+    private lazy var notificationService: any NotificationServicing = NotificationService()
 
     private var remoteConnectionPool: RemoteConnectionPool?
     private var primaryConnectionManager: (any ConnectionManaging)?

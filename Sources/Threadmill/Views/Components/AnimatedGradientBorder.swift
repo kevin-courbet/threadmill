@@ -134,35 +134,9 @@ final class AnimatedGradientBorderNSView: NSView {
 
         switch currentStyle {
         case .streaming:
-            separatorLayer.isHidden = true
-            gradientLayer.isHidden = false
-            strokeMaskLayer.lineDashPattern = nil
-            gradientLayer.opacity = 1
-            gradientLayer.colors = [
-                NSColor.controlAccentColor.withAlphaComponent(0.2).cgColor,
-                NSColor.controlAccentColor.withAlphaComponent(0.95).cgColor,
-                NSColor.controlAccentColor.withAlphaComponent(0.35).cgColor,
-                NSColor.controlAccentColor.withAlphaComponent(0.95).cgColor,
-                NSColor.controlAccentColor.withAlphaComponent(0.2).cgColor,
-            ]
-            if !reduceMotion {
-                let rotate = CABasicAnimation(keyPath: "transform.rotation.z")
-                rotate.fromValue = 0
-                rotate.toValue = Double.pi * 2
-                rotate.duration = 3.2
-                rotate.repeatCount = .infinity
-                rotate.timingFunction = CAMediaTimingFunction(name: .linear)
-                gradientLayer.add(rotate, forKey: "threadmill.border.rotate")
-
-                let pulse = CABasicAnimation(keyPath: "opacity")
-                pulse.fromValue = 0.56
-                pulse.toValue = 1
-                pulse.duration = 1.1
-                pulse.autoreverses = true
-                pulse.repeatCount = .infinity
-                pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-                gradientLayer.add(pulse, forKey: "threadmill.border.pulse")
-            }
+            gradientLayer.isHidden = true
+            separatorLayer.isHidden = false
+            separatorLayer.strokeColor = NSColor.controlAccentColor.withAlphaComponent(0.6).cgColor
 
         case .plan:
             separatorLayer.isHidden = true

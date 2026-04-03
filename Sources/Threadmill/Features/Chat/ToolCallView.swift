@@ -34,28 +34,18 @@ struct ToolCallView: View {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     statusDot
+
                     Image(systemName: item.toolCall.resolvedKind.symbolName)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(ChatTokens.textMuted)
                         .frame(width: 14, height: 14)
 
-                    // Command pill (monospace, like CodexMonitor's .tool-inline-command)
-                    Text(item.toolCall.title)
+                    Text(displayTitle)
                         .font(.system(size: ChatTokens.codeFontSize, weight: .semibold, design: .monospaced))
                         .lineLimit(1)
                         .foregroundStyle(ChatTokens.textPrimary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(
-                            RoundedRectangle(cornerRadius: ChatTokens.radiusCommandPill, style: .continuous)
-                                .fill(ChatTokens.surfaceCommand)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: ChatTokens.radiusCommandPill, style: .continuous)
-                                .strokeBorder(ChatTokens.borderSubtle, lineWidth: 0.5)
-                        )
 
                     if !childToolCalls.isEmpty {
                         Text("\(childToolCalls.count)")

@@ -175,7 +175,8 @@ final class AgentSessionManager: ChatManaging {
             throw AgentSessionManagerError.sessionDisconnected(sessionID)
         }
 
-        let _: SessionPromptResponse = try await sendRequest(
+        Logger.agent.error("sendPrompt RPC — acpSessionID=\(context.acpSessionID, privacy: .public), channelID=\(channelID, privacy: .public), textLength=\(text.count, privacy: .public)")
+        let response: SessionPromptResponse = try await sendRequest(
             method: "session/prompt",
             params: SessionPromptRequest(
                 sessionId: SessionId(context.acpSessionID),
@@ -184,6 +185,7 @@ final class AgentSessionManager: ChatManaging {
             channelID: channelID,
             timeout: 120
         )
+        Logger.agent.error("sendPrompt response — stopReason=\(String(describing: response.stopReason), privacy: .public)")
     }
 
     func hasSession(sessionID: String) -> Bool {

@@ -91,8 +91,8 @@ struct ChatInputBar: View {
     private var metaBar: some View {
         HStack(spacing: 6) {
             modelDropdown
-            modeDropdown
             effortDropdown
+            modeDropdown
             accessDropdown
 
             if viewModel.contextWindowSize > 0 {
@@ -104,17 +104,170 @@ struct ChatInputBar: View {
         }
     }
 
-    // MARK: - Model Dropdown
+    // MARK: - Model + Effort Grouping
+
+    /// Effort suffixes stripped from model names/IDs to derive the base model.
+    private static let effortSuffixes = ["low", "medium", "high", "auto"]
+
+    /// Parsed model entry: a raw model split into base identity + effort level.
+    private struct ParsedModel {
+        let modelId: String
+        let baseName: String
+        let baseKey: String
+        let effort: String?
+    }
+
+    /// Parse a single ModelInfo into base model + optional effort level.
+    private static func parseModel(_ model: ModelInfo) -> ParsedModel {
+        let id = model.modelId
+        let name = model.name
+
+        // Try to split effort from the ID (e.g. "claude-opus-4-low" → base "claude-opus-4", effort "low")
+        for suffix in effortSuffixes {
+            // Check ID patterns: "base-suffix" or "base/suffix" or "base:suffix"
+            for separator in ["-", "/", ":"] {
+                let tail = separator + suffix
+                if id.lowercased().hasSuffix(tail) {
+                    let baseId = String(id.dropLast(tail.count))
+                    // Also strip from name: "Claude Opus 4 (Low)" → "Claude Opus 4"
+                    let cleanName = name
+                        .replacingOccurrences(of: "(\(suffix))", with: "", options: .caseInsensitive)
+                        .replacingOccurrences(of: " \(suffix)", with: "", options: .caseInsensitive)
+                        .replacingOccurrences(of: "-\(suffix)", with: "", options: .caseInsensitive)
+                        .trimmingCharacters(in: .whitespaces)
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "()"))
+                        .trimmingCharacters(in: .whitespaces)
+                    return ParsedModel(
+                        modelId: id,
+                        baseName: cleanName.isEmpty ? name : cleanName,
+                        baseKey: baseId.lowercased(),
+                        effort: suffix
+                    )
+                }
+            }
+        }
+
+        return ParsedModel(modelId: id, baseName: name, baseKey: id.lowercased(), effort: nil)
+    }
+
+    /// All models parsed and grouped by base key.
+    private var parsedModels: [ParsedModel] {
+        viewModel.availableModels.map(Self.parseModel)
+    }
+
+    /// Unique base models for the model dropdown (stable order, first occurrence wins).
+    private var baseModelOptions: [(id: String, name: String)] {
+        var seen = Set<String>()
+        var result: [(id: String, name: String)] = []
+        for pm in parsedModels {
+            guard seen.insert(pm.baseKey).inserted else { continue }
+            result.append((pm.baseKey, pm.baseName))
+        }
+        return result
+    }
+
+    /// The base key of the currently selected model.
+    private var currentBaseKey: String? {
+        guard let currentID = viewModel.currentModelID ?? viewModel.availableModels.first?.modelId else {
+            return nil
+        }
+        return Self.parseModel(ModelInfo(modelId: currentID, name: "")).baseKey
+    }
+
+    /// Effort levels available for the currently selected base model.
+    private var effortLevelsForCurrentModel: [(id: String, name: String)] {
+        guard let baseKey = currentBaseKey else { return [] }
+        return parsedModels
+            .filter { $0.baseKey == baseKey && $0.effort != nil }
+            .map { ($0.effort!, $0.effort!.capitalized) }
+    }
+
+    /// The effort level of the currently selected model (parsed from its ID).
+    private var currentEffortFromModel: String? {
+        guard let currentID = viewModel.currentModelID else { return nil }
+        return Self.parseModel(ModelInfo(modelId: currentID, name: "")).effort
+    }
+
+    /// Resolve a (baseKey, effort) pair back to the full model ID.
+    private func resolveModelID(baseKey: String, effort: String?) -> String? {
+        if let effort {
+            // Find exact match with this effort
+            if let match = parsedModels.first(where: { $0.baseKey == baseKey && $0.effort == effort }) {
+                return match.modelId
+            }
+        }
+        // Fallback: first model with this base key
+        return parsedModels.first(where: { $0.baseKey == baseKey })?.modelId
+    }
+
+    // MARK: - Model Dropdown (deduplicated, no effort suffixes)
 
     private var modelDropdown: some View {
         MetaBarDropdown(
             icon: "cpu",
             label: "Model",
-            options: viewModel.availableModels.map { ($0.modelId, $0.name) },
-            selection: viewModel.currentModelID ?? viewModel.availableModels.first?.modelId,
+            options: baseModelOptions,
+            selection: currentBaseKey,
             disabled: viewModel.isStreaming
-        ) { modelID in
-            Task { await viewModel.setModel(modelID) }
+        ) { baseKey in
+            // When switching base model, preserve current effort level if possible
+            let effort = currentEffortFromModel
+            if let resolvedID = resolveModelID(baseKey: baseKey, effort: effort) {
+                Task { await viewModel.setModel(resolvedID) }
+            }
+        }
+    }
+
+    // MARK: - Effort Dropdown (derived from model variants + ACP config fallback)
+
+    private static let defaultEffortOptions: [(id: String, name: String)] = [
+        ("low", "Low"),
+        ("medium", "Medium"),
+        ("high", "High"),
+    ]
+
+    private var effortDropdown: some View {
+        let modelEfforts = effortLevelsForCurrentModel
+        let hasModelEfforts = !modelEfforts.isEmpty
+
+        // Prefer effort levels parsed from model variants; fall back to ACP config option; then defaults
+        let effortOption = viewModel.configOptions.first { $0.id.value == "effort" || $0.id.value == "reasoning_effort" }
+
+        let options: [(id: String, name: String)] = {
+            if hasModelEfforts { return modelEfforts }
+            guard let effortOption, case let .select(select) = effortOption.kind else {
+                return Self.defaultEffortOptions
+            }
+            switch select.options {
+            case let .ungrouped(opts): return opts.map { ($0.value.value, $0.name) }
+            case let .grouped(groups): return groups.flatMap(\.options).map { ($0.value.value, $0.name) }
+            }
+        }()
+
+        let currentValue: String = {
+            if hasModelEfforts, let effort = currentEffortFromModel { return effort }
+            if let key = effortOption?.id.value, let stored = viewModel.configOptionValues[key] { return stored }
+            if let effortOption, case let .select(select) = effortOption.kind { return select.currentValue.value }
+            return "high"
+        }()
+
+        return MetaBarDropdown(
+            icon: "gauge.with.dots.needle.33percent",
+            label: "Effort",
+            options: options,
+            selection: currentValue,
+            disabled: viewModel.isStreaming
+        ) { value in
+            if hasModelEfforts, let baseKey = currentBaseKey,
+               let resolvedID = resolveModelID(baseKey: baseKey, effort: value)
+            {
+                // Effort is encoded in model ID — switch model variant
+                Task { await viewModel.setModel(resolvedID) }
+            } else {
+                // Effort is a separate ACP config option
+                let key = effortOption?.id.value ?? "effort"
+                Task { await viewModel.setConfigOption(key: key, value: value) }
+            }
         }
     }
 
@@ -133,50 +286,6 @@ struct ChatInputBar: View {
                     Task { await viewModel.setMode(modeID) }
                 }
             }
-        }
-    }
-
-    // MARK: - Effort Dropdown
-
-    private static let defaultEffortOptions: [(id: String, name: String)] = [
-        ("low", "Low"),
-        ("medium", "Medium"),
-        ("high", "High"),
-    ]
-
-    private var effortDropdown: some View {
-        let effortOption = viewModel.configOptions.first { $0.id.value == "effort" || $0.id.value == "reasoning_effort" }
-        let key = effortOption?.id.value ?? "effort"
-
-        // Use agent-provided options when available, otherwise show defaults
-        let options: [(id: String, name: String)] = {
-            guard let effortOption, case let .select(select) = effortOption.kind else {
-                return Self.defaultEffortOptions
-            }
-            switch select.options {
-            case let .ungrouped(opts): return opts.map { ($0.value.value, $0.name) }
-            case let .grouped(groups): return groups.flatMap(\.options).map { ($0.value.value, $0.name) }
-            }
-        }()
-
-        let currentValue: String = {
-            if let stored = viewModel.configOptionValues[key] {
-                return stored
-            }
-            if let effortOption, case let .select(select) = effortOption.kind {
-                return select.currentValue.value
-            }
-            return "high"
-        }()
-
-        return MetaBarDropdown(
-            icon: "gauge.with.dots.needle.33percent",
-            label: "Effort",
-            options: options,
-            selection: currentValue,
-            disabled: viewModel.isStreaming
-        ) { value in
-            Task { await viewModel.setConfigOption(key: key, value: value) }
         }
     }
 
@@ -208,6 +317,8 @@ struct ChatInputBar: View {
 
     // MARK: - Send / Stop Button
 
+    @State private var isSendHovering = false
+
     private var sendStopButton: some View {
         Button {
             Logger.chat.info("ChatInputBar send button tapped — isStreaming=\(viewModel.isStreaming, privacy: .public), canSend=\(canSend, privacy: .public), textLength=\(text.count, privacy: .public)")
@@ -219,18 +330,16 @@ struct ChatInputBar: View {
         } label: {
             ZStack {
                 if viewModel.isStreaming {
-                    // Stop: red-tinted circle with square stop icon
                     ZStack {
                         Circle()
-                            .fill(Color.red.opacity(0.12))
+                            .fill(Color.red.opacity(isSendHovering ? 0.2 : 0.12))
                         Circle()
-                            .strokeBorder(Color.red.opacity(0.6), lineWidth: 1.5)
+                            .strokeBorder(Color.red.opacity(isSendHovering ? 0.8 : 0.6), lineWidth: 1.5)
                         Image(systemName: "stop.fill")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(Color.red.opacity(0.9))
                     }
                 } else {
-                    // Send: accent gradient circle with arrow
                     ZStack {
                         Circle()
                             .fill(canSend ? AnyShapeStyle(ChatTokens.accentGradient) : AnyShapeStyle(ChatTokens.surfaceCardStrong))
@@ -243,9 +352,18 @@ struct ChatInputBar: View {
                 }
             }
             .frame(width: 30, height: 30)
+            .shadow(
+                color: isSendHovering && (canSend || viewModel.isStreaming) ? .black.opacity(0.2) : .clear,
+                radius: isSendHovering ? 8 : 0,
+                y: isSendHovering ? 2 : 0
+            )
+            .offset(y: isSendHovering && (canSend || viewModel.isStreaming) ? -1 : 0)
+            .scaleEffect(isSendHovering && (canSend || viewModel.isStreaming) ? 1.06 : 1.0)
         }
         .buttonStyle(.plain)
         .disabled(!viewModel.isStreaming && !canSend)
+        .onHover { isSendHovering = $0 }
+        .animation(.easeOut(duration: ChatTokens.durFast), value: isSendHovering)
         .animation(.easeOut(duration: ChatTokens.durNormal), value: viewModel.isStreaming)
         .animation(.easeOut(duration: ChatTokens.durNormal), value: canSend)
     }

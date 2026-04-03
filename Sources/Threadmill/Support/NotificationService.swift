@@ -4,13 +4,13 @@ import os
 
 @MainActor
 final class NotificationService: NotificationServicing {
-    private let center: UNUserNotificationCenter
-
-    init(center: UNUserNotificationCenter = .current()) {
-        self.center = center
+    private var center: UNUserNotificationCenter? {
+        guard Bundle.main.bundleIdentifier != nil else { return nil }
+        return UNUserNotificationCenter.current()
     }
 
     func requestPermission() {
+        guard let center else { return }
         center.requestAuthorization(options: [.alert, .sound]) { granted, error in
             if let error {
                 Logger.state.error("Notification permission request failed: \(error)")
@@ -21,6 +21,7 @@ final class NotificationService: NotificationServicing {
     }
 
     func notifyAgentFinished(threadName: String, projectName _: String?) {
+        guard let center else { return }
         let content = UNMutableNotificationContent()
         content.title = threadName
         content.body = "Agent finished"

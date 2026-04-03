@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Pill-shaped dropdown matching CodexMonitor's `.composer-select-wrap` pattern.
 /// Renders as a compact capsule with icon + label + chevron caret.
+/// Hover: background brightens, border lifts, slight translateY, icon tints accent.
 struct MetaBarDropdown<ID: Hashable>: View {
     let icon: String
     let label: String
@@ -54,16 +55,20 @@ struct MetaBarDropdown<ID: Hashable>: View {
             HStack(spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(ChatTokens.textSubtle)
+                    .foregroundStyle(isHovering ? ChatTokens.textPrimary : ChatTokens.textSubtle)
 
                 Text(displayLabel)
                     .font(.system(size: ChatTokens.metaFontSize, weight: .medium))
-                    .foregroundStyle(disabled ? ChatTokens.textFaint : ChatTokens.textMuted)
+                    .foregroundStyle(
+                        disabled
+                            ? ChatTokens.textFaint
+                            : (isHovering ? ChatTokens.textPrimary : ChatTokens.textMuted)
+                    )
                     .lineLimit(1)
 
                 Image(systemName: "chevron.down")
                     .font(.system(size: 7, weight: .bold))
-                    .foregroundStyle(ChatTokens.textFaint)
+                    .foregroundStyle(isHovering ? ChatTokens.textMuted : ChatTokens.textFaint)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -73,8 +78,17 @@ struct MetaBarDropdown<ID: Hashable>: View {
             )
             .overlay(
                 Capsule(style: .continuous)
-                    .strokeBorder(ChatTokens.borderSubtle, lineWidth: 0.5)
+                    .strokeBorder(
+                        isHovering ? ChatTokens.borderHeavy : ChatTokens.borderSubtle,
+                        lineWidth: isHovering ? 1 : 0.5
+                    )
             )
+            .shadow(
+                color: isHovering ? .black.opacity(0.18) : .clear,
+                radius: isHovering ? 6 : 0,
+                y: isHovering ? 2 : 0
+            )
+            .offset(y: isHovering ? -0.5 : 0)
             .contentShape(Capsule())
         }
         .menuStyle(.borderlessButton)
