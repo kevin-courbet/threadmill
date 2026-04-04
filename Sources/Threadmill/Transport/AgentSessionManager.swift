@@ -3,6 +3,19 @@ import Foundation
 import Observation
 import os
 
+struct PendingPermissionRequest: Identifiable {
+    let id: String
+    let sessionID: String
+    let channelID: UInt16
+    let requestID: RequestId
+    /// Human-readable summary of what the permission is for (e.g., "Read /etc/passwd")
+    let title: String
+    /// Detailed description from the agent's message field
+    let message: String
+    let options: [(id: String, label: String)]
+    let timestamp: Date
+}
+
 enum AgentSessionManagerError: LocalizedError {
     case unknownSession(String)
     case unknownChannel(UInt16)
@@ -77,6 +90,15 @@ final class AgentSessionManager: ChatManaging {
 
     var updatesBySessionID: [String: [SessionUpdateNotification]] = [:]
     var onSessionUpdate: ((String, SessionUpdateNotification) -> Void)?
+
+    // Permission handling — pendingPermissionRequests is observable so any view can
+    // read cross-session permissions without a single-owner callback.
+    var permissionMode: PermissionMode = .fullAccess
+    private(set) var pendingPermissionRequests: [String: PendingPermissionRequest] = [:]
+
+    /// Session failure errors received from Spindle's chat.session_failed event.
+    /// Keyed by session ID. Observable so VMs can react immediately.
+    private(set) var sessionFailures: [String: String] = [:]
 
     init(
         connectionManager: any ConnectionManaging
@@ -612,13 +634,38 @@ final class AgentSessionManager: ChatManaging {
             let allowOptionID = permissionRequest?.options?.first(where: { $0.kind.localizedCaseInsensitiveContains("allow") })?.optionId
                 ?? permissionRequest?.options?.first?.optionId
                 ?? "allow"
-            let response = RequestPermissionResponse(outcome: PermissionOutcome(optionId: allowOptionID))
-            Task {
-                do {
-                    try await sendRPCResponse(id: request.id, result: response, channelID: channelID)
-                } catch {
-                    Logger.agent.error("Failed to send request_permission response on channel \(channelID): \(error)")
+
+            if permissionMode == .fullAccess {
+                // Auto-approve
+                let response = RequestPermissionResponse(outcome: PermissionOutcome(optionId: allowOptionID))
+                Task {
+                    do {
+                        try await sendRPCResponse(id: request.id, result: response, channelID: channelID)
+                    } catch {
+                        Logger.agent.error("Failed to send request_permission response on channel \(channelID): \(error)")
+                    }
                 }
+            } else {
+                // Surface to user
+                guard let sessionID = sessionIDByChannel[channelID] else {
+                    Logger.agent.error("Permission request on channel \(channelID) with no mapped session — this is a bug")
+                    return
+                }
+                let title = Self.permissionTitle(from: permissionRequest)
+                let pending = PendingPermissionRequest(
+                    id: UUID().uuidString,
+                    sessionID: sessionID,
+                    channelID: channelID,
+                    requestID: request.id,
+                    title: title,
+                    message: permissionRequest?.message ?? "",
+                    options: permissionRequest?.options?.map { ($0.optionId, $0.name) } ?? [
+                        (allowOptionID, "Allow"),
+                        ("deny", "Deny"),
+                    ],
+                    timestamp: Date()
+                )
+                pendingPermissionRequests[pending.id] = pending
             }
             return
         }
@@ -629,6 +676,49 @@ final class AgentSessionManager: ChatManaging {
             } catch {
                 Logger.agent.error("Failed to send unknown method error on channel \(channelID): \(error)")
             }
+        }
+    }
+
+    /// Extract a human-readable title from the permission request's toolCall rawInput.
+    /// Recognizes file paths, commands, plans, and falls back to the message or method name.
+    private static func permissionTitle(from request: RequestPermissionRequest?) -> String {
+        guard let request else { return "Permission requested" }
+
+        // Try extracting structured info from rawInput
+        if let rawInput = request.toolCall?.rawInput?.value as? [String: Any] {
+            if let filePath = rawInput["file_path"] as? String ?? rawInput["filePath"] as? String ?? rawInput["path"] as? String {
+                return "Read \(filePath)"
+            }
+            if let command = rawInput["command"] as? String ?? rawInput["cmd"] as? String {
+                let truncated = command.count > 80 ? String(command.prefix(77)) + "..." : command
+                return "Run: \(truncated)"
+            }
+            if rawInput["plan"] as? String != nil {
+                return "Execute plan"
+            }
+        }
+
+        // Fall back to message, then method
+        if let message = request.message, !message.isEmpty {
+            return message
+        }
+        return "Permission requested"
+    }
+
+    func recordSessionFailure(sessionID: String, error: String) {
+        sessionFailures[sessionID] = error
+    }
+
+    func respondToPermissionRequest(id: String, optionId: String) async {
+        guard let pending = pendingPermissionRequests.removeValue(forKey: id) else {
+            Logger.agent.warning("Permission request \(id) not found — already resolved or expired")
+            return
+        }
+        let response = RequestPermissionResponse(outcome: PermissionOutcome(optionId: optionId))
+        do {
+            try await sendRPCResponse(id: pending.requestID, result: response, channelID: pending.channelID)
+        } catch {
+            Logger.agent.error("Failed to send permission response for \(id): \(error)")
         }
     }
 

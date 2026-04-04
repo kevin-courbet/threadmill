@@ -365,7 +365,7 @@ struct ChatInputBar: View {
             disabled: viewModel.isStreaming
         ) { value in
             if let mode = PermissionMode(rawValue: value) {
-                viewModel.permissionMode = mode
+                viewModel.setPermissionMode(mode)
             }
         }
     }

@@ -53,8 +53,25 @@ struct ThreadDetailView: View {
 
     var body: some View {
         if let thread = appState.selectedThread {
-            VStack(spacing: 0) {
-                if thread.status == .active { activeModeContent(thread: thread) } else { InactiveThreadView(thread: thread) }
+            ZStack(alignment: .top) {
+                VStack(spacing: 0) {
+                    if thread.status == .active { activeModeContent(thread: thread) } else { InactiveThreadView(thread: thread) }
+                }
+
+                if let manager = appState.agentSessionManager {
+                    let currentAgentSessionID = chatConversations
+                        .first { $0.id == selectedChatConversationID }?
+                        .agentSessionID
+                    PermissionBannerView(
+                        pendingPermissions: Array(manager.pendingPermissionRequests.values),
+                        currentSessionID: currentAgentSessionID,
+                        onNavigate: { sessionID in navigateToChatSession(sessionID) },
+                        onApprove: { request, optionId in
+                            Task { await manager.respondToPermissionRequest(id: request.id, optionId: optionId) }
+                        }
+                    )
+                    .padding(.top, 8)
+                }
             }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("thread.detail.root")
@@ -348,6 +365,14 @@ struct ThreadDetailView: View {
     private var showsModeSessionTabs: Bool { selectedTab == TabItem.chat.id || selectedTab == TabItem.terminal.id }
     private func normalizedModeID(_ modeID: String) -> String { visibleModeIDs.contains(modeID) ? modeID : (visibleModeIDs.first ?? TabItem.chat.id) }
     private func ensureSelectedModeVisible() { let normalized = normalizedModeID(selectedTab); if normalized != selectedTab { selectedTab = normalized } }
+    private func navigateToChatSession(_ agentSessionID: String) {
+        // Switch to chat mode and select the conversation matching this agent session
+        selectedTab = TabItem.chat.id
+        if let conversation = chatConversations.first(where: { $0.agentSessionID == agentSessionID }) {
+            selectedChatConversationID = conversation.id
+        }
+    }
+
     private func restoreThreadState(_ thread: ThreadModel) async {
         let expectedThreadID = thread.id
         selectedTab = normalizedModeID(tabStateManager.selectedMode(threadID: thread.id))

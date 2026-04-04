@@ -96,6 +96,12 @@ final class ChatSessionViewModel {
     private static let stallWarningThreshold: TimeInterval = 30
     private static let stallFailureThreshold: TimeInterval = 90
 
+    /// Error reported by Spindle for this session (e.g., task panic). Observable via AgentSessionManager.
+    var daemonError: String? {
+        guard let sessionID, let agentSessionManager else { return nil }
+        return agentSessionManager.sessionFailures[sessionID]
+    }
+
     var isInputEnabled: Bool {
         guard case .ready = sessionState else {
             return false

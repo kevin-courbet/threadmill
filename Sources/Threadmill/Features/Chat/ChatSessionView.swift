@@ -24,7 +24,21 @@ struct ChatSessionView: View {
                         .transition(.opacity)
                 }
 
-                if case let .failed(error) = viewModel.sessionState {
+                if let daemonError = viewModel.daemonError {
+                    HStack(spacing: 8) {
+                        Image(systemName: "xmark.octagon.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(ChatTokens.statusError)
+                        Text(daemonError)
+                            .font(.system(size: ChatTokens.captionFontSize))
+                            .foregroundStyle(ChatTokens.statusError)
+                            .lineLimit(3)
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 6)
+                    .background(ChatTokens.statusError.opacity(0.08))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else if case let .failed(error) = viewModel.sessionState {
                     HStack(spacing: 10) {
                         Text(error.localizedDescription)
                             .font(.system(size: ChatTokens.captionFontSize))
@@ -41,11 +55,15 @@ struct ChatSessionView: View {
                 }
 
                 if viewModel.isStreaming {
-                    ChatProcessingIndicator(turnStartedAt: viewModel.turnStartedAt)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 4)
-                        .transition(.opacity)
+                    if viewModel.isStalled {
+                        stallWarning
+                    } else {
+                        ChatProcessingIndicator(turnStartedAt: viewModel.turnStartedAt)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 18)
+                            .padding(.bottom, 4)
+                            .transition(.opacity)
+                    }
                 }
 
                 if let plan = viewModel.currentPlan, !plan.entries.isEmpty {
@@ -55,10 +73,27 @@ struct ChatSessionView: View {
                         .padding(.bottom, 4)
                 }
 
-                ChatInputBar(viewModel: viewModel)
+                // Permission picker replaces input bar when active
+                if let pendingRequest = viewModel.pendingPermissions.first {
+                    PermissionPickerView(
+                        request: pendingRequest,
+                        onApprove: { request, optionId in
+                            Task { await viewModel.approvePermission(request, optionId: optionId) }
+                        },
+                        onDeny: { request in
+                            Task { await viewModel.denyPermission(request) }
+                        }
+                    )
                     .padding(.horizontal, 14)
                     .padding(.top, 10)
                     .padding(.bottom, 14)
+                    .transition(.opacity)
+                } else {
+                    ChatInputBar(viewModel: viewModel)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 10)
+                        .padding(.bottom, 14)
+                }
             }
 
             // Plan sidebar — full height
@@ -96,6 +131,31 @@ struct ChatSessionView: View {
                 }
             }
         }
+    }
+
+    private var stallWarning: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(ChatTokens.statusWarning)
+
+            Text("No response from agent — session may be unresponsive")
+                .font(.system(size: ChatTokens.captionFontSize))
+                .foregroundStyle(ChatTokens.statusWarning)
+
+            Spacer(minLength: 0)
+
+            Button("Cancel") {
+                Task { await viewModel.cancelCurrentPrompt() }
+            }
+            .font(.system(size: ChatTokens.captionFontSize, weight: .semibold))
+            .buttonStyle(.borderless)
+            .foregroundStyle(ChatTokens.statusError)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 8)
+        .background(ChatTokens.statusWarning.opacity(0.08))
+        .transition(.opacity)
     }
 
     private func planFAB(plan: Plan) -> some View {
@@ -237,3 +297,5 @@ private struct PlanSidebarEntryRow: View {
         }
     }
 }
+
+

@@ -6,12 +6,15 @@ struct SessionTabItem: Identifiable, Hashable {
     let title: String
     let icon: String?
     let isClosable: Bool
+    /// Optional secondary ID for debugging (e.g., agent session ID for chat tabs)
+    let debugID: String?
 
-    init(id: String, title: String, icon: String? = nil, isClosable: Bool = true) {
+    init(id: String, title: String, icon: String? = nil, isClosable: Bool = true, debugID: String? = nil) {
         self.id = id
         self.title = title
         self.icon = icon
         self.isClosable = isClosable
+        self.debugID = debugID
     }
 }
 
@@ -119,7 +122,15 @@ struct SessionTabsScrollView: View {
             }
         }
         .contextMenu {
+            Button("Copy Session ID") {
+                let copyText = [tab.id, tab.debugID].compactMap { $0 }.joined(separator: "\n")
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(copyText, forType: .string)
+            }
+
             if tab.isClosable {
+                Divider()
+
                 Button("Close Tab") {
                     onClose(tab.id)
                 }

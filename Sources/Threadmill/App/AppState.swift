@@ -148,6 +148,8 @@ final class AppState {
     var threads: [ThreadModel] = []
     var chatSessionsByThreadID: [String: [ChatSessionInfo]] = [:]
     var agentStatus: [String: AgentActivityInfo] = [:]
+    /// Error messages from chat.session_failed events, keyed by session ID
+    var sessionErrors: [String: String] = [:]
     var agentRegistry: [AgentRegistryEntry] = []
     var systemStats: SystemStatsResult?
     var pinnedThreadIDs: Set<String> = {
@@ -548,6 +550,8 @@ final class AppState {
             handleProjectCloneProgress(params)
         case "chat.status_changed":
             handleChatStatusChanged(params)
+         case "chat.session_failed":
+            handleChatSessionFailed(params)
         case "chat.session_added":
             handleChatSessionAdded(params)
         case "chat.session_updated":
@@ -1287,6 +1291,20 @@ final class AppState {
             .first(where: { $0.id == threadID })
             .flatMap { projectsByID[$0.projectId]?.name }
         notificationService?.notifyAgentFinished(threadName: threadName, projectName: projectName)
+    }
+
+    private func handleChatSessionFailed(_ params: [String: Any]?) {
+        guard
+            let params,
+            let sessionID = params["session_id"] as? String,
+            let error = params["error"] as? String
+        else {
+            Logger.state.error("Invalid chat.session_failed payload: \(String(describing: params))")
+            return
+        }
+        Logger.state.error("chat.session_failed — sessionID=\(sessionID, privacy: .public), error=\(error, privacy: .public)")
+        sessionErrors[sessionID] = error
+        agentSessionManager?.recordSessionFailure(sessionID: sessionID, error: error)
     }
 
     private func handleChatSessionAdded(_ params: [String: Any]?) {

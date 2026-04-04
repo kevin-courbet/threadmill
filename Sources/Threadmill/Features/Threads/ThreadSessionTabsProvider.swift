@@ -23,7 +23,7 @@ struct ThreadSessionTabsProvider {
         switch selectedTab {
         case TabItem.chat.id:
             return chatConversations.enumerated().map { index, conversation in
-                SessionTabItem(id: conversation.id, title: chatTitle(conversation, index, chatConversations.count), icon: "bubble.left", isClosable: true)
+                SessionTabItem(id: conversation.id, title: chatTitle(conversation, index, chatConversations.count), icon: "bubble.left", isClosable: true, debugID: conversation.agentSessionID)
             }
         case TabItem.terminal.id:
             return terminalSessionIDs.map { presetName in
