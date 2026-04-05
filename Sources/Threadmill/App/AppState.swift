@@ -183,6 +183,9 @@ final class AppState {
             ensureSelectedPresetIsValid()
             refreshSelectedEndpoint()
             updateActiveRemoteConnection()
+            if let selectedThreadID {
+                UserDefaults.standard.set(selectedThreadID, forKey: "threadmill.last-selected-thread")
+            }
         }
     }
     var selectedPreset: String? {
@@ -458,6 +461,15 @@ final class AppState {
            threads.contains(where: { $0.id == selectedThreadID }) {
             return
         }
+
+        // Restore last selected thread from previous session
+        if let persisted = UserDefaults.standard.string(forKey: "threadmill.last-selected-thread"),
+           threads.contains(where: { $0.id == persisted })
+        {
+            selectedThreadID = persisted
+            return
+        }
+
         selectedThreadID = threads.first?.id
     }
 

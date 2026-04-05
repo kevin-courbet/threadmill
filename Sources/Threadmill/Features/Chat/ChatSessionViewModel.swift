@@ -174,12 +174,11 @@ final class ChatSessionViewModel {
         }
 
         if shouldRecoverSession {
+            // Recovery will trigger hydration after the session is restored.
             Task { [weak self] in
                 await self?.recoverSessionIfNeeded()
             }
-        }
-
-        if shouldHydrateScrollback {
+        } else if shouldHydrateScrollback {
             Task { [weak self] in
                 await self?.hydrateFromScrollback()
             }
@@ -196,6 +195,14 @@ final class ChatSessionViewModel {
     }
 
     func updateSessionContext(sessionID: String?, sessionState: ChatSessionState) {
+        // Don't revert to a stale session ID if the VM already has a live session
+        // (e.g., recovery replaced the session but GRDB hasn't refreshed yet).
+        if let currentID = self.sessionID, currentID != sessionID,
+           let manager = agentSessionManager, manager.hasSession(sessionID: currentID)
+        {
+            return
+        }
+
         let didChangeSessionID = self.sessionID != sessionID
         guard didChangeSessionID || !sessionStateMatches(self.sessionState, sessionState) else {
             return
@@ -1128,6 +1135,12 @@ final class ChatSessionViewModel {
 
             if previousSessionID != restoredSessionID {
                 onSessionIDRecovered?(restoredSessionID)
+            }
+
+            // Recovery sets .starting which causes concurrent hydration to bail.
+            // Trigger hydration now that the session is ready.
+            if shouldHydrateScrollback, !isHydrated {
+                await hydrateFromScrollback()
             }
         } catch {
             let previous = previousSessionID ?? "nil"
